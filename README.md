@@ -7,8 +7,8 @@ A VS Code extension that allows you to run NG CLI generate commands directly fro
 - **Right-click context menu integration**: Generate angular schematics by right-clicking any folder in the Explorer
 - **Organized submenu**: All generate commands in a single "NG Generate" submenu
 - **Configurable defaults**: Set default options for all generate commands in VS Code settings
-- **Simple workflow**: Only prompts for the name and optional project, all other options use configured defaults
-- **Multi-project support**: Optionally specify which angular project to generate in
+- **Simple workflow**: Only prompts for the name, all other options use configured defaults
+- **Smart project detection**: Automatically detects the Angular project from `angular.json` based on the folder you right-clicked
 - **Supports all major angular schematics**:
   - Component
   - Service
@@ -28,7 +28,10 @@ A VS Code extension that allows you to run NG CLI generate commands directly fro
 2. Select "ng Generate" from the context menu
 3. Choose the type of schematic you want to generate (Component, Service, etc.)
 4. Enter the name for the item you want to generate
-5. Optionally enter a project name (leave empty to use the default project)
+5. The extension automatically detects the Angular project from `angular.json`:
+   - If one project matches the selected folder it is used automatically
+   - If multiple projects match you will be prompted to choose from a list
+   - If no projects match you can type the project name manually (leave empty for the default project)
 6. The extension will run the Angular CLI command with your configured default options in the selected folder
 
 ## Requirements
