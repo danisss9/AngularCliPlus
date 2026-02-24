@@ -4,7 +4,7 @@
   "description": "Run Angular CLI generate commands from folder context menu",
   "repository": "https://github.com/danisss9/ng-generate-vscode",
   "publisher": "danisss9",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "icon": "icon.png",
   "engines": {
     "vscode": "^1.107.0"
