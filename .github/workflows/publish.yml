@@ -1,0 +1,48 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'ngg_*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#ngg_}" >> $GITHUB_OUTPUT
+
+      # ── VS Code extension ─────────────────────────────────────────────────
+
+      - name: Install extension dependencies
+        run: npm ci
+
+      - name: Package VS Code extension
+        run: npx @vscode/vsce package --no-dependencies -o ng-generate-${{ steps.version.outputs.VERSION }}.vsix
+
+      # ── GitHub Release ────────────────────────────────────────────────────
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ng-generate ${{ steps.version.outputs.VERSION }}
+          files: ng-generate-${{ steps.version.outputs.VERSION }}.vsix
+          generate_release_notes: true
+
+      # ── VS Code Marketplace ───────────────────────────────────────────────
+      # Requires a MARKETPLACE_PAT secret: a Personal Access Token from
+      # https://dev.azure.com with the "Marketplace (Publish)" scope.
+
+      - name: Publish VS Code extension
+        run: npx @vscode/vsce publish --packagePath ng-generate-${{ steps.version.outputs.VERSION }}.vsix --pat ${{ secrets.MARKETPLACE_PAT }}
