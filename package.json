@@ -4,7 +4,7 @@
   "description": "Run Angular CLI generate commands from folder context menu",
   "repository": "https://github.com/danisss9/ng-generate-vscode",
   "publisher": "danisss9",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "icon": "icon.png",
   "engines": {
     "vscode": "^1.107.0"
@@ -59,6 +59,72 @@
       {
         "command": "ng-generate.resolver",
         "title": "Resolver"
+      },
+      {
+        "command": "ng-generate.debugAngular",
+        "title": "Angular: Debug Application",
+        "category": "ng Generate"
+      },
+      {
+        "command": "ng-generate.serveAngular",
+        "title": "Angular: Serve Application",
+        "category": "ng Generate"
+      },
+      {
+        "command": "ng-generate.buildAngular",
+        "title": "Angular: Build Project",
+        "category": "ng Generate"
+      },
+      {
+        "command": "ng-generate.restartAngularServe",
+        "title": "Angular: Restart Serve",
+        "category": "ng Generate"
+      },
+      {
+        "command": "ng-generate.buildAngularWatch",
+        "title": "Angular: Build Project (Watch)",
+        "category": "ng Generate"
+      },
+      {
+        "command": "ng-generate.npmInstall",
+        "title": "npm: Install",
+        "category": "ng Generate"
+      },
+      {
+        "command": "ng-generate.npmCleanInstall",
+        "title": "npm: Clean Install",
+        "category": "ng Generate"
+      },
+      {
+        "command": "ng-generate.testAngular",
+        "title": "Angular: Test Project",
+        "category": "ng Generate"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "ng-generate.debugAngular",
+        "key": "ctrl+a d"
+      },
+      {
+        "command": "ng-generate.serveAngular",
+        "key": "ctrl+a s"
+      },
+      {
+        "command": "ng-generate.buildAngular",
+        "key": "ctrl+a b"
+      },
+      {
+        "command": "ng-generate.restartAngularServe",
+        "key": "ctrl+a r"
+      },
+      {
+        "command": "ng-generate.buildAngularWatch",
+        "key": "ctrl+a w"
+      },
+      {
+        "command": "ng-generate.testAngular",
+        "key": "ctrl+a t"
       }
     ],
     "submenus": [
@@ -270,6 +336,66 @@
           "type": "boolean",
           "default": true,
           "description": "Create files at the top level of the current folder"
+        },
+        "ngGenerate.debug.browser": {
+          "type": "string",
+          "default": "chrome",
+          "enum": [
+            "chrome",
+            "edge"
+          ],
+          "enumDescriptions": [
+            "Launch Google Chrome for debugging",
+            "Launch Microsoft Edge for debugging"
+          ],
+          "description": "Browser to use when launching the Angular debug session"
+        },
+        "ngGenerate.build.configuration": {
+          "type": "string",
+          "default": "production",
+          "enum": [
+            "default",
+            "production",
+            "development"
+          ],
+          "enumDescriptions": [
+            "Use the project's default configuration (no --configuration flag)",
+            "Build with --configuration=production",
+            "Build with --configuration=development"
+          ],
+          "description": "Configuration to pass to ng build"
+        },
+        "ngGenerate.watch.configuration": {
+          "type": "string",
+          "default": "development",
+          "enum": [
+            "default",
+            "inherit",
+            "production",
+            "development"
+          ],
+          "enumDescriptions": [
+            "Use the project's default configuration (no --configuration flag)",
+            "Inherit the configuration from ngGenerate.build.configuration",
+            "Build with --configuration=production",
+            "Build with --configuration=development"
+          ],
+          "description": "Configuration to pass to ng build --watch"
+        },
+        "ngGenerate.test.watch": {
+          "type": "boolean",
+          "default": false,
+          "description": "Run ng test in watch mode (--watch). When false, tests run once and exit (--watch=false)."
+        },
+        "ngGenerate.test.ui": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable the Vitest UI for interactive test execution (--ui). Only available for the Vitest runner."
+        },
+        "ngGenerate.checkDependencies.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Check if npm dependencies are installed and match package.json when VS Code opens or when the git branch changes"
         }
       }
     }

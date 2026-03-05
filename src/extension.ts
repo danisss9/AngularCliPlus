@@ -1,6 +1,19 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as net from 'net';
+import * as cp from 'child_process';
+
+const npmOutput = vscode.window.createOutputChannel('ng Generate: npm');
+
+interface ServeEntry {
+  terminal: vscode.Terminal;
+  command: string;
+  cwd: string;
+}
+
+const activeServeTerminals = new Map<string, ServeEntry>();
+const depCheckTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
 
 interface GenerateOptions {
   [key: string]: boolean | string;
@@ -10,6 +23,14 @@ interface AngularProject {
   root?: string;
   sourceRoot?: string;
   projectType?: string;
+  architect?: {
+    serve?: {
+      options?: {
+        port?: number;
+      };
+    };
+    test?: Record<string, unknown>;
+  };
 }
 
 interface AngularJson {
@@ -49,10 +70,71 @@ export function activate(context: vscode.ExtensionContext) {
   schematics.forEach((schematic) => {
     const disposable = vscode.commands.registerCommand(
       `ng-generate.${schematic}`,
-      (uri: vscode.Uri) => generatengSchematic(schematic, uri)
+      (uri: vscode.Uri) => generatengSchematic(schematic, uri),
     );
     context.subscriptions.push(disposable);
   });
+
+  const debugDisposable = vscode.commands.registerCommand('ng-generate.debugAngular', () =>
+    debugAngularProject(context),
+  );
+  context.subscriptions.push(debugDisposable);
+
+  const serveDisposable = vscode.commands.registerCommand('ng-generate.serveAngular', () =>
+    serveAngularProject(),
+  );
+  context.subscriptions.push(serveDisposable);
+
+  const buildDisposable = vscode.commands.registerCommand('ng-generate.buildAngular', () =>
+    buildAngularProject(),
+  );
+  context.subscriptions.push(buildDisposable);
+
+  const buildWatchDisposable = vscode.commands.registerCommand(
+    'ng-generate.buildAngularWatch',
+    () => buildAngularProjectWatch(),
+  );
+  context.subscriptions.push(buildWatchDisposable);
+
+  const restartDisposable = vscode.commands.registerCommand('ng-generate.restartAngularServe', () =>
+    restartAngularServe(),
+  );
+  context.subscriptions.push(restartDisposable);
+
+  const testDisposable = vscode.commands.registerCommand('ng-generate.testAngular', () =>
+    testAngularProject(),
+  );
+  context.subscriptions.push(testDisposable);
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('ng-generate.npmInstall', () => runNpmInstall(false)),
+  );
+  context.subscriptions.push(
+    vscode.commands.registerCommand('ng-generate.npmCleanInstall', () => runNpmInstall(true)),
+  );
+
+  for (const folder of vscode.workspace.workspaceFolders ?? []) {
+    setupDependencyCheck(context, folder.uri.fsPath);
+  }
+
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeWorkspaceFolders((e) => {
+      for (const folder of e.added) {
+        setupDependencyCheck(context, folder.uri.fsPath);
+      }
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.window.onDidCloseTerminal((closed) => {
+      for (const [key, entry] of activeServeTerminals) {
+        if (entry.terminal === closed) {
+          activeServeTerminals.delete(key);
+          break;
+        }
+      }
+    }),
+  );
 }
 
 async function generatengSchematic(schematic: SchematicType, uri: vscode.Uri) {
@@ -130,7 +212,7 @@ async function generatengSchematic(schematic: SchematicType, uri: vscode.Uri) {
  */
 async function detectAngularProject(
   selectedFolderPath: string,
-  workspaceRoot: string
+  workspaceRoot: string,
 ): Promise<string | null> {
   // Locate angular.json
   const angularJsonPath = path.join(workspaceRoot, 'angular.json');
@@ -206,7 +288,7 @@ async function promptForProjectName(): Promise<string | null> {
 
 function getOptionsForSchematic(
   schematic: SchematicType,
-  config: vscode.WorkspaceConfiguration
+  config: vscode.WorkspaceConfiguration,
 ): GenerateOptions {
   const options: GenerateOptions = {};
   const schematicConfig = config.get<any>(schematic);
@@ -226,7 +308,7 @@ function getOptionsForSchematic(
 function buildNgGenerateCommand(
   schematic: SchematicType,
   name: string,
-  options: GenerateOptions
+  options: GenerateOptions,
 ): string {
   let command = `ng generate ${schematic}`;
 
@@ -251,6 +333,625 @@ function buildNgGenerateCommand(
 
 function toKebabCase(str: string): string {
   return str.replaceAll(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
+}
+
+// ── Shared helpers ────────────────────────────────────────────────────────────
+
+async function resolveWorkspaceAndAngularJson(): Promise<{
+  workspaceFolder: vscode.WorkspaceFolder;
+  workspaceRoot: string;
+  projects: { [name: string]: AngularProject };
+} | null> {
+  const workspaceFolders = vscode.workspace.workspaceFolders;
+  if (!workspaceFolders || workspaceFolders.length === 0) {
+    vscode.window.showErrorMessage('No workspace folder open');
+    return null;
+  }
+
+  let workspaceFolder: vscode.WorkspaceFolder;
+  if (workspaceFolders.length === 1) {
+    workspaceFolder = workspaceFolders[0];
+  } else {
+    const picked = await vscode.window.showWorkspaceFolderPick({
+      placeHolder: 'Select workspace folder',
+    });
+    if (!picked) {
+      return null;
+    }
+    workspaceFolder = picked;
+  }
+
+  const workspaceRoot = workspaceFolder.uri.fsPath;
+  const angularJsonPath = path.join(workspaceRoot, 'angular.json');
+
+  if (!fs.existsSync(angularJsonPath)) {
+    vscode.window.showErrorMessage('No angular.json found in workspace root');
+    return null;
+  }
+
+  let angularJson: AngularJson;
+  try {
+    angularJson = JSON.parse(fs.readFileSync(angularJsonPath, 'utf-8')) as AngularJson;
+  } catch {
+    vscode.window.showErrorMessage('Failed to parse angular.json');
+    return null;
+  }
+
+  return { workspaceFolder, workspaceRoot, projects: angularJson.projects ?? {} };
+}
+
+async function pickProject(projectNames: string[], title: string): Promise<string | null> {
+  if (projectNames.length === 0) {
+    vscode.window.showErrorMessage('No projects found in angular.json');
+    return null;
+  }
+  if (projectNames.length === 1) {
+    return projectNames[0];
+  }
+  const picked = await vscode.window.showQuickPick(projectNames, {
+    placeHolder: 'Select Angular project',
+    title,
+  });
+  return picked ?? null;
+}
+
+// ── Commands ──────────────────────────────────────────────────────────────────
+
+async function serveAngularProject() {
+  const resolved = await resolveWorkspaceAndAngularJson();
+  if (!resolved) {
+    return;
+  }
+  const { workspaceRoot, projects } = resolved;
+
+  const appProjects = Object.entries(projects)
+    .filter(([, p]) => !p.projectType || p.projectType === 'application')
+    .map(([n]) => n);
+
+  const projectName = await pickProject(appProjects, 'Angular Serve: Select Project');
+  if (!projectName) {
+    return;
+  }
+
+  const serveCommand = `ng serve --project ${projectName}`;
+  const terminalName = `ng serve (${projectName})`;
+  const terminal = vscode.window.createTerminal({ name: terminalName, cwd: workspaceRoot });
+  activeServeTerminals.set(terminalName, { terminal, command: serveCommand, cwd: workspaceRoot });
+  terminal.show();
+  terminal.sendText(serveCommand);
+}
+
+async function testAngularProject() {
+  const resolved = await resolveWorkspaceAndAngularJson();
+  if (!resolved) {
+    return;
+  }
+  const { workspaceRoot, projects } = resolved;
+
+  // Include only projects that have a test architect configured, plus an "All" option
+  const testableProjects = Object.entries(projects)
+    .filter(([, p]) => p.architect?.test !== undefined)
+    .map(([n]) => n);
+
+  if (testableProjects.length === 0) {
+    vscode.window.showWarningMessage('No projects with a test architect found in angular.json.');
+    return;
+  }
+
+  const ALL_PROJECTS = '$(list-flat)  All projects';
+
+  // Check if the currently focused tab is a *.spec.ts file
+  const activeFile = vscode.window.activeTextEditor?.document.uri.fsPath;
+  const isSpecFile = activeFile?.endsWith('.spec.ts') ?? false;
+  const CURRENT_FILE = '$(file)  Run current test file';
+
+  const choices = [...(isSpecFile ? [CURRENT_FILE] : []), ALL_PROJECTS, ...testableProjects];
+
+  const picked = await vscode.window.showQuickPick(choices, {
+    placeHolder: 'Select a project to test, or "All" to run ng test without a project',
+    title: 'Angular Test: Select Project',
+  });
+
+  if (!picked) {
+    return;
+  }
+
+  let testCommand: string;
+  let terminalName: string;
+
+  const config = vscode.workspace.getConfiguration('ngGenerate');
+  const watchMode = config.get<boolean>('test.watch', false);
+  const watchFlag = watchMode ? ' --watch' : ' --watch=false';
+  const uiMode = config.get<boolean>('test.ui', false);
+  const uiFlag = uiMode ? ' --ui' : '';
+
+  if (picked === CURRENT_FILE && activeFile) {
+    // Path relative to workspace root, forward slashes for the CLI glob
+    const relPath = path.relative(workspaceRoot, activeFile).replaceAll(path.sep, '/');
+    testCommand = `ng test --include ${relPath}${watchFlag}${uiFlag}`;
+    terminalName = `ng test (${path.basename(activeFile)})`;
+  } else if (picked === ALL_PROJECTS) {
+    testCommand = `ng test${watchFlag}${uiFlag}`;
+    terminalName = 'ng test (all)';
+  } else {
+    testCommand = `ng test --project ${picked}${watchFlag}${uiFlag}`;
+    terminalName = `ng test (${picked})`;
+  }
+
+  const terminal = vscode.window.createTerminal({ name: terminalName, cwd: workspaceRoot });
+  terminal.show();
+  terminal.sendText(testCommand);
+}
+
+async function buildAngularProject() {
+  await runNgBuild(false);
+}
+
+async function buildAngularProjectWatch() {
+  await runNgBuild(true);
+}
+
+async function runNgBuild(watch: boolean) {
+  const resolved = await resolveWorkspaceAndAngularJson();
+  if (!resolved) {
+    return;
+  }
+  const { workspaceRoot, projects } = resolved;
+
+  const allProjects = Object.keys(projects);
+  const title = watch ? 'Angular Build Watch: Select Project' : 'Angular Build: Select Project';
+  const projectName = await pickProject(allProjects, title);
+  if (!projectName) {
+    return;
+  }
+
+  const config = vscode.workspace.getConfiguration('ngGenerate');
+  let effectiveConfig: string;
+  if (watch) {
+    const watchConfig = config.get<string>('watch.configuration', 'development');
+    effectiveConfig =
+      watchConfig === 'inherit'
+        ? config.get<string>('build.configuration', 'production')
+        : watchConfig;
+  } else {
+    effectiveConfig = config.get<string>('build.configuration', 'production');
+  }
+  const configFlag = effectiveConfig !== 'default' ? ` --configuration=${effectiveConfig}` : '';
+  const watchFlag = watch ? ' --watch' : '';
+
+  const terminalName = watch ? `ng build --watch (${projectName})` : `ng build (${projectName})`;
+  const buildCommand = `ng build --project ${projectName}${configFlag}${watchFlag}`;
+  const terminal = vscode.window.createTerminal({ name: terminalName, cwd: workspaceRoot });
+  if (watch) {
+    activeServeTerminals.set(terminalName, { terminal, command: buildCommand, cwd: workspaceRoot });
+  }
+  terminal.show();
+  terminal.sendText(buildCommand);
+}
+
+async function debugAngularProject(context: vscode.ExtensionContext) {
+  const resolved = await resolveWorkspaceAndAngularJson();
+  if (!resolved) {
+    return;
+  }
+  const { workspaceFolder, workspaceRoot, projects } = resolved;
+
+  const appProjects = Object.entries(projects)
+    .filter(([, p]) => !p.projectType || p.projectType === 'application')
+    .map(([n]) => n);
+
+  const projectName = await pickProject(appProjects, 'Angular Debug: Select Project');
+  if (!projectName) {
+    return;
+  }
+
+  const port = projects[projectName]?.architect?.serve?.options?.port ?? 4200;
+
+  const config = vscode.workspace.getConfiguration('ngGenerate');
+  const browserSetting = config.get<string>('debug.browser', 'chrome');
+  const browserType = browserSetting === 'edge' ? 'msedge' : 'chrome';
+  const sessionName = `Angular Debug (${projectName})`;
+
+  const serveCommand = `ng serve --project ${projectName}`;
+  const serveTerminalName = `ng serve (${projectName})`;
+  const terminal = vscode.window.createTerminal({ name: serveTerminalName, cwd: workspaceRoot });
+  activeServeTerminals.set(serveTerminalName, {
+    terminal,
+    command: serveCommand,
+    cwd: workspaceRoot,
+  });
+  terminal.show();
+  terminal.sendText(serveCommand);
+
+  vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: `Starting ng serve for "${projectName}" on port ${port}…`,
+      cancellable: true,
+    },
+    async (progress, token) => {
+      const ready = await waitForPort(port, 600_000, token);
+
+      if (token.isCancellationRequested) {
+        terminal.sendText('\x03');
+        terminal.dispose();
+        return;
+      }
+
+      if (!ready) {
+        vscode.window.showErrorMessage(
+          `ng serve did not become ready on port ${port} within 10 minutes`,
+        );
+        terminal.sendText('\x03');
+        terminal.dispose();
+        return;
+      }
+
+      progress.report({ message: 'Server ready — launching debugger…' });
+
+      let targetSession: vscode.DebugSession | undefined;
+
+      const startListener = vscode.debug.onDidStartDebugSession((session) => {
+        if (session.name === sessionName) {
+          targetSession = session;
+          startListener.dispose();
+        }
+      });
+      context.subscriptions.push(startListener);
+
+      const started = await vscode.debug.startDebugging(workspaceFolder, {
+        type: browserType,
+        request: 'launch',
+        name: sessionName,
+        url: `http://localhost:${port}`,
+        webRoot: '${workspaceFolder}',
+      });
+
+      if (!started) {
+        startListener.dispose();
+        vscode.window.showErrorMessage(
+          `Failed to start debug session. Make sure the ${browserSetting} debugger is available in VS Code.`,
+        );
+        terminal.sendText('\x03');
+        terminal.dispose();
+        return;
+      }
+
+      const endListener = vscode.debug.onDidTerminateDebugSession((session) => {
+        if (targetSession && session.id === targetSession.id) {
+          terminal.sendText('\x03');
+          setTimeout(() => terminal.dispose(), 2000);
+          endListener.dispose();
+        }
+      });
+      context.subscriptions.push(endListener);
+    },
+  );
+}
+
+async function runNpmInstall(clean: boolean, force = false, workspaceRoot?: string) {
+  if (!workspaceRoot) {
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders || workspaceFolders.length === 0) {
+      vscode.window.showErrorMessage('No workspace folder open');
+      return;
+    }
+
+    let workspaceFolder: vscode.WorkspaceFolder;
+    if (workspaceFolders.length === 1) {
+      workspaceFolder = workspaceFolders[0];
+    } else {
+      const picked = await vscode.window.showWorkspaceFolderPick({
+        placeHolder: 'Select workspace folder',
+      });
+      if (!picked) {
+        return;
+      }
+      workspaceFolder = picked;
+    }
+    workspaceRoot = workspaceFolder.uri.fsPath;
+  }
+
+  npmOutput.clear();
+  npmOutput.show(true);
+
+  if (clean) {
+    npmOutput.appendLine('Removing node_modules and package-lock.json…');
+    try {
+      await fs.promises.rm(path.join(workspaceRoot, 'node_modules'), {
+        recursive: true,
+        force: true,
+      });
+      await fs.promises.rm(path.join(workspaceRoot, 'package-lock.json'), { force: true });
+      npmOutput.appendLine('Done.\n');
+    } catch (err) {
+      npmOutput.appendLine(`\nFailed to clean: ${err}`);
+      vscode.window.showErrorMessage(`Failed to clean project: ${err}`);
+      return;
+    }
+  }
+
+  const args = force ? ['install', '--force'] : ['install'];
+  const exitCode = await spawnNpm(args, workspaceRoot);
+
+  if (exitCode === 0) {
+    vscode.window.showInformationMessage('npm install completed successfully.');
+    return;
+  }
+
+  if (!clean && !force) {
+    const action = await vscode.window.showErrorMessage(
+      'npm install failed. Try a clean install?',
+      'Run Clean Install',
+    );
+    if (action === 'Run Clean Install') {
+      await runNpmInstall(true, false, workspaceRoot);
+    }
+  } else if (clean && !force) {
+    const action = await vscode.window.showErrorMessage(
+      'Clean install failed. Try with --force?',
+      'Run with --force',
+    );
+    if (action === 'Run with --force') {
+      await runNpmInstall(false, true, workspaceRoot);
+    }
+  } else {
+    vscode.window.showErrorMessage(
+      'npm install --force also failed. Check the "ng Generate: npm" output for details.',
+    );
+  }
+}
+
+function spawnNpm(args: string[], cwd: string): Promise<number> {
+  return new Promise((resolve) => {
+    npmOutput.appendLine(`> npm ${args.join(' ')}\n`);
+    const proc = cp.spawn('npm', args, { cwd, shell: true });
+    proc.stdout.on('data', (d: Buffer) => npmOutput.append(d.toString()));
+    proc.stderr.on('data', (d: Buffer) => npmOutput.append(d.toString()));
+    proc.on('close', (code) => resolve(code ?? 1));
+  });
+}
+
+async function restartAngularServe() {
+  if (activeServeTerminals.size === 0) {
+    vscode.window.showErrorMessage('No active ng serve / ng build --watch terminals found.');
+    return;
+  }
+
+  let projectName: string;
+  if (activeServeTerminals.size === 1) {
+    projectName = [...activeServeTerminals.keys()][0];
+  } else {
+    const picked = await vscode.window.showQuickPick([...activeServeTerminals.keys()], {
+      placeHolder: 'Select terminal to restart',
+      title: 'Angular Restart',
+    });
+    if (!picked) {
+      return;
+    }
+    projectName = picked;
+  }
+
+  const entry = activeServeTerminals.get(projectName)!;
+  entry.terminal.show();
+  entry.terminal.sendText('\x03');
+  await new Promise<void>((r) => setTimeout(r, 300));
+  entry.terminal.sendText('y');
+  await new Promise<void>((r) => setTimeout(r, 700));
+  entry.terminal.sendText(entry.command);
+}
+
+function waitForPort(
+  port: number,
+  timeout: number,
+  token: vscode.CancellationToken,
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    const deadline = Date.now() + timeout;
+
+    function attempt() {
+      if (token.isCancellationRequested || Date.now() >= deadline) {
+        resolve(false);
+        return;
+      }
+
+      const socket = new net.Socket();
+      socket.setTimeout(1000);
+
+      socket.on('connect', () => {
+        socket.destroy();
+        resolve(true);
+      });
+
+      const onFail = () => {
+        socket.destroy();
+        setTimeout(attempt, 1000);
+      };
+
+      socket.on('timeout', onFail);
+      socket.on('error', onFail);
+      socket.connect(port, 'localhost');
+    }
+
+    attempt();
+  });
+}
+
+function setupDependencyCheck(context: vscode.ExtensionContext, workspaceRoot: string) {
+  const pkgPath = path.join(workspaceRoot, 'package.json');
+  if (!fs.existsSync(pkgPath)) {
+    return;
+  }
+
+  // Check shortly after startup
+  scheduleDependencyCheck(workspaceRoot, 3000);
+
+  // Re-check whenever .git/HEAD changes (branch switch).
+  // Use fs.watch directly because VS Code's file system watcher excludes .git/ by default.
+  const gitHead = path.join(workspaceRoot, '.git', 'HEAD');
+  if (fs.existsSync(gitHead)) {
+    try {
+      const fsWatcher = fs.watch(gitHead, () => scheduleDependencyCheck(workspaceRoot, 2000));
+      context.subscriptions.push({ dispose: () => fsWatcher.close() });
+    } catch {
+      // fs.watch unavailable on this platform – fall back to VS Code watcher
+      const watcher = vscode.workspace.createFileSystemWatcher(
+        new vscode.RelativePattern(vscode.Uri.file(path.join(workspaceRoot, '.git')), 'HEAD'),
+      );
+      watcher.onDidChange(() => scheduleDependencyCheck(workspaceRoot, 2000));
+      context.subscriptions.push(watcher);
+    }
+  }
+
+  // Re-check when package.json itself is saved (dependencies may have been edited manually)
+  const pkgWatcher = vscode.workspace.createFileSystemWatcher(
+    new vscode.RelativePattern(vscode.Uri.file(workspaceRoot), 'package.json'),
+  );
+  pkgWatcher.onDidChange(() => scheduleDependencyCheck(workspaceRoot, 2000));
+  context.subscriptions.push(pkgWatcher);
+}
+
+function scheduleDependencyCheck(workspaceRoot: string, delayMs: number) {
+  const existing = depCheckTimeouts.get(workspaceRoot);
+  if (existing) {
+    clearTimeout(existing);
+  }
+  depCheckTimeouts.set(
+    workspaceRoot,
+    setTimeout(() => {
+      depCheckTimeouts.delete(workspaceRoot);
+      checkDependencies(workspaceRoot);
+    }, delayMs),
+  );
+}
+
+async function checkDependencies(workspaceRoot: string) {
+  const config = vscode.workspace.getConfiguration('ngGenerate');
+  if (!config.get<boolean>('checkDependencies.enabled', true)) {
+    return;
+  }
+
+  const pkgPath = path.join(workspaceRoot, 'package.json');
+  let pkg: { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
+  try {
+    pkg = JSON.parse(await fs.promises.readFile(pkgPath, 'utf-8'));
+  } catch {
+    return;
+  }
+
+  const allDeps = { ...pkg.dependencies, ...pkg.devDependencies };
+  if (Object.keys(allDeps).length === 0) {
+    return;
+  }
+
+  // Fast-path: if node_modules doesn't exist at all
+  const nmDir = path.join(workspaceRoot, 'node_modules');
+  if (!fs.existsSync(nmDir)) {
+    const action = await vscode.window.showWarningMessage(
+      'node_modules not found. Run npm install?',
+      'Run npm install',
+    );
+    if (action === 'Run npm install') {
+      await runNpmInstall(false, false, workspaceRoot);
+    }
+    return;
+  }
+
+  const missing: string[] = [];
+  const outdated: string[] = [];
+
+  await Promise.all(
+    Object.entries(allDeps).map(async ([name, required]) => {
+      const nmPkg = path.join(nmDir, name, 'package.json');
+      try {
+        const { version } = JSON.parse(await fs.promises.readFile(nmPkg, 'utf-8'));
+        if (!semverSatisfies(version as string, required)) {
+          outdated.push(name);
+        }
+      } catch {
+        missing.push(name);
+      }
+    }),
+  );
+
+  if (missing.length === 0 && outdated.length === 0) {
+    return;
+  }
+
+  const parts: string[] = [];
+  if (missing.length > 0) {
+    parts.push(`${missing.length} package(s) missing`);
+  }
+  if (outdated.length > 0) {
+    parts.push(`${outdated.length} package(s) outdated`);
+  }
+
+  const folderLabel =
+    (vscode.workspace.workspaceFolders?.length ?? 0) > 1
+      ? ` in ${path.basename(workspaceRoot)}`
+      : '';
+
+  const action = await vscode.window.showWarningMessage(
+    `${parts.join(' and ')}${folderLabel}. Run npm install?`,
+    'Run npm install',
+  );
+  if (action === 'Run npm install') {
+    await runNpmInstall(false, false, workspaceRoot);
+  }
+}
+
+function semverSatisfies(installed: string, required: string): boolean {
+  const req = required.trim();
+  if (!req || req === '*' || req === 'latest') {
+    return true;
+  }
+  // Skip non-semver specs (git, file, workspace, URLs)
+  if (/^(git|file:|workspace:|https?:|github:)/.test(req)) {
+    return true;
+  }
+
+  const parseVer = (s: string): [number, number, number] => {
+    const parts = s
+      .replace(/^v/, '')
+      .split('-')[0]
+      .split('.')
+      .map((n) => parseInt(n) || 0);
+    return [parts[0] ?? 0, parts[1] ?? 0, parts[2] ?? 0];
+  };
+
+  const cmp = (a: [number, number, number], b: [number, number, number]): number => {
+    if (a[0] !== b[0]) return a[0] - b[0];
+    if (a[1] !== b[1]) return a[1] - b[1];
+    return a[2] - b[2];
+  };
+
+  const iv = parseVer(installed);
+
+  if (req.startsWith('^')) {
+    const rv = parseVer(req.slice(1));
+    if (rv[0] === 0 && rv[1] === 0) return iv[0] === 0 && iv[1] === 0 && iv[2] >= rv[2];
+    if (rv[0] === 0) return iv[0] === 0 && iv[1] === rv[1] && iv[2] >= rv[2];
+    return iv[0] === rv[0] && cmp(iv, rv) >= 0;
+  }
+  if (req.startsWith('~')) {
+    const rv = parseVer(req.slice(1));
+    return iv[0] === rv[0] && iv[1] === rv[1] && iv[2] >= rv[2];
+  }
+  if (req.startsWith('>=')) {
+    return cmp(iv, parseVer(req.slice(2))) >= 0;
+  }
+  if (req.startsWith('>')) {
+    return cmp(iv, parseVer(req.slice(1))) > 0;
+  }
+  if (req.startsWith('<=')) {
+    return cmp(iv, parseVer(req.slice(2))) <= 0;
+  }
+  if (req.startsWith('<')) {
+    return cmp(iv, parseVer(req.slice(1))) < 0;
+  }
+
+  // Exact (strip leading = or v)
+  return cmp(iv, parseVer(req.replace(/^[=v]+/, ''))) === 0;
 }
 
 export function deactivate() {
