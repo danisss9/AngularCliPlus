@@ -4,7 +4,7 @@
   "description": "Run Angular CLI generate commands from folder context menu",
   "repository": "https://github.com/danisss9/ng-generate-vscode",
   "publisher": "danisss9",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "icon": "icon.png",
   "engines": {
     "vscode": "^1.107.0"
@@ -419,6 +419,16 @@
           "type": "boolean",
           "default": false,
           "description": "Allow ng update to run even if the working tree has uncommitted changes (--allow-dirty)"
+        },
+        "ngGenerate.npm.installCommand": {
+          "type": "string",
+          "default": "",
+          "description": "Custom command to run for npm: Install (e.g. 'yarn install' or 'pnpm install'). Leave empty to use the default 'npm install'."
+        },
+        "ngGenerate.npm.cleanInstallCommand": {
+          "type": "string",
+          "default": "",
+          "description": "Custom command to run for npm: Clean Install (e.g. 'yarn install --frozen-lockfile'). Leave empty to use the default behaviour (remove node_modules + package-lock.json, then run npm install)."
         }
       }
     }

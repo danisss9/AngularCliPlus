@@ -775,6 +775,34 @@ async function runNpmInstall(clean: boolean, force = false, workspaceRoot?: stri
   npmOutput.clear();
   npmOutput.show(true);
 
+  const ngConfig = vscode.workspace.getConfiguration('ngGenerate');
+  const customInstall = (ngConfig.get<string>('npm.installCommand') ?? '').trim();
+  const customCleanInstall = (ngConfig.get<string>('npm.cleanInstallCommand') ?? '').trim();
+
+  if (clean && customCleanInstall) {
+    npmOutput.appendLine(`> ${customCleanInstall}
+`);
+    const exitCode = await spawnShellCommand(customCleanInstall, workspaceRoot);
+    if (exitCode === 0) {
+      vscode.window.showInformationMessage('Clean install completed successfully.');
+    } else {
+      vscode.window.showErrorMessage("Custom clean install failed. Check the 'ng Generate: npm' output for details.");
+    }
+    return;
+  }
+
+  if (!clean && !force && customInstall) {
+    npmOutput.appendLine(`> ${customInstall}
+`);
+    const exitCode = await spawnShellCommand(customInstall, workspaceRoot);
+    if (exitCode === 0) {
+      vscode.window.showInformationMessage('Install completed successfully.');
+    } else {
+      vscode.window.showErrorMessage("Custom install failed. Check the 'ng Generate: npm' output for details.");
+    }
+    return;
+  }
+
   if (clean) {
     npmOutput.appendLine('Removing node_modules and package-lock.json…');
     try {
@@ -826,6 +854,17 @@ function spawnNpm(args: string[], cwd: string): Promise<number> {
   return new Promise((resolve) => {
     npmOutput.appendLine(`> npm ${args.join(' ')}\n`);
     const proc = cp.spawn('npm', args, { cwd, shell: true });
+    proc.stdout.on('data', (d: Buffer) => npmOutput.append(d.toString()));
+    proc.stderr.on('data', (d: Buffer) => npmOutput.append(d.toString()));
+    proc.on('close', (code) => resolve(code ?? 1));
+  });
+}
+
+function spawnShellCommand(command: string, cwd: string): Promise<number> {
+  return new Promise((resolve) => {
+    npmOutput.appendLine(`> ${command}
+`);
+    const proc = cp.spawn(command, [], { cwd, shell: true });
     proc.stdout.on('data', (d: Buffer) => npmOutput.append(d.toString()));
     proc.stderr.on('data', (d: Buffer) => npmOutput.append(d.toString()));
     proc.on('close', (code) => resolve(code ?? 1));
