@@ -4,12 +4,14 @@ A VS Code extension that allows you to run NG CLI generate commands directly fro
 
 ## Features
 
-- **Right-click context menu integration**: Generate angular schematics by right-clicking any folder in the Explorer
-- **Organized submenu**: All generate commands in a single "NG Generate" submenu
+### Schematics generator
+
+- **Right-click context menu integration**: Generate Angular schematics by right-clicking any folder in the Explorer
+- **Organized submenu**: All generate commands in a single "ng Generate" submenu
 - **Configurable defaults**: Set default options for all generate commands in VS Code settings
-- **Simple workflow**: Only prompts for the name, all other options use configured defaults
+- **Simple workflow**: Only prompts for the name; all other options use configured defaults
 - **Smart project detection**: Automatically detects the Angular project from `angular.json` based on the folder you right-clicked
-- **Supports all major angular schematics**:
+- **Supports all major Angular schematics**:
   - Component
   - Service
   - Module
@@ -22,17 +24,51 @@ A VS Code extension that allows you to run NG CLI generate commands directly fro
   - Enum
   - Resolver
 
+### Angular CLI commands (Command Palette & keyboard shortcuts)
+
+| Command                        | Shortcut   | Description                                                                   |
+| ------------------------------ | ---------- | ----------------------------------------------------------------------------- |
+| Angular: Serve Application     | `Ctrl+A S` | Runs `ng serve` for a selected project                                        |
+| Angular: Debug Application     | `Ctrl+A D` | Starts `ng serve`, waits for the dev server, then attaches a browser debugger |
+| Angular: Build Project         | `Ctrl+A B` | Runs `ng build` with the configured build configuration                       |
+| Angular: Build Project (Watch) | `Ctrl+A W` | Runs `ng build --watch` with the configured watch configuration               |
+| Angular: Test Project          | `Ctrl+A T` | Runs `ng test` for a project, all projects, or the currently open spec file   |
+| Angular: Restart Serve         | `Ctrl+A R` | Gracefully restarts any active `ng serve` or `ng build --watch` terminal      |
+
+### npm helpers
+
+- **npm: Install**: runs `npm install` and streams output to the "ng Generate: npm" output channel; automatically offers a clean install on failure
+- **npm: Clean Install**: removes `node_modules` and `package-lock.json` before running `npm install`; offers `--force` as a last resort on failure
+- **Dependency check**: on startup and on every git branch switch the extension verifies that `node_modules` exists and installed package versions satisfy `package.json` ranges, prompting to run `npm install` when needed
+
 ## Usage
 
+### Generating schematics
+
 1. Right-click on any folder in the VS Code Explorer
-2. Select "ng Generate" from the context menu
+2. Select **ng Generate** from the context menu
 3. Choose the type of schematic you want to generate (Component, Service, etc.)
 4. Enter the name for the item you want to generate
 5. The extension automatically detects the Angular project from `angular.json`:
    - If one project matches the selected folder it is used automatically
    - If multiple projects match you will be prompted to choose from a list
    - If no projects match you can type the project name manually (leave empty for the default project)
-6. The extension will run the Angular CLI command with your configured default options in the selected folder
+6. The extension runs the Angular CLI command with your configured default options in the selected folder
+
+### Running Angular CLI commands
+
+Use the keyboard shortcuts (`Ctrl+A` followed by a letter) or search for **ng Generate** commands in the Command Palette (`Ctrl+Shift+P`):
+
+- **Serve** (`Ctrl+A S`): select a project and start `ng serve` in a terminal
+- **Debug** (`Ctrl+A D`): start `ng serve`, wait for the server to be ready, then attach a Chrome/Edge debugger; the serve terminal is stopped automatically when you end the debug session
+- **Build** (`Ctrl+A B`): select a project and run `ng build` (configuration controlled by `ngGenerate.build.configuration`)
+- **Build Watch** (`Ctrl+A W`): same as build but adds `--watch` (configuration controlled by `ngGenerate.watch.configuration`)
+- **Test** (`Ctrl+A T`): select a project, all projects at once, or run the tests for the `.spec.ts` file you currently have open
+- **Restart Serve** (`Ctrl+A R`): restart any active `ng serve` or `ng build --watch` session without closing the terminal
+
+### npm helpers
+
+Run **ng Generate: npm: Install** or **ng Generate: npm: Clean Install** from the Command Palette. Output is streamed to the **ng Generate: npm** output channel. The extension also automatically prompts you to run `npm install` when it detects missing or outdated packages on startup or after a git branch switch.
 
 ## Requirements
 
@@ -97,3 +133,21 @@ This extension contributes the following settings:
 - `ngGenerate.resolver.functional`: Creates the resolver as a ResolveFn (default: `true`)
 - `ngGenerate.resolver.skipTests`: Skip creating spec.ts test files (default: `false`)
 - `ngGenerate.resolver.flat`: Create files at the top level of the current folder (default: `true`)
+
+### Debug Options
+
+- `ngGenerate.debug.browser`: Browser to use when launching the Angular debug session (`chrome` or `edge`) (default: `chrome`)
+
+### Build Options
+
+- `ngGenerate.build.configuration`: Configuration flag passed to `ng build` (`default`, `production`, `development`) (default: `production`)
+- `ngGenerate.watch.configuration`: Configuration flag passed to `ng build --watch` (`default`, `inherit`, `production`, `development`) — `inherit` copies the value from `ngGenerate.build.configuration` (default: `development`)
+
+### Test Options
+
+- `ngGenerate.test.watch`: Run `ng test` in watch mode (default: `false`)
+- `ngGenerate.test.ui`: Enable the Vitest UI for interactive test execution — only available for the Vitest runner (default: `false`)
+
+### Dependency Check Options
+
+- `ngGenerate.checkDependencies.enabled`: Check if npm dependencies are installed and match `package.json` on startup and on git branch changes (default: `true`)

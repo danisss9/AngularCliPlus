@@ -4,6 +4,22 @@ All notable changes to the "ng-generate" extension will be documented in this fi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.1.0]
+
+### Added
+
+- **Angular Serve** (`Ctrl+A S`): runs `ng serve` for a selected project in a dedicated terminal
+- **Angular Debug** (`Ctrl+A D`): starts `ng serve`, waits for the dev server to become ready, then automatically attaches a browser debugger (Chrome or Edge, configurable via `ngGenerate.debug.browser`); the serve terminal is cleaned up when the debug session ends
+- **Angular Build** (`Ctrl+A B`): runs `ng build` for a selected project with a configurable build configuration (`ngGenerate.build.configuration`)
+- **Angular Build (Watch)** (`Ctrl+A W`): runs `ng build --watch` with a separate configurable configuration (`ngGenerate.watch.configuration`, which can also inherit from the build setting)
+- **Angular Test** (`Ctrl+A T`): runs `ng test` for a selected project; supports an "All projects" option, a "Run current test file" shortcut when a `.spec.ts` file is active, watch mode (`ngGenerate.test.watch`), and Vitest UI (`ngGenerate.test.ui`)
+- **Angular Restart Serve** (`Ctrl+A R`): gracefully restarts any active `ng serve` or `ng build --watch` terminal tracked by the extension
+- **npm: Install**: runs `npm install` and streams output to a dedicated "ng Generate: npm" output channel; on failure offers a "Run Clean Install" fallback
+- **npm: Clean Install**: removes `node_modules` and `package-lock.json`, then runs `npm install`; on failure offers a "Run with --force" fallback
+- **Dependency check**: on startup and on every git branch change the extension checks whether `node_modules` is present and whether installed package versions satisfy `package.json` ranges; prompts to run `npm install` when problems are found; can be disabled with `ngGenerate.checkDependencies.enabled`
+- New keyboard shortcuts for all Angular CLI commands (`Ctrl+A D/S/B/R/W/T`)
+- New settings: `ngGenerate.debug.browser`, `ngGenerate.build.configuration`, `ngGenerate.watch.configuration`, `ngGenerate.test.watch`, `ngGenerate.test.ui`, `ngGenerate.checkDependencies.enabled`
+
 ## [1.0.2]
 
 ### Changed
