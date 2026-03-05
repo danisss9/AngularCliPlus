@@ -4,7 +4,7 @@
   "description": "Run Angular CLI generate commands from folder context menu",
   "repository": "https://github.com/danisss9/ng-generate-vscode",
   "publisher": "danisss9",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "icon": "icon.png",
   "engines": {
     "vscode": "^1.107.0"
@@ -99,32 +99,50 @@
         "command": "ng-generate.testAngular",
         "title": "Angular: Test Project",
         "category": "ng Generate"
+      },
+      {
+        "command": "ng-generate.lintAngular",
+        "title": "Angular: Lint Project",
+        "category": "ng Generate"
+      },
+      {
+        "command": "ng-generate.updateAngular",
+        "title": "Angular: Update Packages",
+        "category": "ng Generate"
       }
     ],
     "keybindings": [
       {
         "command": "ng-generate.debugAngular",
-        "key": "ctrl+a d"
+        "key": "ctrl+shift+a d"
       },
       {
         "command": "ng-generate.serveAngular",
-        "key": "ctrl+a s"
+        "key": "ctrl+shift+a s"
       },
       {
         "command": "ng-generate.buildAngular",
-        "key": "ctrl+a b"
+        "key": "ctrl+shift+a b"
       },
       {
         "command": "ng-generate.restartAngularServe",
-        "key": "ctrl+a r"
+        "key": "ctrl+shift+a r"
       },
       {
         "command": "ng-generate.buildAngularWatch",
-        "key": "ctrl+a w"
+        "key": "ctrl+shift+a w"
       },
       {
         "command": "ng-generate.testAngular",
-        "key": "ctrl+a t"
+        "key": "ctrl+shift+a t"
+      },
+      {
+        "command": "ng-generate.lintAngular",
+        "key": "ctrl+shift+a l"
+      },
+      {
+        "command": "ng-generate.updateAngular",
+        "key": "ctrl+shift+a u"
       }
     ],
     "submenus": [
@@ -396,6 +414,11 @@
           "type": "boolean",
           "default": true,
           "description": "Check if npm dependencies are installed and match package.json when VS Code opens or when the git branch changes"
+        },
+        "ngGenerate.update.allowDirty": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow ng update to run even if the working tree has uncommitted changes (--allow-dirty)"
         }
       }
     }

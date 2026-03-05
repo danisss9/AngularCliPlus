@@ -26,20 +26,22 @@ A VS Code extension that allows you to run NG CLI generate commands directly fro
 
 ### Angular CLI commands (Command Palette & keyboard shortcuts)
 
-| Command                        | Shortcut   | Description                                                                   |
-| ------------------------------ | ---------- | ----------------------------------------------------------------------------- |
-| Angular: Serve Application     | `Ctrl+A S` | Runs `ng serve` for a selected project                                        |
-| Angular: Debug Application     | `Ctrl+A D` | Starts `ng serve`, waits for the dev server, then attaches a browser debugger |
-| Angular: Build Project         | `Ctrl+A B` | Runs `ng build` with the configured build configuration                       |
-| Angular: Build Project (Watch) | `Ctrl+A W` | Runs `ng build --watch` with the configured watch configuration               |
-| Angular: Test Project          | `Ctrl+A T` | Runs `ng test` for a project, all projects, or the currently open spec file   |
-| Angular: Restart Serve         | `Ctrl+A R` | Gracefully restarts any active `ng serve` or `ng build --watch` terminal      |
+| Command                        | Shortcut           | Description                                                                   |
+| ------------------------------ | ------------------ | ----------------------------------------------------------------------------- |
+| Angular: Serve Application     | `Ctrl+Shift+A S`   | Runs `ng serve` for a selected project                                        |
+| Angular: Debug Application     | `Ctrl+Shift+A D`   | Starts `ng serve`, waits for the dev server, then attaches a browser debugger |
+| Angular: Build Project         | `Ctrl+Shift+A B`   | Runs `ng build` with the configured build configuration                       |
+| Angular: Build Project (Watch) | `Ctrl+Shift+A W`   | Runs `ng build --watch` with the configured watch configuration               |
+| Angular: Test Project          | `Ctrl+Shift+A T`   | Runs `ng test` for a project, all projects, or the currently open spec file   |
+| Angular: Restart Serve         | `Ctrl+Shift+A R`   | Gracefully restarts any active `ng serve` or `ng build --watch` terminal      |
+| Angular: Lint Project          | `Ctrl+Shift+A L`   | Runs `ng lint` for a selected project                                         |
+| Angular: Update Packages       | `Ctrl+Shift+A U`   | Shows available package updates and runs `ng update` for selected packages    |
 
 ### npm helpers
 
 - **npm: Install**: runs `npm install` and streams output to the "ng Generate: npm" output channel; automatically offers a clean install on failure
 - **npm: Clean Install**: removes `node_modules` and `package-lock.json` before running `npm install`; offers `--force` as a last resort on failure
-- **Dependency check**: on startup and on every git branch switch the extension verifies that `node_modules` exists and installed package versions satisfy `package.json` ranges, prompting to run `npm install` when needed
+- **Dependency check**: on startup and on every git branch switch the extension verifies that `node_modules` exists and installed package versions satisfy `package.json` ranges, prompting to run `npm install` when needed; can be disabled via `ngGenerate.checkDependencies.enabled`
 
 ## Usage
 
@@ -57,14 +59,16 @@ A VS Code extension that allows you to run NG CLI generate commands directly fro
 
 ### Running Angular CLI commands
 
-Use the keyboard shortcuts (`Ctrl+A` followed by a letter) or search for **ng Generate** commands in the Command Palette (`Ctrl+Shift+P`):
+Use the keyboard shortcuts (`Ctrl+Shift+A` followed by a letter) or search for **ng Generate** commands in the Command Palette (`Ctrl+Shift+P`):
 
-- **Serve** (`Ctrl+A S`): select a project and start `ng serve` in a terminal
-- **Debug** (`Ctrl+A D`): start `ng serve`, wait for the server to be ready, then attach a Chrome/Edge debugger; the serve terminal is stopped automatically when you end the debug session
-- **Build** (`Ctrl+A B`): select a project and run `ng build` (configuration controlled by `ngGenerate.build.configuration`)
-- **Build Watch** (`Ctrl+A W`): same as build but adds `--watch` (configuration controlled by `ngGenerate.watch.configuration`)
-- **Test** (`Ctrl+A T`): select a project, all projects at once, or run the tests for the `.spec.ts` file you currently have open
-- **Restart Serve** (`Ctrl+A R`): restart any active `ng serve` or `ng build --watch` session without closing the terminal
+- **Serve** (`Ctrl+Shift+A S`): select a project and start `ng serve` in a terminal
+- **Debug** (`Ctrl+Shift+A D`): start `ng serve`, wait for the server to be ready, then attach a Chrome/Edge debugger; the serve terminal is stopped automatically when you end the debug session
+- **Build** (`Ctrl+Shift+A B`): select a project and run `ng build` (configuration controlled by `ngGenerate.build.configuration`)
+- **Build Watch** (`Ctrl+Shift+A W`): same as build but adds `--watch` (configuration controlled by `ngGenerate.watch.configuration`)
+- **Test** (`Ctrl+Shift+A T`): select a project, all projects at once, or run the tests for the `.spec.ts` file you currently have open
+- **Restart Serve** (`Ctrl+Shift+A R`): restart any active `ng serve` or `ng build --watch` session without closing the terminal
+- **Lint** (`Ctrl+Shift+A L`): select a project and run `ng lint` in a terminal
+- **Update** (`Ctrl+Shift+A U`): checks for available package updates, shows a multi-select list, then runs `ng update` for the selected packages; offers `--force` on failure; respects `ngGenerate.update.allowDirty`
 
 ### npm helpers
 
@@ -151,3 +155,7 @@ This extension contributes the following settings:
 ### Dependency Check Options
 
 - `ngGenerate.checkDependencies.enabled`: Check if npm dependencies are installed and match `package.json` on startup and on git branch changes (default: `true`)
+
+### Update Options
+
+- `ngGenerate.update.allowDirty`: Pass `--allow-dirty` to `ng update`, allowing updates when the working tree has uncommitted changes (default: `false`)

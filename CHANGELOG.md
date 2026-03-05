@@ -4,6 +4,25 @@ All notable changes to the "ng-generate" extension will be documented in this fi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.1.1]
+
+### Added
+
+- **Angular: Lint Project** (`Ctrl+Shift+A L`): runs `ng lint` for a selected project in a dedicated terminal
+- **Angular: Update Packages** (`Ctrl+Shift+A U`): runs `ng update`, parses available package updates, shows a multi-select list to choose which packages to update, then streams the update output to the "ng Generate: ng" output channel; offers a `--force` retry on failure
+- New setting: `ngGenerate.update.allowDirty` — pass `--allow-dirty` to `ng update` when the working tree has uncommitted changes (default: `false`)
+
+### Changed
+
+- All keyboard shortcuts updated from `Ctrl+A {key}` to `Ctrl+Shift+A {key}` to avoid conflicts with the standard Select All binding
+- Dependency check now respects `ngGenerate.checkDependencies.enabled` at startup — the initial check is skipped when the setting is disabled
+- Toggling `ngGenerate.checkDependencies.enabled` to `true` immediately triggers a dependency check; toggling to `false` cancels any pending check
+
+### Fixed
+
+- Output channels (`ng Generate: npm`, `ng Generate: ng`) are now properly disposed when the extension deactivates
+- Pending debounced dependency-check timeouts are now cleared on extension deactivation
+
 ## [1.1.0]
 
 ### Added

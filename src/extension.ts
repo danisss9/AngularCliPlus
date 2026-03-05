@@ -5,6 +5,7 @@ import * as net from 'net';
 import * as cp from 'child_process';
 
 const npmOutput = vscode.window.createOutputChannel('ng Generate: npm');
+const ngOutput = vscode.window.createOutputChannel('ng Generate: ng');
 
 interface ServeEntry {
   terminal: vscode.Terminal;
@@ -106,6 +107,16 @@ export function activate(context: vscode.ExtensionContext) {
   );
   context.subscriptions.push(testDisposable);
 
+  const lintDisposable = vscode.commands.registerCommand('ng-generate.lintAngular', () =>
+    lintAngularProject(),
+  );
+  context.subscriptions.push(lintDisposable);
+
+  const updateDisposable = vscode.commands.registerCommand('ng-generate.updateAngular', () =>
+    updateAngularPackages(),
+  );
+  context.subscriptions.push(updateDisposable);
+
   context.subscriptions.push(
     vscode.commands.registerCommand('ng-generate.npmInstall', () => runNpmInstall(false)),
   );
@@ -131,6 +142,29 @@ export function activate(context: vscode.ExtensionContext) {
         if (entry.terminal === closed) {
           activeServeTerminals.delete(key);
           break;
+        }
+      }
+    }),
+  );
+
+  context.subscriptions.push(npmOutput);
+  context.subscriptions.push(ngOutput);
+
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration('ngGenerate.checkDependencies.enabled')) {
+        const enabled = vscode.workspace
+          .getConfiguration('ngGenerate')
+          .get<boolean>('checkDependencies.enabled', true);
+        if (enabled) {
+          for (const folder of vscode.workspace.workspaceFolders ?? []) {
+            scheduleDependencyCheck(folder.uri.fsPath, 500);
+          }
+        } else {
+          for (const [key, timeout] of depCheckTimeouts) {
+            clearTimeout(timeout);
+            depCheckTimeouts.delete(key);
+          }
         }
       }
     }),
@@ -483,6 +517,26 @@ async function testAngularProject() {
   terminal.sendText(testCommand);
 }
 
+async function lintAngularProject() {
+  const resolved = await resolveWorkspaceAndAngularJson();
+  if (!resolved) {
+    return;
+  }
+  const { workspaceRoot, projects } = resolved;
+
+  const allProjects = Object.keys(projects);
+  const projectName = await pickProject(allProjects, 'Angular Lint: Select Project');
+  if (!projectName) {
+    return;
+  }
+
+  const terminalName = `ng lint (${projectName})`;
+  const lintCommand = `ng lint --project ${projectName}`;
+  const terminal = vscode.window.createTerminal({ name: terminalName, cwd: workspaceRoot });
+  terminal.show();
+  terminal.sendText(lintCommand);
+}
+
 async function buildAngularProject() {
   await runNgBuild(false);
 }
@@ -712,6 +766,115 @@ function spawnNpm(args: string[], cwd: string): Promise<number> {
   });
 }
 
+function spawnNg(args: string[], cwd: string): Promise<number> {
+  return new Promise((resolve) => {
+    ngOutput.appendLine(`> ng ${args.join(' ')}
+`);
+    const proc = cp.spawn('ng', args, { cwd, shell: true });
+    proc.stdout.on('data', (d: Buffer) => ngOutput.append(d.toString()));
+    proc.stderr.on('data', (d: Buffer) => ngOutput.append(d.toString()));
+    proc.on('close', (code) => resolve(code ?? 1));
+  });
+}
+
+function spawnCapture(cmd: string, args: string[], cwd: string): Promise<{ stdout: string; exitCode: number }> {
+  return new Promise((resolve) => {
+    let out = '';
+    const proc = cp.spawn(cmd, args, { cwd, shell: true });
+    proc.stdout.on('data', (d: Buffer) => { out += d.toString(); });
+    proc.stderr.on('data', (d: Buffer) => { out += d.toString(); });
+    proc.on('close', (code) => resolve({ stdout: out, exitCode: code ?? 1 }));
+  });
+}
+
+function parseNgUpdateOutput(output: string): Array<{ name: string; versions: string }> {
+  const clean = output.replace(/\[[0-9;]*[mGKHF]/g, '');
+  const results: Array<{ name: string; versions: string }> = [];
+  for (const line of clean.split('
+')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const match = trimmed.match(/^(@?[\w/.-]+)\s+(\S+\s*->\s*\S+)/);
+    if (match) {
+      results.push({ name: match[1], versions: match[2].replace(/\s+/g, ' ') });
+    }
+  }
+  return results;
+}
+
+async function updateAngularPackages() {
+  const resolved = await resolveWorkspaceAndAngularJson();
+  if (!resolved) {
+    return;
+  }
+  const { workspaceRoot } = resolved;
+
+  let capturedOutput = '';
+  await vscode.window.withProgress(
+    { location: vscode.ProgressLocation.Notification, title: 'Checking for Angular package updates…', cancellable: false },
+    async () => {
+      const result = await spawnCapture('ng', ['update'], workspaceRoot);
+      capturedOutput = result.stdout;
+    },
+  );
+
+  const packages = parseNgUpdateOutput(capturedOutput);
+  if (packages.length === 0) {
+    vscode.window.showInformationMessage('All Angular packages are up to date.');
+    return;
+  }
+
+  const items = packages.map((p) => ({ label: p.name, description: p.versions, picked: false }));
+  const selected = await vscode.window.showQuickPick(items, {
+    canPickMany: true,
+    placeHolder: 'Select packages to update',
+    title: 'Angular Update: Select Packages',
+  });
+
+  if (!selected || selected.length === 0) {
+    return;
+  }
+
+  const config = vscode.workspace.getConfiguration('ngGenerate');
+  const allowDirty = config.get<boolean>('update.allowDirty', false);
+
+  await runNgUpdate(selected.map((s) => s.label), allowDirty, false, workspaceRoot);
+}
+
+async function runNgUpdate(packages: string[], allowDirty: boolean, force: boolean, workspaceRoot: string) {
+  const args = ['update', ...packages];
+  if (allowDirty) {
+    args.push('--allow-dirty');
+  }
+  if (force) {
+    args.push('--force');
+  }
+
+  ngOutput.clear();
+  ngOutput.show(true);
+
+  const exitCode = await spawnNg(args, workspaceRoot);
+
+  if (exitCode === 0) {
+    vscode.window.showInformationMessage('ng update completed successfully.');
+    return;
+  }
+
+  if (!force) {
+    const action = await vscode.window.showErrorMessage(
+      'ng update failed. Try with --force?',
+      'Run with --force',
+    );
+    if (action === 'Run with --force') {
+      await runNgUpdate(packages, allowDirty, true, workspaceRoot);
+    }
+  } else {
+    vscode.window.showErrorMessage(
+      "ng update --force also failed. Check the 'ng Generate: ng' output for details.",
+    );
+  }
+}
+
 async function restartAngularServe() {
   if (activeServeTerminals.size === 0) {
     vscode.window.showErrorMessage('No active ng serve / ng build --watch terminals found.');
@@ -783,8 +946,11 @@ function setupDependencyCheck(context: vscode.ExtensionContext, workspaceRoot: s
     return;
   }
 
-  // Check shortly after startup
-  scheduleDependencyCheck(workspaceRoot, 3000);
+  // Check shortly after startup (only if enabled)
+  const config = vscode.workspace.getConfiguration('ngGenerate');
+  if (config.get<boolean>('checkDependencies.enabled', true)) {
+    scheduleDependencyCheck(workspaceRoot, 3000);
+  }
 
   // Re-check whenever .git/HEAD changes (branch switch).
   // Use fs.watch directly because VS Code's file system watcher excludes .git/ by default.
@@ -955,5 +1121,8 @@ function semverSatisfies(installed: string, required: string): boolean {
 }
 
 export function deactivate() {
-  // Extension cleanup
+  for (const timeout of depCheckTimeouts.values()) {
+    clearTimeout(timeout);
+  }
+  depCheckTimeouts.clear();
 }
