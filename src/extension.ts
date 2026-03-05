@@ -429,6 +429,60 @@ async function pickProject(projectNames: string[], title: string): Promise<strin
   return picked ?? null;
 }
 
+function detectActiveFileProject(
+  workspaceRoot: string,
+  projects: { [name: string]: AngularProject },
+): string | null {
+  const activeFile = vscode.window.activeTextEditor?.document.uri.fsPath;
+  if (!activeFile) return null;
+
+  const fileDir = path.dirname(activeFile);
+  const fileDirNorm = fileDir.endsWith(path.sep) ? fileDir : fileDir + path.sep;
+
+  let bestMatch: { name: string; rootLen: number } | null = null;
+  for (const [name, project] of Object.entries(projects)) {
+    const roots = [project.root, project.sourceRoot].filter(Boolean) as string[];
+    for (const r of roots) {
+      const absRoot = path.isAbsolute(r) ? r : path.join(workspaceRoot, r);
+      const absRootNorm = absRoot.endsWith(path.sep) ? absRoot : absRoot + path.sep;
+      if (fileDirNorm.startsWith(absRootNorm)) {
+        if (!bestMatch || absRootNorm.length > bestMatch.rootLen) {
+          bestMatch = { name, rootLen: absRootNorm.length };
+        }
+      }
+    }
+  }
+  return bestMatch?.name ?? null;
+}
+
+async function pickProjectWithCurrentFile(
+  workspaceRoot: string,
+  projects: { [name: string]: AngularProject },
+  projectNames: string[],
+  title: string,
+): Promise<string | null> {
+  if (projectNames.length === 0) {
+    vscode.window.showErrorMessage('No projects found in angular.json');
+    return null;
+  }
+  if (projectNames.length === 1) {
+    return projectNames[0];
+  }
+
+  const current = detectActiveFileProject(workspaceRoot, projects);
+  const currentInList = current && projectNames.includes(current) ? current : null;
+  const CURRENT_LABEL = currentInList ? `$(file)  Current project (${currentInList})` : null;
+
+  const choices = [...(CURRENT_LABEL ? [CURRENT_LABEL] : []), ...projectNames];
+  const picked = await vscode.window.showQuickPick(choices, {
+    placeHolder: 'Select Angular project',
+    title,
+  });
+  if (!picked) return null;
+  if (CURRENT_LABEL && picked === CURRENT_LABEL) return currentInList!;
+  return picked;
+}
+
 // ── Commands ──────────────────────────────────────────────────────────────────
 
 async function serveAngularProject() {
@@ -442,7 +496,7 @@ async function serveAngularProject() {
     .filter(([, p]) => !p.projectType || p.projectType === 'application')
     .map(([n]) => n);
 
-  const projectName = await pickProject(appProjects, 'Angular Serve: Select Project');
+  const projectName = await pickProjectWithCurrentFile(workspaceRoot, projects, appProjects, 'Angular Serve: Select Project');
   if (!projectName) {
     return;
   }
@@ -479,7 +533,16 @@ async function testAngularProject() {
   const isSpecFile = activeFile?.endsWith('.spec.ts') ?? false;
   const CURRENT_FILE = '$(file)  Run current test file';
 
-  const choices = [...(isSpecFile ? [CURRENT_FILE] : []), ALL_PROJECTS, ...testableProjects];
+  const currentProject = detectActiveFileProject(workspaceRoot, projects);
+  const currentInTestable = currentProject && testableProjects.includes(currentProject) ? currentProject : null;
+  const CURRENT_PROJECT_LABEL = currentInTestable ? `$(file)  Current project (${currentInTestable})` : null;
+
+  const choices = [
+    ...(isSpecFile ? [CURRENT_FILE] : []),
+    ...(CURRENT_PROJECT_LABEL ? [CURRENT_PROJECT_LABEL] : []),
+    ALL_PROJECTS,
+    ...testableProjects,
+  ];
 
   const picked = await vscode.window.showQuickPick(choices, {
     placeHolder: 'Select a project to test, or "All" to run ng test without a project',
@@ -504,6 +567,9 @@ async function testAngularProject() {
     const relPath = path.relative(workspaceRoot, activeFile).replaceAll(path.sep, '/');
     testCommand = `ng test --include ${relPath}${watchFlag}${uiFlag}`;
     terminalName = `ng test (${path.basename(activeFile)})`;
+  } else if (CURRENT_PROJECT_LABEL && picked === CURRENT_PROJECT_LABEL) {
+    testCommand = `ng test --project ${currentInTestable}${watchFlag}${uiFlag}`;
+    terminalName = `ng test (${currentInTestable})`;
   } else if (picked === ALL_PROJECTS) {
     testCommand = `ng test${watchFlag}${uiFlag}`;
     terminalName = 'ng test (all)';
@@ -525,7 +591,7 @@ async function lintAngularProject() {
   const { workspaceRoot, projects } = resolved;
 
   const allProjects = Object.keys(projects);
-  const projectName = await pickProject(allProjects, 'Angular Lint: Select Project');
+  const projectName = await pickProjectWithCurrentFile(workspaceRoot, projects, allProjects, 'Angular Lint: Select Project');
   if (!projectName) {
     return;
   }
@@ -554,7 +620,7 @@ async function runNgBuild(watch: boolean) {
 
   const allProjects = Object.keys(projects);
   const title = watch ? 'Angular Build Watch: Select Project' : 'Angular Build: Select Project';
-  const projectName = await pickProject(allProjects, title);
+  const projectName = await pickProjectWithCurrentFile(workspaceRoot, projects, allProjects, title);
   if (!projectName) {
     return;
   }
@@ -594,7 +660,7 @@ async function debugAngularProject(context: vscode.ExtensionContext) {
     .filter(([, p]) => !p.projectType || p.projectType === 'application')
     .map(([n]) => n);
 
-  const projectName = await pickProject(appProjects, 'Angular Debug: Select Project');
+  const projectName = await pickProjectWithCurrentFile(workspaceRoot, projects, appProjects, 'Angular Debug: Select Project');
   if (!projectName) {
     return;
   }
