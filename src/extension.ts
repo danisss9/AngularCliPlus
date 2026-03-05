@@ -123,15 +123,23 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand('ng-generate.npmCleanInstall', () => runNpmInstall(true)),
   );
+  context.subscriptions.push(
+    vscode.commands.registerCommand('ng-generate.checkDependencies', () => runCheckDependencies()),
+  );
+  context.subscriptions.push(
+    vscode.commands.registerCommand('ng-generate.checkToolVersions', () => runCheckToolVersions()),
+  );
 
   for (const folder of vscode.workspace.workspaceFolders ?? []) {
     setupDependencyCheck(context, folder.uri.fsPath);
+    checkToolVersions(folder.uri.fsPath);
   }
 
   context.subscriptions.push(
     vscode.workspace.onDidChangeWorkspaceFolders((e) => {
       for (const folder of e.added) {
         setupDependencyCheck(context, folder.uri.fsPath);
+        checkToolVersions(folder.uri.fsPath);
       }
     }),
   );
@@ -152,6 +160,16 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration('ngGenerate.checkToolVersions.enabled')) {
+        const tvEnabled = vscode.workspace
+          .getConfiguration('ngGenerate')
+          .get<boolean>('checkToolVersions.enabled', true);
+        if (tvEnabled) {
+          for (const folder of vscode.workspace.workspaceFolders ?? []) {
+            checkToolVersions(folder.uri.fsPath);
+          }
+        }
+      }
       if (e.affectsConfiguration('ngGenerate.checkDependencies.enabled')) {
         const enabled = vscode.workspace
           .getConfiguration('ngGenerate')
@@ -895,8 +913,7 @@ function spawnCapture(cmd: string, args: string[], cwd: string): Promise<{ stdou
 function parseNgUpdateOutput(output: string): Array<{ name: string; versions: string }> {
   const clean = output.replace(/\[[0-9;]*[mGKHF]/g, '');
   const results: Array<{ name: string; versions: string }> = [];
-  for (const line of clean.split('
-')) {
+  for (const line of clean.split('\n')) {
     const trimmed = line.trim();
     if (!trimmed) continue;
     const match = trimmed.match(/^(@?[\w/.-]+)\s+(\S+\s*->\s*\S+)/);
@@ -1223,6 +1240,83 @@ function semverSatisfies(installed: string, required: string): boolean {
 
   // Exact (strip leading = or v)
   return cmp(iv, parseVer(req.replace(/^[=v]+/, ''))) === 0;
+}
+
+async function pickWorkspaceFolder(): Promise<string | null> {
+  const folders = vscode.workspace.workspaceFolders;
+  if (!folders || folders.length === 0) {
+    vscode.window.showErrorMessage('No workspace folder open');
+    return null;
+  }
+  if (folders.length === 1) {
+    return folders[0].uri.fsPath;
+  }
+  const picked = await vscode.window.showWorkspaceFolderPick({ placeHolder: 'Select workspace folder' });
+  return picked?.uri.fsPath ?? null;
+}
+
+async function runCheckDependencies() {
+  const workspaceRoot = await pickWorkspaceFolder();
+  if (!workspaceRoot) { return; }
+  await checkDependencies(workspaceRoot);
+}
+
+async function runCheckToolVersions() {
+  const workspaceRoot = await pickWorkspaceFolder();
+  if (!workspaceRoot) { return; }
+  await checkToolVersions(workspaceRoot);
+}
+
+async function checkToolVersions(workspaceRoot: string) {
+  const config = vscode.workspace.getConfiguration('ngGenerate');
+  if (!config.get<boolean>('checkToolVersions.enabled', true)) {
+    return;
+  }
+
+  const pkgPath = path.join(workspaceRoot, 'package.json');
+  let pkg: { engines?: Record<string, string> };
+  try {
+    pkg = JSON.parse(await fs.promises.readFile(pkgPath, 'utf-8'));
+  } catch {
+    return;
+  }
+
+  const engines = pkg.engines ?? {};
+  const toolInfo: Record<string, { cmd: string; args: string[]; url: string }> = {
+    node: { cmd: 'node', args: ['--version'], url: 'https://nodejs.org/en/download/' },
+    npm: { cmd: 'npm', args: ['--version'], url: 'https://docs.npmjs.com/downloading-and-installing-node-js-and-npm' },
+    yarn: { cmd: 'yarn', args: ['--version'], url: 'https://yarnpkg.com/getting-started/install' },
+    pnpm: { cmd: 'pnpm', args: ['--version'], url: 'https://pnpm.io/installation' },
+  };
+
+  const invalid: Array<{ tool: string; required: string; installed: string | null; url: string }> = [];
+
+  await Promise.all(
+    Object.entries(engines)
+      .filter(([tool]) => tool in toolInfo)
+      .map(async ([tool, required]) => {
+        const { cmd, args, url } = toolInfo[tool];
+        const { stdout, exitCode } = await spawnCapture(cmd, args, workspaceRoot);
+        if (exitCode !== 0) {
+          invalid.push({ tool, required, installed: null, url });
+          return;
+        }
+        const installed = stdout.trim().replace(/^v/, '');
+        if (!semverSatisfies(installed, required)) {
+          invalid.push({ tool, required, installed, url });
+        }
+      }),
+  );
+
+  for (const { tool, required, installed, url } of invalid) {
+    const msg = installed
+      ? `${tool} ${installed} does not satisfy required version ${required}`
+      : `${tool} is not installed (required: ${required})`;
+    const action = await vscode.window.showWarningMessage(msg, 'Download & Install');
+    if (action === 'Download & Install') {
+      vscode.env.openExternal(vscode.Uri.parse(url));
+    }
+  }
 }
 
 export function deactivate() {

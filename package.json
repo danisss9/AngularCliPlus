@@ -109,6 +109,16 @@
         "command": "ng-generate.updateAngular",
         "title": "Angular: Update Packages",
         "category": "ng Generate"
+      },
+      {
+        "command": "ng-generate.checkDependencies",
+        "title": "Check Dependencies",
+        "category": "ng Generate"
+      },
+      {
+        "command": "ng-generate.checkToolVersions",
+        "title": "Check Tool Versions",
+        "category": "ng Generate"
       }
     ],
     "keybindings": [
@@ -414,6 +424,11 @@
           "type": "boolean",
           "default": true,
           "description": "Check if npm dependencies are installed and match package.json when VS Code opens or when the git branch changes"
+        },
+        "ngGenerate.checkToolVersions.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Check if Node.js, npm, yarn and pnpm versions satisfy the engines field in the workspace package.json on startup"
         },
         "ngGenerate.update.allowDirty": {
           "type": "boolean",
