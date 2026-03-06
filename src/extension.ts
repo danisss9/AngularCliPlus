@@ -1267,6 +1267,46 @@ async function runCheckToolVersions() {
   await checkToolVersions(workspaceRoot);
 }
 
+async function attemptToolUpdate(
+  tool: string,
+  selfUpdate: { cmd: string; args: string[] } | undefined,
+  npmGlobalPkg: string | undefined,
+  url: string,
+  workspaceRoot: string,
+): Promise<void> {
+  npmOutput.clear();
+  npmOutput.show(true);
+
+  const tryCmd = async (cmd: string, args: string[]): Promise<boolean> => {
+    let exitCode = 1;
+    await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: `Updating ${tool}…`, cancellable: false },
+      async () => {
+        exitCode = await spawnShellCommand(`${cmd} ${args.join(' ')}`, workspaceRoot);
+      },
+    );
+    return exitCode === 0;
+  };
+
+  if (selfUpdate && await tryCmd(selfUpdate.cmd, selfUpdate.args)) {
+    vscode.window.showInformationMessage(`${tool} updated successfully.`);
+    return;
+  }
+
+  if (npmGlobalPkg && await tryCmd('npm', ['install', '-g', npmGlobalPkg])) {
+    vscode.window.showInformationMessage(`${tool} updated successfully via npm.`);
+    return;
+  }
+
+  const action = await vscode.window.showErrorMessage(
+    `Failed to update ${tool}. Please install it manually.`,
+    'Open Download Page',
+  );
+  if (action === 'Open Download Page') {
+    vscode.env.openExternal(vscode.Uri.parse(url));
+  }
+}
+
 async function checkToolVersions(workspaceRoot: string) {
   const config = vscode.workspace.getConfiguration('ngGenerate');
   if (!config.get<boolean>('checkToolVersions.enabled', true)) {
@@ -1282,39 +1322,112 @@ async function checkToolVersions(workspaceRoot: string) {
   }
 
   const engines = pkg.engines ?? {};
-  const toolInfo: Record<string, { cmd: string; args: string[]; url: string }> = {
-    node: { cmd: 'node', args: ['--version'], url: 'https://nodejs.org/en/download/' },
-    npm: { cmd: 'npm', args: ['--version'], url: 'https://docs.npmjs.com/downloading-and-installing-node-js-and-npm' },
-    yarn: { cmd: 'yarn', args: ['--version'], url: 'https://yarnpkg.com/getting-started/install' },
-    pnpm: { cmd: 'pnpm', args: ['--version'], url: 'https://pnpm.io/installation' },
+  const toolInfo: Record<string, {
+    cmd: string;
+    args: string[];
+    url: string;
+    selfUpdate?: { cmd: string; args: string[] };
+    npmGlobalPkg?: string;
+  }> = {
+    node: {
+      cmd: 'node',
+      args: ['--version'],
+      url: 'https://nodejs.org/en/download/',
+    },
+    npm: {
+      cmd: 'npm',
+      args: ['--version'],
+      url: 'https://docs.npmjs.com/downloading-and-installing-node-js-and-npm',
+      selfUpdate: { cmd: 'npm', args: ['install', '-g', 'npm'] },
+    },
+    yarn: {
+      cmd: 'yarn',
+      args: ['--version'],
+      url: 'https://yarnpkg.com/getting-started/install',
+      selfUpdate: { cmd: 'yarn', args: ['set', 'version', 'latest'] },
+      npmGlobalPkg: 'yarn',
+    },
+    pnpm: {
+      cmd: 'pnpm',
+      args: ['--version'],
+      url: 'https://pnpm.io/installation',
+      selfUpdate: { cmd: 'pnpm', args: ['self-update'] },
+      npmGlobalPkg: 'pnpm',
+    },
   };
 
-  const invalid: Array<{ tool: string; required: string; installed: string | null; url: string }> = [];
+  const invalid: Array<{
+    tool: string;
+    required: string;
+    installed: string | null;
+    url: string;
+    selfUpdate?: { cmd: string; args: string[] };
+    npmGlobalPkg?: string;
+  }> = [];
 
   await Promise.all(
     Object.entries(engines)
       .filter(([tool]) => tool in toolInfo)
       .map(async ([tool, required]) => {
-        const { cmd, args, url } = toolInfo[tool];
-        const { stdout, exitCode } = await spawnCapture(cmd, args, workspaceRoot);
+        const info = toolInfo[tool];
+        const { stdout, exitCode } = await spawnCapture(info.cmd, info.args, workspaceRoot);
         if (exitCode !== 0) {
-          invalid.push({ tool, required, installed: null, url });
+          invalid.push({ tool, required, installed: null, url: info.url, selfUpdate: info.selfUpdate, npmGlobalPkg: info.npmGlobalPkg });
           return;
         }
-        const installed = stdout.trim().replace(/^v/, '');
+        const installed = stdout.trim().replace(/^v\//, '');
         if (!semverSatisfies(installed, required)) {
-          invalid.push({ tool, required, installed, url });
+          invalid.push({ tool, required, installed, url: info.url, selfUpdate: info.selfUpdate, npmGlobalPkg: info.npmGlobalPkg });
         }
       }),
   );
 
-  for (const { tool, required, installed, url } of invalid) {
-    const msg = installed
-      ? `${tool} ${installed} does not satisfy required version ${required}`
-      : `${tool} is not installed (required: ${required})`;
-    const action = await vscode.window.showWarningMessage(msg, 'Download & Install');
-    if (action === 'Download & Install') {
+  for (const { tool, required, installed, url, selfUpdate, npmGlobalPkg } of invalid) {
+    if (!installed) {
+      if (npmGlobalPkg) {
+        const npmAvailable = (await spawnCapture('npm', ['--version'], workspaceRoot)).exitCode === 0;
+        if (npmAvailable) {
+          npmOutput.clear();
+          npmOutput.show(true);
+          let exitCode = 1;
+          await vscode.window.withProgress(
+            { location: vscode.ProgressLocation.Notification, title: `Installing ${tool}…`, cancellable: false },
+            async () => { exitCode = await spawnShellCommand(`npm install -g ${npmGlobalPkg}`, workspaceRoot); },
+          );
+          if (exitCode === 0) {
+            vscode.window.showInformationMessage(`${tool} installed successfully.`);
+          } else {
+            const action = await vscode.window.showErrorMessage(
+              `Failed to install ${tool}. Please install it manually.`,
+              'Open Download Page',
+            );
+            if (action === 'Open Download Page') {
+              vscode.env.openExternal(vscode.Uri.parse(url));
+            }
+          }
+          continue;
+        }
+      }
+      const action = await vscode.window.showWarningMessage(
+        `${tool} is not installed (required: ${required})`,
+        'Open Download Page',
+      );
+      if (action === 'Open Download Page') {
+        vscode.env.openExternal(vscode.Uri.parse(url));
+      }
+      continue;
+    }
+
+    const canAutoUpdate = !!(selfUpdate || npmGlobalPkg);
+    const buttons: string[] = canAutoUpdate ? ['Update', 'Open Download Page'] : ['Open Download Page'];
+    const action = await vscode.window.showWarningMessage(
+      `${tool} ${installed} does not satisfy required version ${required}`,
+      ...buttons,
+    );
+    if (action === 'Open Download Page') {
       vscode.env.openExternal(vscode.Uri.parse(url));
+    } else if (action === 'Update') {
+      await attemptToolUpdate(tool, selfUpdate, npmGlobalPkg, url, workspaceRoot);
     }
   }
 }
