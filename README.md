@@ -41,7 +41,8 @@ A VS Code extension that allows you to run NG CLI generate commands directly fro
 
 - **npm: Install**: runs `npm install` (or a custom command via `ngGenerate.npm.installCommand`) and streams output to the "ng Generate: npm" output channel; automatically offers a clean install on failure when using the default command
 - **npm: Clean Install**: removes `node_modules` and `package-lock.json` then runs `npm install` (or runs a custom command via `ngGenerate.npm.cleanInstallCommand`); offers `--force` as a last resort on failure when using the default command
-- **Dependency check**: on startup and on every git branch switch the extension verifies that `node_modules` exists and installed package versions satisfy `package.json` ranges, prompting to run `npm install` when needed; can be disabled via `ngGenerate.checkDependencies.enabled`
+- **Dependency check**: on startup and on every git branch switch the extension verifies that `node_modules` exists and installed package versions satisfy `package.json` ranges, prompting to run `npm install` when needed; can be disabled via `ngGenerate.checkDependencies.enabled`; also available as **ng Generate: Check Dependencies** in the Command Palette
+- **Tool version check**: on startup the extension reads the `engines` field from `package.json` and checks that the installed versions of Node.js, npm, yarn, and pnpm satisfy the declared ranges; missing tools that can be installed via npm are installed automatically, version mismatches offer an "Update" button or a link to the tool's download page; can be disabled via `ngGenerate.checkToolVersions.enabled`; also available as **ng Generate: Check Tool Versions** in the Command Palette
 
 ## Usage
 
@@ -155,6 +156,7 @@ This extension contributes the following settings:
 ### Dependency Check Options
 
 - `ngGenerate.checkDependencies.enabled`: Check if npm dependencies are installed and match `package.json` on startup and on git branch changes (default: `true`)
+- `ngGenerate.checkToolVersions.enabled`: Check if Node.js, npm, yarn, and pnpm versions satisfy the `engines` field in `package.json` on startup (default: `true`)
 
 ### Update Options
 
