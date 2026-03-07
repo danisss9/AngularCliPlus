@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - 'ngg_*'
+      - 'acp_*'
 
 jobs:
   release:
@@ -23,7 +23,7 @@ jobs:
 
       - name: Extract version from tag
         id: version
-        run: echo "VERSION=${GITHUB_REF_NAME#ngg_}" >> $GITHUB_OUTPUT
+        run: echo "VERSION=${GITHUB_REF_NAME#acp_}" >> $GITHUB_OUTPUT
 
       # ── VS Code extension ─────────────────────────────────────────────────
 
@@ -31,15 +31,15 @@ jobs:
         run: npm ci
 
       - name: Package VS Code extension
-        run: npx @vscode/vsce package --no-dependencies -o ng-generate-${{ steps.version.outputs.VERSION }}.vsix
+        run: npx @vscode/vsce package --no-dependencies -o angular-cli-plus-${{ steps.version.outputs.VERSION }}.vsix
 
       # ── GitHub Release ────────────────────────────────────────────────────
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: ng-generate ${{ steps.version.outputs.VERSION }}
-          files: ng-generate-${{ steps.version.outputs.VERSION }}.vsix
+          name: Angular CLI Plus ${{ steps.version.outputs.VERSION }}
+          files: angular-cli-plus-${{ steps.version.outputs.VERSION }}.vsix
           generate_release_notes: true
 
       # ── VS Code Marketplace ───────────────────────────────────────────────
@@ -47,4 +47,4 @@ jobs:
       # https://dev.azure.com with the "Marketplace (Publish)" scope.
 
       - name: Publish VS Code extension
-        run: npx @vscode/vsce publish --packagePath ng-generate-${{ steps.version.outputs.VERSION }}.vsix --pat ${{ secrets.MARKETPLACE_PAT }}
+        run: npx @vscode/vsce publish --packagePath angular-cli-plus-${{ steps.version.outputs.VERSION }}.vsix --pat ${{ secrets.MARKETPLACE_PAT }}

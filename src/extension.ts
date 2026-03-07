@@ -4,8 +4,8 @@ import * as path from 'path';
 import * as net from 'net';
 import * as cp from 'child_process';
 
-const npmOutput = vscode.window.createOutputChannel('ng Generate: npm');
-const ngOutput = vscode.window.createOutputChannel('ng Generate: ng');
+const npmOutput = vscode.window.createOutputChannel('Angular CLI Plus: npm');
+const ngOutput = vscode.window.createOutputChannel('Angular CLI Plus: ng');
 
 interface ServeEntry {
   terminal: vscode.Terminal;
@@ -70,64 +70,64 @@ export function activate(context: vscode.ExtensionContext) {
 
   schematics.forEach((schematic) => {
     const disposable = vscode.commands.registerCommand(
-      `ng-generate.${schematic}`,
+      `angular-cli-plus.${schematic}`,
       (uri: vscode.Uri) => generatengSchematic(schematic, uri),
     );
     context.subscriptions.push(disposable);
   });
 
-  const debugDisposable = vscode.commands.registerCommand('ng-generate.debugAngular', () =>
+  const debugDisposable = vscode.commands.registerCommand('angular-cli-plus.debugAngular', () =>
     debugAngularProject(context),
   );
   context.subscriptions.push(debugDisposable);
 
-  const serveDisposable = vscode.commands.registerCommand('ng-generate.serveAngular', () =>
+  const serveDisposable = vscode.commands.registerCommand('angular-cli-plus.serveAngular', () =>
     serveAngularProject(),
   );
   context.subscriptions.push(serveDisposable);
 
-  const buildDisposable = vscode.commands.registerCommand('ng-generate.buildAngular', () =>
+  const buildDisposable = vscode.commands.registerCommand('angular-cli-plus.buildAngular', () =>
     buildAngularProject(),
   );
   context.subscriptions.push(buildDisposable);
 
   const buildWatchDisposable = vscode.commands.registerCommand(
-    'ng-generate.buildAngularWatch',
+    'angular-cli-plus.buildAngularWatch',
     () => buildAngularProjectWatch(),
   );
   context.subscriptions.push(buildWatchDisposable);
 
-  const restartDisposable = vscode.commands.registerCommand('ng-generate.restartAngularServe', () =>
+  const restartDisposable = vscode.commands.registerCommand('angular-cli-plus.restartAngularServe', () =>
     restartAngularServe(),
   );
   context.subscriptions.push(restartDisposable);
 
-  const testDisposable = vscode.commands.registerCommand('ng-generate.testAngular', () =>
+  const testDisposable = vscode.commands.registerCommand('angular-cli-plus.testAngular', () =>
     testAngularProject(),
   );
   context.subscriptions.push(testDisposable);
 
-  const lintDisposable = vscode.commands.registerCommand('ng-generate.lintAngular', () =>
+  const lintDisposable = vscode.commands.registerCommand('angular-cli-plus.lintAngular', () =>
     lintAngularProject(),
   );
   context.subscriptions.push(lintDisposable);
 
-  const updateDisposable = vscode.commands.registerCommand('ng-generate.updateAngular', () =>
+  const updateDisposable = vscode.commands.registerCommand('angular-cli-plus.updateAngular', () =>
     updateAngularPackages(),
   );
   context.subscriptions.push(updateDisposable);
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('ng-generate.npmInstall', () => runNpmInstall(false)),
+    vscode.commands.registerCommand('angular-cli-plus.npmInstall', () => runNpmInstall(false)),
   );
   context.subscriptions.push(
-    vscode.commands.registerCommand('ng-generate.npmCleanInstall', () => runNpmInstall(true)),
+    vscode.commands.registerCommand('angular-cli-plus.npmCleanInstall', () => runNpmInstall(true)),
   );
   context.subscriptions.push(
-    vscode.commands.registerCommand('ng-generate.checkDependencies', () => runCheckDependencies()),
+    vscode.commands.registerCommand('angular-cli-plus.checkDependencies', () => runCheckDependencies()),
   );
   context.subscriptions.push(
-    vscode.commands.registerCommand('ng-generate.checkToolVersions', () => runCheckToolVersions()),
+    vscode.commands.registerCommand('angular-cli-plus.checkToolVersions', () => runCheckToolVersions()),
   );
 
   for (const folder of vscode.workspace.workspaceFolders ?? []) {
@@ -160,9 +160,9 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration('ngGenerate.checkToolVersions.enabled')) {
+      if (e.affectsConfiguration('angularCliPlus.checkToolVersions.enabled')) {
         const tvEnabled = vscode.workspace
-          .getConfiguration('ngGenerate')
+          .getConfiguration('angularCliPlus')
           .get<boolean>('checkToolVersions.enabled', true);
         if (tvEnabled) {
           for (const folder of vscode.workspace.workspaceFolders ?? []) {
@@ -170,9 +170,9 @@ export function activate(context: vscode.ExtensionContext) {
           }
         }
       }
-      if (e.affectsConfiguration('ngGenerate.checkDependencies.enabled')) {
+      if (e.affectsConfiguration('angularCliPlus.checkDependencies.enabled')) {
         const enabled = vscode.workspace
-          .getConfiguration('ngGenerate')
+          .getConfiguration('angularCliPlus')
           .get<boolean>('checkDependencies.enabled', true);
         if (enabled) {
           for (const folder of vscode.workspace.workspaceFolders ?? []) {
@@ -227,7 +227,7 @@ async function generatengSchematic(schematic: SchematicType, uri: vscode.Uri) {
   }
 
   // Get configuration options
-  const config = vscode.workspace.getConfiguration('ngGenerate');
+  const config = vscode.workspace.getConfiguration('angularCliPlus');
   const options = getOptionsForSchematic(schematic, config);
 
   // Add project option if provided
@@ -243,7 +243,7 @@ async function generatengSchematic(schematic: SchematicType, uri: vscode.Uri) {
 
   // Create and show terminal with cwd set to the selected folder
   const terminal = vscode.window.createTerminal({
-    name: `ng Generate ${schematic}`,
+    name: `Angular CLI Plus: ${schematic}`,
     cwd: folderPath,
   });
 
@@ -574,7 +574,7 @@ async function testAngularProject() {
   let testCommand: string;
   let terminalName: string;
 
-  const config = vscode.workspace.getConfiguration('ngGenerate');
+  const config = vscode.workspace.getConfiguration('angularCliPlus');
   const watchMode = config.get<boolean>('test.watch', false);
   const watchFlag = watchMode ? ' --watch' : ' --watch=false';
   const uiMode = config.get<boolean>('test.ui', false);
@@ -643,7 +643,7 @@ async function runNgBuild(watch: boolean) {
     return;
   }
 
-  const config = vscode.workspace.getConfiguration('ngGenerate');
+  const config = vscode.workspace.getConfiguration('angularCliPlus');
   let effectiveConfig: string;
   if (watch) {
     const watchConfig = config.get<string>('watch.configuration', 'development');
@@ -685,7 +685,7 @@ async function debugAngularProject(context: vscode.ExtensionContext) {
 
   const port = projects[projectName]?.architect?.serve?.options?.port ?? 4200;
 
-  const config = vscode.workspace.getConfiguration('ngGenerate');
+  const config = vscode.workspace.getConfiguration('angularCliPlus');
   const browserSetting = config.get<string>('debug.browser', 'chrome');
   const browserType = browserSetting === 'edge' ? 'msedge' : 'chrome';
   const sessionName = `Angular Debug (${projectName})`;
@@ -793,7 +793,7 @@ async function runNpmInstall(clean: boolean, force = false, workspaceRoot?: stri
   npmOutput.clear();
   npmOutput.show(true);
 
-  const ngConfig = vscode.workspace.getConfiguration('ngGenerate');
+  const ngConfig = vscode.workspace.getConfiguration('angularCliPlus');
   const customInstall = (ngConfig.get<string>('npm.installCommand') ?? '').trim();
   const customCleanInstall = (ngConfig.get<string>('npm.cleanInstallCommand') ?? '').trim();
 
@@ -804,7 +804,7 @@ async function runNpmInstall(clean: boolean, force = false, workspaceRoot?: stri
     if (exitCode === 0) {
       vscode.window.showInformationMessage('Clean install completed successfully.');
     } else {
-      vscode.window.showErrorMessage("Custom clean install failed. Check the 'ng Generate: npm' output for details.");
+      vscode.window.showErrorMessage("Custom clean install failed. Check the 'Angular CLI Plus: npm' output for details.");
     }
     return;
   }
@@ -816,7 +816,7 @@ async function runNpmInstall(clean: boolean, force = false, workspaceRoot?: stri
     if (exitCode === 0) {
       vscode.window.showInformationMessage('Install completed successfully.');
     } else {
-      vscode.window.showErrorMessage("Custom install failed. Check the 'ng Generate: npm' output for details.");
+      vscode.window.showErrorMessage("Custom install failed. Check the 'Angular CLI Plus: npm' output for details.");
     }
     return;
   }
@@ -863,7 +863,7 @@ async function runNpmInstall(clean: boolean, force = false, workspaceRoot?: stri
     }
   } else {
     vscode.window.showErrorMessage(
-      'npm install --force also failed. Check the "ng Generate: npm" output for details.',
+      'npm install --force also failed. Check the "Angular CLI Plus: npm" output for details.',
     );
   }
 }
@@ -957,7 +957,7 @@ async function updateAngularPackages() {
     return;
   }
 
-  const config = vscode.workspace.getConfiguration('ngGenerate');
+  const config = vscode.workspace.getConfiguration('angularCliPlus');
   const allowDirty = config.get<boolean>('update.allowDirty', false);
 
   await runNgUpdate(selected.map((s) => s.label), allowDirty, false, workspaceRoot);
@@ -992,7 +992,7 @@ async function runNgUpdate(packages: string[], allowDirty: boolean, force: boole
     }
   } else {
     vscode.window.showErrorMessage(
-      "ng update --force also failed. Check the 'ng Generate: ng' output for details.",
+      "ng update --force also failed. Check the 'Angular CLI Plus: ng' output for details.",
     );
   }
 }
@@ -1069,7 +1069,7 @@ function setupDependencyCheck(context: vscode.ExtensionContext, workspaceRoot: s
   }
 
   // Check shortly after startup (only if enabled)
-  const config = vscode.workspace.getConfiguration('ngGenerate');
+  const config = vscode.workspace.getConfiguration('angularCliPlus');
   if (config.get<boolean>('checkDependencies.enabled', true)) {
     scheduleDependencyCheck(workspaceRoot, 3000);
   }
@@ -1114,7 +1114,7 @@ function scheduleDependencyCheck(workspaceRoot: string, delayMs: number) {
 }
 
 async function checkDependencies(workspaceRoot: string) {
-  const config = vscode.workspace.getConfiguration('ngGenerate');
+  const config = vscode.workspace.getConfiguration('angularCliPlus');
   if (!config.get<boolean>('checkDependencies.enabled', true)) {
     return;
   }
@@ -1308,7 +1308,7 @@ async function attemptToolUpdate(
 }
 
 async function checkToolVersions(workspaceRoot: string) {
-  const config = vscode.workspace.getConfiguration('ngGenerate');
+  const config = vscode.workspace.getConfiguration('angularCliPlus');
   if (!config.get<boolean>('checkToolVersions.enabled', true)) {
     return;
   }

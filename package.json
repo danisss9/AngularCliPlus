@@ -1,8 +1,8 @@
 {
-  "name": "ng-generate",
-  "displayName": "ng Generate",
-  "description": "Run Angular CLI generate commands from folder context menu",
-  "repository": "https://github.com/danisss9/ng-generate-vscode",
+  "name": "angular-cli-plus",
+  "displayName": "Angular CLI Plus",
+  "description": "Angular CLI commands, schematics generator, and project tools for VS Code",
+  "repository": "https://github.com/danisss9/AngularCliPlus",
   "publisher": "danisss9",
   "version": "1.2.0",
   "icon": "icon.png",
@@ -17,229 +17,229 @@
   "contributes": {
     "commands": [
       {
-        "command": "ng-generate.component",
+        "command": "angular-cli-plus.component",
         "title": "Component"
       },
       {
-        "command": "ng-generate.service",
+        "command": "angular-cli-plus.service",
         "title": "Service"
       },
       {
-        "command": "ng-generate.module",
+        "command": "angular-cli-plus.module",
         "title": "Module"
       },
       {
-        "command": "ng-generate.directive",
+        "command": "angular-cli-plus.directive",
         "title": "Directive"
       },
       {
-        "command": "ng-generate.pipe",
+        "command": "angular-cli-plus.pipe",
         "title": "Pipe"
       },
       {
-        "command": "ng-generate.guard",
+        "command": "angular-cli-plus.guard",
         "title": "Guard"
       },
       {
-        "command": "ng-generate.interceptor",
+        "command": "angular-cli-plus.interceptor",
         "title": "Interceptor"
       },
       {
-        "command": "ng-generate.class",
+        "command": "angular-cli-plus.class",
         "title": "Class"
       },
       {
-        "command": "ng-generate.interface",
+        "command": "angular-cli-plus.interface",
         "title": "Interface"
       },
       {
-        "command": "ng-generate.enum",
+        "command": "angular-cli-plus.enum",
         "title": "Enum"
       },
       {
-        "command": "ng-generate.resolver",
+        "command": "angular-cli-plus.resolver",
         "title": "Resolver"
       },
       {
-        "command": "ng-generate.debugAngular",
+        "command": "angular-cli-plus.debugAngular",
         "title": "Angular: Debug Application",
-        "category": "ng Generate"
+        "category": "Angular CLI Plus"
       },
       {
-        "command": "ng-generate.serveAngular",
+        "command": "angular-cli-plus.serveAngular",
         "title": "Angular: Serve Application",
-        "category": "ng Generate"
+        "category": "Angular CLI Plus"
       },
       {
-        "command": "ng-generate.buildAngular",
+        "command": "angular-cli-plus.buildAngular",
         "title": "Angular: Build Project",
-        "category": "ng Generate"
+        "category": "Angular CLI Plus"
       },
       {
-        "command": "ng-generate.restartAngularServe",
+        "command": "angular-cli-plus.restartAngularServe",
         "title": "Angular: Restart Serve",
-        "category": "ng Generate"
+        "category": "Angular CLI Plus"
       },
       {
-        "command": "ng-generate.buildAngularWatch",
+        "command": "angular-cli-plus.buildAngularWatch",
         "title": "Angular: Build Project (Watch)",
-        "category": "ng Generate"
+        "category": "Angular CLI Plus"
       },
       {
-        "command": "ng-generate.npmInstall",
+        "command": "angular-cli-plus.npmInstall",
         "title": "npm: Install",
-        "category": "ng Generate"
+        "category": "Angular CLI Plus"
       },
       {
-        "command": "ng-generate.npmCleanInstall",
+        "command": "angular-cli-plus.npmCleanInstall",
         "title": "npm: Clean Install",
-        "category": "ng Generate"
+        "category": "Angular CLI Plus"
       },
       {
-        "command": "ng-generate.testAngular",
+        "command": "angular-cli-plus.testAngular",
         "title": "Angular: Test Project",
-        "category": "ng Generate"
+        "category": "Angular CLI Plus"
       },
       {
-        "command": "ng-generate.lintAngular",
+        "command": "angular-cli-plus.lintAngular",
         "title": "Angular: Lint Project",
-        "category": "ng Generate"
+        "category": "Angular CLI Plus"
       },
       {
-        "command": "ng-generate.updateAngular",
+        "command": "angular-cli-plus.updateAngular",
         "title": "Angular: Update Packages",
-        "category": "ng Generate"
+        "category": "Angular CLI Plus"
       },
       {
-        "command": "ng-generate.checkDependencies",
+        "command": "angular-cli-plus.checkDependencies",
         "title": "Check Dependencies",
-        "category": "ng Generate"
+        "category": "Angular CLI Plus"
       },
       {
-        "command": "ng-generate.checkToolVersions",
+        "command": "angular-cli-plus.checkToolVersions",
         "title": "Check Tool Versions",
-        "category": "ng Generate"
+        "category": "Angular CLI Plus"
       }
     ],
     "keybindings": [
       {
-        "command": "ng-generate.debugAngular",
+        "command": "angular-cli-plus.debugAngular",
         "key": "ctrl+shift+a d"
       },
       {
-        "command": "ng-generate.serveAngular",
+        "command": "angular-cli-plus.serveAngular",
         "key": "ctrl+shift+a s"
       },
       {
-        "command": "ng-generate.buildAngular",
+        "command": "angular-cli-plus.buildAngular",
         "key": "ctrl+shift+a b"
       },
       {
-        "command": "ng-generate.restartAngularServe",
+        "command": "angular-cli-plus.restartAngularServe",
         "key": "ctrl+shift+a r"
       },
       {
-        "command": "ng-generate.buildAngularWatch",
+        "command": "angular-cli-plus.buildAngularWatch",
         "key": "ctrl+shift+a w"
       },
       {
-        "command": "ng-generate.testAngular",
+        "command": "angular-cli-plus.testAngular",
         "key": "ctrl+shift+a t"
       },
       {
-        "command": "ng-generate.lintAngular",
+        "command": "angular-cli-plus.lintAngular",
         "key": "ctrl+shift+a l"
       },
       {
-        "command": "ng-generate.updateAngular",
+        "command": "angular-cli-plus.updateAngular",
         "key": "ctrl+shift+a u"
       }
     ],
     "submenus": [
       {
-        "id": "ng-generate.submenu",
-        "label": "ng Generate"
+        "id": "angular-cli-plus.submenu",
+        "label": "Ng Generate"
       }
     ],
     "menus": {
       "explorer/context": [
         {
           "when": "explorerResourceIsFolder",
-          "submenu": "ng-generate.submenu",
+          "submenu": "angular-cli-plus.submenu",
           "group": "navigation"
         }
       ],
-      "ng-generate.submenu": [
+      "angular-cli-plus.submenu": [
         {
-          "command": "ng-generate.component",
+          "command": "angular-cli-plus.component",
           "group": "1_common@1"
         },
         {
-          "command": "ng-generate.service",
+          "command": "angular-cli-plus.service",
           "group": "1_common@2"
         },
         {
-          "command": "ng-generate.module",
+          "command": "angular-cli-plus.module",
           "group": "1_common@3"
         },
         {
-          "command": "ng-generate.directive",
+          "command": "angular-cli-plus.directive",
           "group": "2_structural@1"
         },
         {
-          "command": "ng-generate.pipe",
+          "command": "angular-cli-plus.pipe",
           "group": "2_structural@2"
         },
         {
-          "command": "ng-generate.guard",
+          "command": "angular-cli-plus.guard",
           "group": "3_routing@1"
         },
         {
-          "command": "ng-generate.interceptor",
+          "command": "angular-cli-plus.interceptor",
           "group": "3_routing@2"
         },
         {
-          "command": "ng-generate.resolver",
+          "command": "angular-cli-plus.resolver",
           "group": "3_routing@3"
         },
         {
-          "command": "ng-generate.class",
+          "command": "angular-cli-plus.class",
           "group": "4_types@1"
         },
         {
-          "command": "ng-generate.interface",
+          "command": "angular-cli-plus.interface",
           "group": "4_types@2"
         },
         {
-          "command": "ng-generate.enum",
+          "command": "angular-cli-plus.enum",
           "group": "4_types@3"
         }
       ]
     },
     "configuration": {
-      "title": "ng Generate",
+      "title": "Angular CLI Plus",
       "properties": {
-        "ngGenerate.component.standalone": {
+        "angularCliPlus.component.standalone": {
           "type": "boolean",
           "default": true,
           "description": "Whether generated components should be standalone"
         },
-        "ngGenerate.component.skipTests": {
+        "angularCliPlus.component.skipTests": {
           "type": "boolean",
           "default": false,
           "description": "Skip creating spec.ts test files for components"
         },
-        "ngGenerate.component.inlineStyle": {
+        "angularCliPlus.component.inlineStyle": {
           "type": "boolean",
           "default": false,
           "description": "Include styles inline in the component.ts file"
         },
-        "ngGenerate.component.inlineTemplate": {
+        "angularCliPlus.component.inlineTemplate": {
           "type": "boolean",
           "default": false,
           "description": "Include template inline in the component.ts file"
         },
-        "ngGenerate.component.style": {
+        "angularCliPlus.component.style": {
           "type": "string",
           "default": "css",
           "enum": [
@@ -251,7 +251,7 @@
           ],
           "description": "The file extension or preprocessor to use for style files"
         },
-        "ngGenerate.component.changeDetection": {
+        "angularCliPlus.component.changeDetection": {
           "type": "string",
           "default": "Default",
           "enum": [
@@ -260,112 +260,112 @@
           ],
           "description": "The change detection strategy to use in the new component"
         },
-        "ngGenerate.component.flat": {
+        "angularCliPlus.component.flat": {
           "type": "boolean",
           "default": false,
           "description": "Create the new files at the top level of the current folder"
         },
-        "ngGenerate.service.skipTests": {
+        "angularCliPlus.service.skipTests": {
           "type": "boolean",
           "default": false,
           "description": "Skip creating spec.ts test files for services"
         },
-        "ngGenerate.service.flat": {
+        "angularCliPlus.service.flat": {
           "type": "boolean",
           "default": true,
           "description": "Create files at the top level of the current folder"
         },
-        "ngGenerate.module.flat": {
+        "angularCliPlus.module.flat": {
           "type": "boolean",
           "default": false,
           "description": "Create the new files at the top level of the current folder"
         },
-        "ngGenerate.module.routing": {
+        "angularCliPlus.module.routing": {
           "type": "boolean",
           "default": false,
           "description": "Create a routing module"
         },
-        "ngGenerate.directive.standalone": {
+        "angularCliPlus.directive.standalone": {
           "type": "boolean",
           "default": true,
           "description": "Whether generated directives should be standalone"
         },
-        "ngGenerate.directive.skipTests": {
+        "angularCliPlus.directive.skipTests": {
           "type": "boolean",
           "default": false,
           "description": "Skip creating spec.ts test files for directives"
         },
-        "ngGenerate.directive.flat": {
+        "angularCliPlus.directive.flat": {
           "type": "boolean",
           "default": true,
           "description": "Create files at the top level of the current folder"
         },
-        "ngGenerate.pipe.standalone": {
+        "angularCliPlus.pipe.standalone": {
           "type": "boolean",
           "default": true,
           "description": "Whether generated pipes should be standalone"
         },
-        "ngGenerate.pipe.skipTests": {
+        "angularCliPlus.pipe.skipTests": {
           "type": "boolean",
           "default": false,
           "description": "Skip creating spec.ts test files for pipes"
         },
-        "ngGenerate.pipe.flat": {
+        "angularCliPlus.pipe.flat": {
           "type": "boolean",
           "default": true,
           "description": "Create files at the top level of the current folder"
         },
-        "ngGenerate.guard.functional": {
+        "angularCliPlus.guard.functional": {
           "type": "boolean",
           "default": true,
           "description": "Specifies whether to generate a guard as a function"
         },
-        "ngGenerate.guard.skipTests": {
+        "angularCliPlus.guard.skipTests": {
           "type": "boolean",
           "default": false,
           "description": "Skip creating spec.ts test files for guards"
         },
-        "ngGenerate.guard.flat": {
+        "angularCliPlus.guard.flat": {
           "type": "boolean",
           "default": true,
           "description": "Create files at the top level of the current folder"
         },
-        "ngGenerate.interceptor.functional": {
+        "angularCliPlus.interceptor.functional": {
           "type": "boolean",
           "default": true,
           "description": "Creates the interceptor as a HttpInterceptorFn"
         },
-        "ngGenerate.interceptor.skipTests": {
+        "angularCliPlus.interceptor.skipTests": {
           "type": "boolean",
           "default": false,
           "description": "Skip creating spec.ts test files for interceptors"
         },
-        "ngGenerate.interceptor.flat": {
+        "angularCliPlus.interceptor.flat": {
           "type": "boolean",
           "default": true,
           "description": "Create files at the top level of the current folder"
         },
-        "ngGenerate.class.skipTests": {
+        "angularCliPlus.class.skipTests": {
           "type": "boolean",
           "default": false,
           "description": "Skip creating spec.ts test files for classes"
         },
-        "ngGenerate.resolver.functional": {
+        "angularCliPlus.resolver.functional": {
           "type": "boolean",
           "default": true,
           "description": "Creates the resolver as a ResolveFn"
         },
-        "ngGenerate.resolver.skipTests": {
+        "angularCliPlus.resolver.skipTests": {
           "type": "boolean",
           "default": false,
           "description": "Skip creating spec.ts test files for resolvers"
         },
-        "ngGenerate.resolver.flat": {
+        "angularCliPlus.resolver.flat": {
           "type": "boolean",
           "default": true,
           "description": "Create files at the top level of the current folder"
         },
-        "ngGenerate.debug.browser": {
+        "angularCliPlus.debug.browser": {
           "type": "string",
           "default": "chrome",
           "enum": [
@@ -378,7 +378,7 @@
           ],
           "description": "Browser to use when launching the Angular debug session"
         },
-        "ngGenerate.build.configuration": {
+        "angularCliPlus.build.configuration": {
           "type": "string",
           "default": "production",
           "enum": [
@@ -393,7 +393,7 @@
           ],
           "description": "Configuration to pass to ng build"
         },
-        "ngGenerate.watch.configuration": {
+        "angularCliPlus.watch.configuration": {
           "type": "string",
           "default": "development",
           "enum": [
@@ -404,43 +404,43 @@
           ],
           "enumDescriptions": [
             "Use the project's default configuration (no --configuration flag)",
-            "Inherit the configuration from ngGenerate.build.configuration",
+            "Inherit the configuration from angularCliPlus.build.configuration",
             "Build with --configuration=production",
             "Build with --configuration=development"
           ],
           "description": "Configuration to pass to ng build --watch"
         },
-        "ngGenerate.test.watch": {
+        "angularCliPlus.test.watch": {
           "type": "boolean",
           "default": false,
           "description": "Run ng test in watch mode (--watch). When false, tests run once and exit (--watch=false)."
         },
-        "ngGenerate.test.ui": {
+        "angularCliPlus.test.ui": {
           "type": "boolean",
           "default": false,
           "description": "Enable the Vitest UI for interactive test execution (--ui). Only available for the Vitest runner."
         },
-        "ngGenerate.checkDependencies.enabled": {
+        "angularCliPlus.checkDependencies.enabled": {
           "type": "boolean",
           "default": true,
           "description": "Check if npm dependencies are installed and match package.json when VS Code opens or when the git branch changes"
         },
-        "ngGenerate.checkToolVersions.enabled": {
+        "angularCliPlus.checkToolVersions.enabled": {
           "type": "boolean",
           "default": true,
           "description": "Check if Node.js, npm, yarn and pnpm versions satisfy the engines field in the workspace package.json on startup"
         },
-        "ngGenerate.update.allowDirty": {
+        "angularCliPlus.update.allowDirty": {
           "type": "boolean",
           "default": false,
           "description": "Allow ng update to run even if the working tree has uncommitted changes (--allow-dirty)"
         },
-        "ngGenerate.npm.installCommand": {
+        "angularCliPlus.npm.installCommand": {
           "type": "string",
           "default": "",
           "description": "Custom command to run for npm: Install (e.g. 'yarn install' or 'pnpm install'). Leave empty to use the default 'npm install'."
         },
-        "ngGenerate.npm.cleanInstallCommand": {
+        "angularCliPlus.npm.cleanInstallCommand": {
           "type": "string",
           "default": "",
           "description": "Custom command to run for npm: Clean Install (e.g. 'yarn install --frozen-lockfile'). Leave empty to use the default behaviour (remove node_modules + package-lock.json, then run npm install)."
