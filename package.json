@@ -4,7 +4,7 @@
   "description": "Angular CLI commands, schematics generator, and project tools for VS Code",
   "repository": "https://github.com/danisss9/AngularCliPlus",
   "publisher": "danisss9",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "icon": "icon.png",
   "engines": {
     "vscode": "^1.107.0"
@@ -66,6 +66,16 @@
         "category": "Angular CLI Plus"
       },
       {
+        "command": "angular-cli-plus.debugStorybook",
+        "title": "Angular: Debug Storybook",
+        "category": "Angular CLI Plus"
+      },
+      {
+        "command": "angular-cli-plus.debugBuildWatch",
+        "title": "Angular: Debug Build (Watch)",
+        "category": "Angular CLI Plus"
+      },
+      {
         "command": "angular-cli-plus.serveAngular",
         "title": "Angular: Serve Application",
         "category": "Angular CLI Plus"
@@ -119,12 +129,25 @@
         "command": "angular-cli-plus.checkToolVersions",
         "title": "Check Tool Versions",
         "category": "Angular CLI Plus"
+      },
+      {
+        "command": "angular-cli-plus.clearTerminals",
+        "title": "Clear Finished Terminals",
+        "category": "Angular CLI Plus"
       }
     ],
     "keybindings": [
       {
         "command": "angular-cli-plus.debugAngular",
         "key": "ctrl+shift+a d"
+      },
+      {
+        "command": "angular-cli-plus.debugStorybook",
+        "key": "ctrl+shift+a k"
+      },
+      {
+        "command": "angular-cli-plus.debugBuildWatch",
+        "key": "ctrl+shift+a h"
       },
       {
         "command": "angular-cli-plus.serveAngular",
@@ -153,6 +176,10 @@
       {
         "command": "angular-cli-plus.updateAngular",
         "key": "ctrl+shift+a u"
+      },
+      {
+        "command": "angular-cli-plus.clearTerminals",
+        "key": "ctrl+shift+a c"
       }
     ],
     "submenus": [
@@ -370,13 +397,43 @@
           "default": "chrome",
           "enum": [
             "chrome",
-            "edge"
+            "edge",
+            "brave",
+            "opera",
+            "opera-gx",
+            "firefox",
+            "safari"
           ],
           "enumDescriptions": [
             "Launch Google Chrome for debugging",
-            "Launch Microsoft Edge for debugging"
+            "Launch Microsoft Edge for debugging",
+            "Launch Brave browser for debugging (Chromium-based)",
+            "Launch Opera for debugging (Chromium-based)",
+            "Launch Opera GX for debugging (Chromium-based)",
+            "Launch Firefox for debugging (requires the 'Debugger for Firefox' VS Code extension)",
+            "Launch Safari for debugging — macOS only (requires the 'Safari Debugger' VS Code extension)"
           ],
           "description": "Browser to use when launching the Angular debug session"
+        },
+        "angularCliPlus.debug.browserExecutablePath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional path to the browser executable. Overrides automatic detection. Useful for custom browser installs or browsers not in the standard location."
+        },
+        "angularCliPlus.storybook.port": {
+          "type": "number",
+          "default": 0,
+          "description": "Port Storybook runs on. Set to 0 to auto-detect from angular.json or use the default (6006)."
+        },
+        "angularCliPlus.buildWatch.servePort": {
+          "type": "number",
+          "default": 4201,
+          "description": "Port the static file server listens on when debugging a build watch session."
+        },
+        "angularCliPlus.buildWatch.staticServerCommand": {
+          "type": "string",
+          "default": "npx serve {outputPath} -l {port}",
+          "description": "Command used to serve the build output during a debug build watch session. Use {outputPath} and {port} as placeholders."
         },
         "angularCliPlus.build.configuration": {
           "type": "string",

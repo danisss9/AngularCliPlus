@@ -4,6 +4,28 @@ All notable changes to the "angular-cli-plus" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.3.0]
+
+### Added
+
+- **Failure notifications with retry** — terminal commands (build, lint, test without watch, generate) now detect the exit code when the terminal closes. On success a brief info notification is shown; on failure a warning notification appears with a **Retry** button that re-runs the exact same command automatically
+- **Angular: Debug Storybook** (`Ctrl+Shift+A K`): detects Storybook from `angular.json` architect targets (`ng run project:storybook`) or falls back to the `storybook` npm script; starts Storybook, waits for the port to be ready, then attaches a browser debugger. Supports multiple projects via a quick pick
+- **Angular: Debug Build (Watch)** (`Ctrl+Shift+A H`): runs `ng build --watch` alongside a configurable static file server (default: `npx serve`), waits for the server to be ready, then attaches a browser debugger; both terminals are stopped when the debug session ends. Output path is read automatically from `angular.json` with support for both Angular 17+ object format and older string format
+- **Debug restart re-attach** — `Ctrl+Shift+A R` now works for all debug sessions (Angular serve, Storybook, Build Watch). It stops the existing debug session cleanly, restarts the terminal, and re-attaches the debugger automatically. The restart quick pick shows a `$(debug) debug session active` badge on entries that have a live debug session
+- **Multi-browser debug support** — the `angularCliPlus.debug.browser` setting now accepts `brave`, `opera`, `opera-gx`, `firefox`, and `safari` in addition to `chrome` and `edge`. Chromium-based browsers (Brave, Opera, Opera GX) are detected from their standard install paths. Firefox requires the **"Debugger for Firefox"** VS Code extension; Safari requires the **"Safari Debugger"** VS Code extension and is macOS-only
+- **Last used project memory** — every command that shows a project picker now remembers the last selected project per command, persisted across sessions. The picker shows `$(history) Last used (name)` as the second option (after the current-file project shortcut). Separate memory is kept for: Serve, Build, Build Watch, Lint, Debug, Debug Build Watch, Test, and Debug Storybook
+- **Angular CLI Plus: Clear Finished Terminals** (`Ctrl+Shift+A C`): closes all extension-managed terminals whose process has finished but whose panel is still open. Shows an info message if there is nothing to close
+- New settings:
+  - `angularCliPlus.debug.browserExecutablePath` — custom path to the browser executable, overrides automatic detection (useful for non-standard installs or other Chromium-based browsers such as Vivaldi or Arc)
+  - `angularCliPlus.storybook.port` — port Storybook runs on; `0` means auto-detect from `angular.json` or use the default `6006`
+  - `angularCliPlus.buildWatch.servePort` — port the static file server listens on during a Debug Build Watch session (default: `4201`)
+  - `angularCliPlus.buildWatch.staticServerCommand` — fully configurable static server command; use `{outputPath}` and `{port}` as placeholders (default: `npx serve {outputPath} -l {port}`)
+
+### Changed
+
+- Schematics generator (`ng generate`) no longer shows a pre-emptive "Generating…" notification; instead it shows a success notification once the terminal exits with code 0
+- `Angular: Restart Serve` now accepts and propagates `ExtensionContext` internally to support debug session re-attach
+
 ## [1.2.0]
 
 ### Added

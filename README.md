@@ -26,16 +26,32 @@ A VS Code extension providing Angular CLI commands, schematics generation, and p
 
 ### Angular CLI commands (Command Palette & keyboard shortcuts)
 
-| Command                        | Shortcut         | Description                                                                                        |
-| ------------------------------ | ---------------- | -------------------------------------------------------------------------------------------------- |
-| Angular: Serve Application     | `Ctrl+Shift+A S` | Runs `ng serve` for a selected project; offers "Current project" shortcut when a file is open      |
-| Angular: Debug Application     | `Ctrl+Shift+A D` | Starts `ng serve`, waits for the dev server, then attaches a browser debugger                      |
-| Angular: Build Project         | `Ctrl+Shift+A B` | Runs `ng build` with the configured build configuration; offers "Current project" shortcut         |
-| Angular: Build Project (Watch) | `Ctrl+Shift+A W` | Runs `ng build --watch` with the configured watch configuration; offers "Current project" shortcut |
-| Angular: Test Project          | `Ctrl+Shift+A T` | Runs `ng test` for a project, all projects, or the currently open spec file                        |
-| Angular: Restart Serve         | `Ctrl+Shift+A R` | Gracefully restarts any active `ng serve` or `ng build --watch` terminal                           |
-| Angular: Lint Project          | `Ctrl+Shift+A L` | Runs `ng lint` for a selected project; offers "Current project" shortcut when a file is open       |
-| Angular: Update Packages       | `Ctrl+Shift+A U` | Shows available package updates and runs `ng update` for selected packages                         |
+| Command                              | Shortcut         | Description                                                                                                    |
+| ------------------------------------ | ---------------- | -------------------------------------------------------------------------------------------------------------- |
+| Angular: Serve Application           | `Ctrl+Shift+A S` | Runs `ng serve` for a selected project                                                                         |
+| Angular: Debug Application           | `Ctrl+Shift+A D` | Starts `ng serve`, waits for the dev server, then attaches a browser debugger                                  |
+| Angular: Debug Storybook             | `Ctrl+Shift+A K` | Starts Storybook, waits for it to be ready, then attaches a browser debugger                                   |
+| Angular: Debug Build (Watch)         | `Ctrl+Shift+A H` | Runs `ng build --watch` + a static file server, then attaches a browser debugger                               |
+| Angular: Build Project               | `Ctrl+Shift+A B` | Runs `ng build` with the configured build configuration                                                        |
+| Angular: Build Project (Watch)       | `Ctrl+Shift+A W` | Runs `ng build --watch` with the configured watch configuration                                                |
+| Angular: Test Project                | `Ctrl+Shift+A T` | Runs `ng test` for a project, all projects, or the currently open spec file                                    |
+| Angular: Restart Serve               | `Ctrl+Shift+A R` | Restarts any active serve/build-watch terminal; re-attaches the debugger if a debug session was running        |
+| Angular: Lint Project                | `Ctrl+Shift+A L` | Runs `ng lint` for a selected project                                                                          |
+| Angular: Update Packages             | `Ctrl+Shift+A U` | Shows available package updates and runs `ng update` for selected packages                                     |
+| Angular: Clear Finished Terminals    | `Ctrl+Shift+A C` | Closes all extension terminals whose process has finished but whose panel is still open                        |
+
+### Failure notifications and retry
+
+All terminal-based commands detect the exit code when the terminal closes:
+- **Success** (exit code 0): brief info notification
+- **Failure** (non-zero exit code): warning notification with a **Retry** button for build, lint, and test commands; Retry re-runs the exact same command without re-prompting
+
+### Last used project memory
+
+Every command that shows a project picker remembers the last selection per command, persisted across VS Code sessions. The picker shows:
+1. `$(file) Current project (…)` — if the active editor file belongs to a project
+2. `$(history) Last used (…)` — the last picked project, if different from the above
+3. Full project list
 
 ### npm helpers
 
@@ -62,14 +78,33 @@ A VS Code extension providing Angular CLI commands, schematics generation, and p
 
 Use the keyboard shortcuts (`Ctrl+Shift+A` followed by a letter) or search for **Angular CLI Plus** commands in the Command Palette (`Ctrl+Shift+P`):
 
-- **Serve** (`Ctrl+Shift+A S`): select a project and start `ng serve` in a terminal; "Current project" appears as the first option when the active file belongs to a project
-- **Debug** (`Ctrl+Shift+A D`): start `ng serve`, wait for the server to be ready, then attach a Chrome/Edge debugger; the serve terminal is stopped automatically when you end the debug session; "Current project" shortcut available
-- **Build** (`Ctrl+Shift+A B`): select a project and run `ng build` (configuration controlled by `angularCliPlus.build.configuration`); "Current project" shortcut available
-- **Build Watch** (`Ctrl+Shift+A W`): same as build but adds `--watch` (configuration controlled by `angularCliPlus.watch.configuration`); "Current project" shortcut available
-- **Test** (`Ctrl+Shift+A T`): select a project, all projects at once, run the tests for the `.spec.ts` file you have open, or use the "Current project" shortcut
-- **Restart Serve** (`Ctrl+Shift+A R`): restart any active `ng serve` or `ng build --watch` session without closing the terminal
-- **Lint** (`Ctrl+Shift+A L`): select a project and run `ng lint` in a terminal; "Current project" shortcut available
-- **Update** (`Ctrl+Shift+A U`): checks for available package updates, shows a multi-select list, then runs `ng update` for the selected packages; offers `--force` on failure; respects `angularCliPlus.update.allowDirty`
+- **Serve** (`Ctrl+Shift+A S`): select a project and start `ng serve` in a terminal
+- **Debug** (`Ctrl+Shift+A D`): start `ng serve`, wait for the server, then attach a browser debugger; the terminal is stopped when the debug session ends
+- **Debug Storybook** (`Ctrl+Shift+A K`): detects Storybook via `angular.json` architect targets or a `storybook` npm script, starts it, waits for the port (default `6006`), then attaches a browser debugger; configurable port via `angularCliPlus.storybook.port`
+- **Debug Build Watch** (`Ctrl+Shift+A H`): runs `ng build --watch` and a static file server in parallel, waits for the server port, then attaches a browser debugger; both terminals are stopped when the session ends; configurable via `angularCliPlus.buildWatch.servePort` and `angularCliPlus.buildWatch.staticServerCommand`
+- **Build** (`Ctrl+Shift+A B`): select a project and run `ng build` (configuration controlled by `angularCliPlus.build.configuration`)
+- **Build Watch** (`Ctrl+Shift+A W`): same as build but adds `--watch` (configuration controlled by `angularCliPlus.watch.configuration`)
+- **Test** (`Ctrl+Shift+A T`): select a project, all projects at once, or the `.spec.ts` file you have open
+- **Restart Serve** (`Ctrl+Shift+A R`): restart any active `ng serve`, `ng build --watch`, Storybook, or static server terminal; if a debug session is attached it is stopped first and re-attached after the restart
+- **Lint** (`Ctrl+Shift+A L`): select a project and run `ng lint`
+- **Update** (`Ctrl+Shift+A U`): checks for available package updates, shows a multi-select list, then runs `ng update`; offers `--force` on failure
+- **Clear Finished Terminals** (`Ctrl+Shift+A C`): dispose all extension terminals whose process has already exited
+
+### Debugging
+
+The extension supports attaching a browser debugger to any dev server it starts. Configure the browser with `angularCliPlus.debug.browser`:
+
+| Value      | Browser       | Notes                                                              |
+| ---------- | ------------- | ------------------------------------------------------------------ |
+| `chrome`   | Google Chrome | Built-in, no extra extension needed                                |
+| `edge`     | Microsoft Edge | Built-in, no extra extension needed                               |
+| `brave`    | Brave         | Auto-detected from standard install paths                          |
+| `opera`    | Opera         | Auto-detected from standard install paths                          |
+| `opera-gx` | Opera GX      | Auto-detected from standard install paths                          |
+| `firefox`  | Firefox       | Requires the **"Debugger for Firefox"** VS Code extension          |
+| `safari`   | Safari        | Requires the **"Safari Debugger"** VS Code extension; macOS only   |
+
+For a browser not in the list, or for a non-standard install path, set `angularCliPlus.debug.browserExecutablePath` to the full path of the browser executable. Any Chromium-based browser (Vivaldi, Arc, etc.) works this way.
 
 ### npm helpers
 
@@ -79,7 +114,7 @@ Run **Angular CLI Plus: npm: Install** or **Angular CLI Plus: npm: Clean Install
 
 - Node.js and npm must be installed
 - Angular CLI must be installed in your project or globally (`@angular/cli`)
-- Your workspace must be an angular project
+- Your workspace must be an Angular project
 
 ## Extension Settings
 
@@ -141,7 +176,8 @@ This extension contributes the following settings:
 
 ### Debug Options
 
-- `angularCliPlus.debug.browser`: Browser to use when launching the Angular debug session (`chrome` or `edge`) (default: `chrome`)
+- `angularCliPlus.debug.browser`: Browser to use when launching a debug session (`chrome`, `edge`, `brave`, `opera`, `opera-gx`, `firefox`, `safari`) (default: `chrome`)
+- `angularCliPlus.debug.browserExecutablePath`: Optional path to the browser executable; overrides automatic detection (default: `""`)
 
 ### Build Options
 
@@ -152,6 +188,15 @@ This extension contributes the following settings:
 
 - `angularCliPlus.test.watch`: Run `ng test` in watch mode (default: `false`)
 - `angularCliPlus.test.ui`: Enable the Vitest UI for interactive test execution — only available for the Vitest runner (default: `false`)
+
+### Storybook Options
+
+- `angularCliPlus.storybook.port`: Port Storybook runs on; `0` means auto-detect from `angular.json` or use the default `6006` (default: `0`)
+
+### Debug Build Watch Options
+
+- `angularCliPlus.buildWatch.servePort`: Port the static file server listens on during a Debug Build Watch session (default: `4201`)
+- `angularCliPlus.buildWatch.staticServerCommand`: Command used to serve the build output; use `{outputPath}` and `{port}` as placeholders (default: `npx serve {outputPath} -l {port}`)
 
 ### Dependency Check Options
 

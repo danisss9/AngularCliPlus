@@ -7,13 +7,26 @@ import * as cp from 'child_process';
 const npmOutput = vscode.window.createOutputChannel('Angular CLI Plus: npm');
 const ngOutput = vscode.window.createOutputChannel('Angular CLI Plus: ng');
 
+let extensionContext: vscode.ExtensionContext;
+
+interface DebugConfig {
+  workspaceFolder: vscode.WorkspaceFolder;
+  port: number;
+  sessionName: string;
+  browserSetting: string;
+  browserDebugConfig: BrowserDebugConfig;
+}
+
 interface ServeEntry {
   terminal: vscode.Terminal;
   command: string;
   cwd: string;
+  debugConfig?: DebugConfig;
+  activeDebugSession?: vscode.DebugSession;
 }
 
 const activeServeTerminals = new Map<string, ServeEntry>();
+const extensionTerminals = new Set<vscode.Terminal>();
 const depCheckTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
 
 interface GenerateOptions {
@@ -31,6 +44,16 @@ interface AngularProject {
       };
     };
     test?: Record<string, unknown>;
+    storybook?: {
+      options?: {
+        port?: number;
+      };
+    };
+    build?: {
+      options?: {
+        outputPath?: string | { base?: string; browser?: string };
+      };
+    };
   };
 }
 
@@ -53,6 +76,8 @@ type SchematicType =
   | 'resolver';
 
 export function activate(context: vscode.ExtensionContext) {
+  extensionContext = context;
+
   // Register commands for each schematic type
   const schematics: SchematicType[] = [
     'component',
@@ -81,6 +106,14 @@ export function activate(context: vscode.ExtensionContext) {
   );
   context.subscriptions.push(debugDisposable);
 
+  context.subscriptions.push(
+    vscode.commands.registerCommand('angular-cli-plus.debugStorybook', () => debugStorybookProject(context)),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('angular-cli-plus.debugBuildWatch', () => debugBuildWatchProject(context)),
+  );
+
   const serveDisposable = vscode.commands.registerCommand('angular-cli-plus.serveAngular', () =>
     serveAngularProject(),
   );
@@ -98,7 +131,7 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(buildWatchDisposable);
 
   const restartDisposable = vscode.commands.registerCommand('angular-cli-plus.restartAngularServe', () =>
-    restartAngularServe(),
+    restartAngularServe(context),
   );
   context.subscriptions.push(restartDisposable);
 
@@ -116,6 +149,10 @@ export function activate(context: vscode.ExtensionContext) {
     updateAngularPackages(),
   );
   context.subscriptions.push(updateDisposable);
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('angular-cli-plus.clearTerminals', () => clearFinishedTerminals()),
+  );
 
   context.subscriptions.push(
     vscode.commands.registerCommand('angular-cli-plus.npmInstall', () => runNpmInstall(false)),
@@ -241,16 +278,9 @@ async function generatengSchematic(schematic: SchematicType, uri: vscode.Uri) {
   // Build final command with just the name (Angular CLI will use cwd)
   const finalCommand = `${command} ${name}`;
 
-  // Create and show terminal with cwd set to the selected folder
-  const terminal = vscode.window.createTerminal({
-    name: `Angular CLI Plus: ${schematic}`,
-    cwd: folderPath,
+  runInTerminal(`Angular CLI Plus: ${schematic}`, finalCommand, folderPath, {
+    successMessage: `${schematic} "${name}" generated successfully.`,
   });
-
-  terminal.show();
-  terminal.sendText(finalCommand);
-
-  vscode.window.showInformationMessage(`Generating ${schematic}: ${name}`);
 }
 
 /**
@@ -432,6 +462,14 @@ async function resolveWorkspaceAndAngularJson(): Promise<{
   return { workspaceFolder, workspaceRoot, projects: angularJson.projects ?? {} };
 }
 
+function getLastProject(commandKey: string): string | undefined {
+  return extensionContext.globalState.get<string>(`lastProject.${commandKey}`);
+}
+
+function setLastProject(commandKey: string, project: string): void {
+  void extensionContext.globalState.update(`lastProject.${commandKey}`, project);
+}
+
 async function pickProject(projectNames: string[], title: string): Promise<string | null> {
   if (projectNames.length === 0) {
     vscode.window.showErrorMessage('No projects found in angular.json');
@@ -478,6 +516,7 @@ async function pickProjectWithCurrentFile(
   projects: { [name: string]: AngularProject },
   projectNames: string[],
   title: string,
+  commandKey?: string,
 ): Promise<string | null> {
   if (projectNames.length === 0) {
     vscode.window.showErrorMessage('No projects found in angular.json');
@@ -491,14 +530,92 @@ async function pickProjectWithCurrentFile(
   const currentInList = current && projectNames.includes(current) ? current : null;
   const CURRENT_LABEL = currentInList ? `$(file)  Current project (${currentInList})` : null;
 
-  const choices = [...(CURRENT_LABEL ? [CURRENT_LABEL] : []), ...projectNames];
+  const last = commandKey ? getLastProject(commandKey) : undefined;
+  const lastInList = last && projectNames.includes(last) && last !== currentInList ? last : null;
+  const LAST_LABEL = lastInList ? `$(history)  Last used (${lastInList})` : null;
+
+  const choices = [
+    ...(CURRENT_LABEL ? [CURRENT_LABEL] : []),
+    ...(LAST_LABEL ? [LAST_LABEL] : []),
+    ...projectNames,
+  ];
   const picked = await vscode.window.showQuickPick(choices, {
     placeHolder: 'Select Angular project',
     title,
   });
   if (!picked) return null;
-  if (CURRENT_LABEL && picked === CURRENT_LABEL) return currentInList!;
+  if (CURRENT_LABEL && picked === CURRENT_LABEL) {
+    if (commandKey) { setLastProject(commandKey, currentInList!); }
+    return currentInList!;
+  }
+  if (LAST_LABEL && picked === LAST_LABEL) {
+    return lastInList!;
+  }
+  if (commandKey) { setLastProject(commandKey, picked); }
   return picked;
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * Creates a terminal, runs a command, and shows a success notification on exit
+ * code 0 or a warning notification with an optional Retry button on non-zero
+ * exit. When `retryLabel` is set and no `onRetry` handler is provided, the
+ * exact same command is re-launched automatically.
+ */
+function runInTerminal(
+  name: string,
+  command: string,
+  cwd: string,
+  options?: {
+    trackAsServe?: boolean;
+    successMessage?: string;
+    retryLabel?: string;
+    onRetry?: () => void;
+  },
+): vscode.Terminal {
+  const terminal = vscode.window.createTerminal({ name, cwd });
+  extensionTerminals.add(terminal);
+  if (options?.trackAsServe) {
+    activeServeTerminals.set(name, { terminal, command, cwd });
+  }
+  terminal.show();
+  terminal.sendText(command);
+
+  const disposable = vscode.window.onDidCloseTerminal(async (closed) => {
+    if (closed !== terminal) {
+      return;
+    }
+    disposable.dispose();
+    extensionTerminals.delete(closed);
+
+    const code = closed.exitStatus?.code;
+    if (code === undefined) {
+      return; // terminal was killed without a proper exit (e.g. user closed the tab mid-run)
+    }
+
+    if (code === 0) {
+      if (options?.successMessage) {
+        vscode.window.showInformationMessage(options.successMessage);
+      }
+    } else {
+      const retryLabel = options?.retryLabel;
+      if (retryLabel) {
+        const action = await vscode.window.showWarningMessage(`${name} failed (exit code ${code}).`, retryLabel);
+        if (action === retryLabel) {
+          if (options.onRetry) {
+            options.onRetry();
+          } else {
+            runInTerminal(name, command, cwd, options);
+          }
+        }
+      } else {
+        vscode.window.showWarningMessage(`${name} failed (exit code ${code}).`);
+      }
+    }
+  });
+
+  return terminal;
 }
 
 // ── Commands ──────────────────────────────────────────────────────────────────
@@ -514,17 +631,14 @@ async function serveAngularProject() {
     .filter(([, p]) => !p.projectType || p.projectType === 'application')
     .map(([n]) => n);
 
-  const projectName = await pickProjectWithCurrentFile(workspaceRoot, projects, appProjects, 'Angular Serve: Select Project');
+  const projectName = await pickProjectWithCurrentFile(workspaceRoot, projects, appProjects, 'Angular Serve: Select Project', 'serve');
   if (!projectName) {
     return;
   }
 
   const serveCommand = `ng serve --project ${projectName}`;
   const terminalName = `ng serve (${projectName})`;
-  const terminal = vscode.window.createTerminal({ name: terminalName, cwd: workspaceRoot });
-  activeServeTerminals.set(terminalName, { terminal, command: serveCommand, cwd: workspaceRoot });
-  terminal.show();
-  terminal.sendText(serveCommand);
+  runInTerminal(terminalName, serveCommand, workspaceRoot, { trackAsServe: true });
 }
 
 async function testAngularProject() {
@@ -555,9 +669,14 @@ async function testAngularProject() {
   const currentInTestable = currentProject && testableProjects.includes(currentProject) ? currentProject : null;
   const CURRENT_PROJECT_LABEL = currentInTestable ? `$(file)  Current project (${currentInTestable})` : null;
 
+  const lastTest = getLastProject('test');
+  const lastInTestable = lastTest && testableProjects.includes(lastTest) && lastTest !== currentInTestable ? lastTest : null;
+  const LAST_LABEL = lastInTestable ? `$(history)  Last used (${lastInTestable})` : null;
+
   const choices = [
     ...(isSpecFile ? [CURRENT_FILE] : []),
     ...(CURRENT_PROJECT_LABEL ? [CURRENT_PROJECT_LABEL] : []),
+    ...(LAST_LABEL ? [LAST_LABEL] : []),
     ALL_PROJECTS,
     ...testableProjects,
   ];
@@ -586,19 +705,25 @@ async function testAngularProject() {
     testCommand = `ng test --include ${relPath}${watchFlag}${uiFlag}`;
     terminalName = `ng test (${path.basename(activeFile)})`;
   } else if (CURRENT_PROJECT_LABEL && picked === CURRENT_PROJECT_LABEL) {
+    setLastProject('test', currentInTestable!);
     testCommand = `ng test --project ${currentInTestable}${watchFlag}${uiFlag}`;
     terminalName = `ng test (${currentInTestable})`;
+  } else if (LAST_LABEL && picked === LAST_LABEL) {
+    testCommand = `ng test --project ${lastInTestable}${watchFlag}${uiFlag}`;
+    terminalName = `ng test (${lastInTestable})`;
   } else if (picked === ALL_PROJECTS) {
     testCommand = `ng test${watchFlag}${uiFlag}`;
     terminalName = 'ng test (all)';
   } else {
+    setLastProject('test', picked);
     testCommand = `ng test --project ${picked}${watchFlag}${uiFlag}`;
     terminalName = `ng test (${picked})`;
   }
 
-  const terminal = vscode.window.createTerminal({ name: terminalName, cwd: workspaceRoot });
-  terminal.show();
-  terminal.sendText(testCommand);
+  runInTerminal(terminalName, testCommand, workspaceRoot, {
+    successMessage: watchMode ? undefined : `${terminalName} completed successfully.`,
+    retryLabel: watchMode ? undefined : 'Retry',
+  });
 }
 
 async function lintAngularProject() {
@@ -609,16 +734,17 @@ async function lintAngularProject() {
   const { workspaceRoot, projects } = resolved;
 
   const allProjects = Object.keys(projects);
-  const projectName = await pickProjectWithCurrentFile(workspaceRoot, projects, allProjects, 'Angular Lint: Select Project');
+  const projectName = await pickProjectWithCurrentFile(workspaceRoot, projects, allProjects, 'Angular Lint: Select Project', 'lint');
   if (!projectName) {
     return;
   }
 
   const terminalName = `ng lint (${projectName})`;
   const lintCommand = `ng lint --project ${projectName}`;
-  const terminal = vscode.window.createTerminal({ name: terminalName, cwd: workspaceRoot });
-  terminal.show();
-  terminal.sendText(lintCommand);
+  runInTerminal(terminalName, lintCommand, workspaceRoot, {
+    successMessage: `ng lint (${projectName}) completed successfully.`,
+    retryLabel: 'Retry',
+  });
 }
 
 async function buildAngularProject() {
@@ -638,7 +764,7 @@ async function runNgBuild(watch: boolean) {
 
   const allProjects = Object.keys(projects);
   const title = watch ? 'Angular Build Watch: Select Project' : 'Angular Build: Select Project';
-  const projectName = await pickProjectWithCurrentFile(workspaceRoot, projects, allProjects, title);
+  const projectName = await pickProjectWithCurrentFile(workspaceRoot, projects, allProjects, title, watch ? 'buildWatch' : 'build');
   if (!projectName) {
     return;
   }
@@ -659,12 +785,96 @@ async function runNgBuild(watch: boolean) {
 
   const terminalName = watch ? `ng build --watch (${projectName})` : `ng build (${projectName})`;
   const buildCommand = `ng build --project ${projectName}${configFlag}${watchFlag}`;
-  const terminal = vscode.window.createTerminal({ name: terminalName, cwd: workspaceRoot });
-  if (watch) {
-    activeServeTerminals.set(terminalName, { terminal, command: buildCommand, cwd: workspaceRoot });
+  runInTerminal(terminalName, buildCommand, workspaceRoot, {
+    trackAsServe: watch,
+    successMessage: watch ? undefined : `ng build (${projectName}) completed successfully.`,
+    retryLabel: watch ? undefined : 'Retry',
+  });
+}
+
+interface BrowserDebugConfig {
+  type: string;
+  runtimeExecutable?: string;
+}
+
+function findExecutable(candidates: string[]): string | undefined {
+  return candidates.find((p) => fs.existsSync(p));
+}
+
+function getBrowserDebugConfig(browser: string, executableOverride: string): BrowserDebugConfig | null {
+  if (executableOverride) {
+    if (!fs.existsSync(executableOverride)) {
+      vscode.window.showErrorMessage(`Browser executable not found: ${executableOverride}`);
+      return null;
+    }
+    const type = browser === 'edge' ? 'msedge' : browser === 'firefox' ? 'firefox' : 'chrome';
+    return { type, runtimeExecutable: executableOverride };
   }
-  terminal.show();
-  terminal.sendText(buildCommand);
+
+  switch (browser) {
+    case 'chrome':
+      return { type: 'chrome' };
+    case 'edge':
+      return { type: 'msedge' };
+    case 'brave': {
+      const exe = findExecutable(
+        process.platform === 'win32'
+          ? [
+              path.join(process.env['PROGRAMFILES'] ?? 'C:\\Program Files', 'BraveSoftware\\Brave-Browser\\Application\\brave.exe'),
+              path.join(process.env['LOCALAPPDATA'] ?? '', 'BraveSoftware\\Brave-Browser\\Application\\brave.exe'),
+            ]
+          : process.platform === 'darwin'
+            ? ['/Applications/Brave Browser.app/Contents/MacOS/Brave Browser']
+            : ['/usr/bin/brave-browser', '/usr/bin/brave'],
+      );
+      if (!exe) {
+        vscode.window.showErrorMessage('Brave browser not found. Install it or set "angularCliPlus.debug.browserExecutablePath".');
+        return null;
+      }
+      return { type: 'chrome', runtimeExecutable: exe };
+    }
+    case 'opera': {
+      const exe = findExecutable(
+        process.platform === 'win32'
+          ? [
+              path.join(process.env['LOCALAPPDATA'] ?? '', 'Programs\\Opera\\opera.exe'),
+              path.join(process.env['PROGRAMFILES'] ?? 'C:\\Program Files', 'Opera\\opera.exe'),
+            ]
+          : process.platform === 'darwin'
+            ? ['/Applications/Opera.app/Contents/MacOS/Opera']
+            : ['/usr/bin/opera'],
+      );
+      if (!exe) {
+        vscode.window.showErrorMessage('Opera not found. Install it or set "angularCliPlus.debug.browserExecutablePath".');
+        return null;
+      }
+      return { type: 'chrome', runtimeExecutable: exe };
+    }
+    case 'opera-gx': {
+      const exe = findExecutable(
+        process.platform === 'win32'
+          ? [path.join(process.env['LOCALAPPDATA'] ?? '', 'Programs\\Opera GX\\opera.exe')]
+          : process.platform === 'darwin'
+            ? ['/Applications/Opera GX.app/Contents/MacOS/Opera GX']
+            : [],
+      );
+      if (!exe) {
+        vscode.window.showErrorMessage('Opera GX not found. Install it or set "angularCliPlus.debug.browserExecutablePath".');
+        return null;
+      }
+      return { type: 'chrome', runtimeExecutable: exe };
+    }
+    case 'firefox':
+      return { type: 'firefox' };
+    case 'safari':
+      if (process.platform !== 'darwin') {
+        vscode.window.showErrorMessage('Safari debugging is only supported on macOS.');
+        return null;
+      }
+      return { type: 'safari' };
+    default:
+      return { type: 'chrome' };
+  }
 }
 
 async function debugAngularProject(context: vscode.ExtensionContext) {
@@ -678,7 +888,7 @@ async function debugAngularProject(context: vscode.ExtensionContext) {
     .filter(([, p]) => !p.projectType || p.projectType === 'application')
     .map(([n]) => n);
 
-  const projectName = await pickProjectWithCurrentFile(workspaceRoot, projects, appProjects, 'Angular Debug: Select Project');
+  const projectName = await pickProjectWithCurrentFile(workspaceRoot, projects, appProjects, 'Angular Debug: Select Project', 'debug');
   if (!projectName) {
     return;
   }
@@ -687,41 +897,82 @@ async function debugAngularProject(context: vscode.ExtensionContext) {
 
   const config = vscode.workspace.getConfiguration('angularCliPlus');
   const browserSetting = config.get<string>('debug.browser', 'chrome');
-  const browserType = browserSetting === 'edge' ? 'msedge' : 'chrome';
+  const executableOverride = (config.get<string>('debug.browserExecutablePath') ?? '').trim();
+  const browserDebugConfig = getBrowserDebugConfig(browserSetting, executableOverride);
+  if (!browserDebugConfig) {
+    return;
+  }
   const sessionName = `Angular Debug (${projectName})`;
 
   const serveCommand = `ng serve --project ${projectName}`;
   const serveTerminalName = `ng serve (${projectName})`;
-  const terminal = vscode.window.createTerminal({ name: serveTerminalName, cwd: workspaceRoot });
-  activeServeTerminals.set(serveTerminalName, {
-    terminal,
-    command: serveCommand,
-    cwd: workspaceRoot,
+  const terminal = runInTerminal(serveTerminalName, serveCommand, workspaceRoot, { trackAsServe: true });
+
+  const serveEntry = activeServeTerminals.get(serveTerminalName);
+  if (serveEntry) {
+    serveEntry.debugConfig = { workspaceFolder, port, sessionName, browserSetting, browserDebugConfig };
+  }
+
+  launchBrowserDebugSession(context, workspaceFolder, terminal, {
+    port,
+    sessionName,
+    browserSetting,
+    browserDebugConfig,
+    progressTitle: `Starting ng serve for "${projectName}" on port ${port}…`,
+    serverName: 'ng serve',
+    onSessionStarted: (session) => {
+      const e = activeServeTerminals.get(serveTerminalName);
+      if (e) { e.activeDebugSession = session; }
+    },
   });
-  terminal.show();
-  terminal.sendText(serveCommand);
+}
+
+function launchBrowserDebugSession(
+  context: vscode.ExtensionContext,
+  workspaceFolder: vscode.WorkspaceFolder,
+  terminal: vscode.Terminal,
+  options: {
+    port: number;
+    sessionName: string;
+    browserSetting: string;
+    browserDebugConfig: BrowserDebugConfig;
+    progressTitle: string;
+    serverName: string;
+    additionalTerminals?: vscode.Terminal[];
+    onSessionStarted?: (session: vscode.DebugSession) => void;
+  },
+): void {
+  const allTerminals = [terminal, ...(options.additionalTerminals ?? [])];
+
+  const stopAll = () => {
+    for (const t of allTerminals) {
+      t.sendText('\x03');
+      t.dispose();
+    }
+  };
+
+  const stopAllDelayed = () => {
+    for (const t of allTerminals) {
+      t.sendText('\x03');
+    }
+    setTimeout(() => allTerminals.forEach((t) => t.dispose()), 2000);
+  };
 
   vscode.window.withProgress(
-    {
-      location: vscode.ProgressLocation.Notification,
-      title: `Starting ng serve for "${projectName}" on port ${port}…`,
-      cancellable: true,
-    },
+    { location: vscode.ProgressLocation.Notification, title: options.progressTitle, cancellable: true },
     async (progress, token) => {
-      const ready = await waitForPort(port, 600_000, token);
+      const ready = await waitForPort(options.port, 600_000, token);
 
       if (token.isCancellationRequested) {
-        terminal.sendText('\x03');
-        terminal.dispose();
+        stopAll();
         return;
       }
 
       if (!ready) {
         vscode.window.showErrorMessage(
-          `ng serve did not become ready on port ${port} within 10 minutes`,
+          `${options.serverName} did not become ready on port ${options.port} within 10 minutes`,
         );
-        terminal.sendText('\x03');
-        terminal.dispose();
+        stopAll();
         return;
       }
 
@@ -730,41 +981,274 @@ async function debugAngularProject(context: vscode.ExtensionContext) {
       let targetSession: vscode.DebugSession | undefined;
 
       const startListener = vscode.debug.onDidStartDebugSession((session) => {
-        if (session.name === sessionName) {
+        if (session.name === options.sessionName) {
           targetSession = session;
+          options.onSessionStarted?.(session);
           startListener.dispose();
         }
       });
       context.subscriptions.push(startListener);
 
       const started = await vscode.debug.startDebugging(workspaceFolder, {
-        type: browserType,
+        ...options.browserDebugConfig,
         request: 'launch',
-        name: sessionName,
-        url: `http://localhost:${port}`,
+        name: options.sessionName,
+        url: `http://localhost:${options.port}`,
         webRoot: '${workspaceFolder}',
       });
 
       if (!started) {
         startListener.dispose();
-        vscode.window.showErrorMessage(
-          `Failed to start debug session. Make sure the ${browserSetting} debugger is available in VS Code.`,
-        );
-        terminal.sendText('\x03');
-        terminal.dispose();
+        const extensionHint: Record<string, string> = {
+          firefox: 'Make sure the "Debugger for Firefox" extension is installed in VS Code.',
+          safari: 'Make sure the "Safari Debugger" extension is installed in VS Code.',
+        };
+        const hint = extensionHint[options.browserDebugConfig.type] ?? `Make sure the ${options.browserSetting} debugger extension is available in VS Code.`;
+        vscode.window.showErrorMessage(`Failed to start ${options.browserSetting} debug session. ${hint}`);
+        stopAll();
         return;
       }
 
       const endListener = vscode.debug.onDidTerminateDebugSession((session) => {
         if (targetSession && session.id === targetSession.id) {
-          terminal.sendText('\x03');
-          setTimeout(() => terminal.dispose(), 2000);
+          // Clear the stored session reference from whichever serve entry holds it
+          for (const e of activeServeTerminals.values()) {
+            if (e.activeDebugSession?.id === session.id) {
+              e.activeDebugSession = undefined;
+            }
+          }
+          stopAllDelayed();
           endListener.dispose();
         }
       });
       context.subscriptions.push(endListener);
     },
   );
+}
+
+async function debugStorybookProject(context: vscode.ExtensionContext) {
+  const workspaceFolders = vscode.workspace.workspaceFolders;
+  if (!workspaceFolders || workspaceFolders.length === 0) {
+    vscode.window.showErrorMessage('No workspace folder open');
+    return;
+  }
+
+  let workspaceFolder: vscode.WorkspaceFolder;
+  if (workspaceFolders.length === 1) {
+    workspaceFolder = workspaceFolders[0];
+  } else {
+    const picked = await vscode.window.showWorkspaceFolderPick({ placeHolder: 'Select workspace folder' });
+    if (!picked) {
+      return;
+    }
+    workspaceFolder = picked;
+  }
+
+  const workspaceRoot = workspaceFolder.uri.fsPath;
+
+  interface StorybookEntry {
+    label: string;
+    command: string;
+    port: number;
+  }
+
+  const entries: StorybookEntry[] = [];
+
+  // Detect via angular.json storybook architect targets
+  const angularJsonPath = path.join(workspaceRoot, 'angular.json');
+  if (fs.existsSync(angularJsonPath)) {
+    try {
+      const angularJson = JSON.parse(fs.readFileSync(angularJsonPath, 'utf-8')) as AngularJson;
+      for (const [projectName, project] of Object.entries(angularJson.projects ?? {})) {
+        if (project.architect?.storybook) {
+          entries.push({
+            label: projectName,
+            command: `ng run ${projectName}:storybook`,
+            port: project.architect.storybook.options?.port ?? 6006,
+          });
+        }
+      }
+    } catch { /* ignore parse errors */ }
+  }
+
+  // Fallback: detect via package.json storybook script
+  if (entries.length === 0) {
+    const pkgPath = path.join(workspaceRoot, 'package.json');
+    if (fs.existsSync(pkgPath)) {
+      try {
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8')) as { scripts?: Record<string, string> };
+        if (pkg.scripts?.storybook) {
+          entries.push({ label: 'storybook', command: 'npm run storybook', port: 6006 });
+        }
+      } catch { /* ignore parse errors */ }
+    }
+  }
+
+  if (entries.length === 0) {
+    vscode.window.showErrorMessage(
+      'No Storybook configuration found. Make sure @storybook/angular is set up and has a storybook architect target or an npm "storybook" script.',
+    );
+    return;
+  }
+
+  let entry: StorybookEntry;
+  if (entries.length === 1) {
+    entry = entries[0];
+  } else {
+    const lastStorybook = getLastProject('storybookDebug');
+    const lastEntry = lastStorybook ? entries.find((e) => e.label === lastStorybook) : null;
+    const labels = entries.map((e) => e.label);
+    const items = [
+      ...(lastEntry ? [`$(history)  Last used (${lastEntry.label})`] : []),
+      ...labels,
+    ];
+    const picked = await vscode.window.showQuickPick(items, {
+      title: 'Storybook Debug: Select Project',
+      placeHolder: 'Select a project',
+    });
+    if (!picked) {
+      return;
+    }
+    if (lastEntry && picked === `$(history)  Last used (${lastEntry.label})`) {
+      entry = lastEntry;
+    } else {
+      entry = entries.find((e) => e.label === picked)!;
+      setLastProject('storybookDebug', entry.label);
+    }
+  }
+
+  const vsConfig = vscode.workspace.getConfiguration('angularCliPlus');
+  const portOverride = vsConfig.get<number>('storybook.port', 0);
+  const port = portOverride > 0 ? portOverride : entry.port;
+
+  const browserSetting = vsConfig.get<string>('debug.browser', 'chrome');
+  const executableOverride = (vsConfig.get<string>('debug.browserExecutablePath') ?? '').trim();
+  const browserDebugConfig = getBrowserDebugConfig(browserSetting, executableOverride);
+  if (!browserDebugConfig) {
+    return;
+  }
+
+  const sessionName = `Storybook Debug (${entry.label})`;
+  const storybookTerminalName = `storybook (${entry.label})`;
+  const terminal = runInTerminal(storybookTerminalName, entry.command, workspaceRoot, { trackAsServe: true });
+
+  const storybookEntry = activeServeTerminals.get(storybookTerminalName);
+  if (storybookEntry) {
+    storybookEntry.debugConfig = { workspaceFolder, port, sessionName, browserSetting, browserDebugConfig };
+  }
+
+  launchBrowserDebugSession(context, workspaceFolder, terminal, {
+    port,
+    sessionName,
+    browserSetting,
+    browserDebugConfig,
+    progressTitle: `Starting Storybook for "${entry.label}" on port ${port}…`,
+    serverName: 'Storybook',
+    onSessionStarted: (session) => {
+      const e = activeServeTerminals.get(storybookTerminalName);
+      if (e) { e.activeDebugSession = session; }
+    },
+  });
+}
+
+function resolveOutputPath(project: AngularProject, projectName: string, workspaceRoot: string): string {
+  const outputPath = project.architect?.build?.options?.outputPath;
+
+  if (typeof outputPath === 'string') {
+    return path.isAbsolute(outputPath) ? outputPath : path.join(workspaceRoot, outputPath);
+  }
+
+  if (outputPath && typeof outputPath === 'object') {
+    const base = outputPath.base ?? `dist/${projectName}`;
+    const browser = outputPath.browser || 'browser';
+    const combined = path.join(base, browser);
+    return path.isAbsolute(combined) ? combined : path.join(workspaceRoot, combined);
+  }
+
+  // Default: Angular 17+ uses dist/<project>/browser, older uses dist/<project>
+  const newStyle = path.join(workspaceRoot, 'dist', projectName, 'browser');
+  return fs.existsSync(newStyle) ? newStyle : path.join(workspaceRoot, 'dist', projectName);
+}
+
+async function debugBuildWatchProject(context: vscode.ExtensionContext) {
+  const resolved = await resolveWorkspaceAndAngularJson();
+  if (!resolved) {
+    return;
+  }
+  const { workspaceFolder, workspaceRoot, projects } = resolved;
+
+  const appProjects = Object.entries(projects)
+    .filter(([, p]) => !p.projectType || p.projectType === 'application')
+    .map(([n]) => n);
+
+  const projectName = await pickProjectWithCurrentFile(workspaceRoot, projects, appProjects, 'Angular Debug Build Watch: Select Project', 'debugBuildWatch');
+  if (!projectName) {
+    return;
+  }
+
+  const vsConfig = vscode.workspace.getConfiguration('angularCliPlus');
+
+  const watchConfig = vsConfig.get<string>('watch.configuration', 'development');
+  const effectiveConfig =
+    watchConfig === 'inherit'
+      ? vsConfig.get<string>('build.configuration', 'production')
+      : watchConfig;
+  const configFlag = effectiveConfig !== 'default' ? ` --configuration=${effectiveConfig}` : '';
+  const buildCommand = `ng build --project ${projectName}${configFlag} --watch`;
+
+  const outputPath = resolveOutputPath(projects[projectName], projectName, workspaceRoot);
+  const port = vsConfig.get<number>('buildWatch.servePort', 4201);
+  const serverCommandTemplate = vsConfig.get<string>('buildWatch.staticServerCommand', 'npx serve {outputPath} -l {port}');
+  const serverCommand = serverCommandTemplate
+    .replace('{outputPath}', `"${outputPath}"`)
+    .replace('{port}', String(port));
+
+  const browserSetting = vsConfig.get<string>('debug.browser', 'chrome');
+  const executableOverride = (vsConfig.get<string>('debug.browserExecutablePath') ?? '').trim();
+  const browserDebugConfig = getBrowserDebugConfig(browserSetting, executableOverride);
+  if (!browserDebugConfig) {
+    return;
+  }
+
+  const buildTerminalName = `ng build --watch (${projectName})`;
+  const serveTerminalName = `serve (${projectName})`;
+  const sessionName = `Angular Debug Build Watch (${projectName})`;
+
+  const buildTerminal = runInTerminal(buildTerminalName, buildCommand, workspaceRoot, { trackAsServe: true });
+  const serveTerminal = runInTerminal(serveTerminalName, serverCommand, workspaceRoot, { trackAsServe: true });
+
+  const serveEntry = activeServeTerminals.get(serveTerminalName);
+  if (serveEntry) {
+    serveEntry.debugConfig = { workspaceFolder, port, sessionName, browserSetting, browserDebugConfig };
+  }
+
+  launchBrowserDebugSession(context, workspaceFolder, serveTerminal, {
+    port,
+    sessionName,
+    browserSetting,
+    browserDebugConfig,
+    progressTitle: `Starting build watch + static server for "${projectName}" on port ${port}…`,
+    serverName: 'static server',
+    additionalTerminals: [buildTerminal],
+    onSessionStarted: (session) => {
+      const e = activeServeTerminals.get(serveTerminalName);
+      if (e) { e.activeDebugSession = session; }
+    },
+  });
+}
+
+function clearFinishedTerminals() {
+  let count = 0;
+  for (const terminal of extensionTerminals) {
+    if (terminal.exitStatus !== undefined) {
+      terminal.dispose();
+      extensionTerminals.delete(terminal);
+      count++;
+    }
+  }
+  if (count === 0) {
+    vscode.window.showInformationMessage('No finished extension terminals to close.');
+  }
 }
 
 async function runNpmInstall(clean: boolean, force = false, workspaceRoot?: string) {
@@ -911,7 +1395,7 @@ function spawnCapture(cmd: string, args: string[], cwd: string): Promise<{ stdou
 }
 
 function parseNgUpdateOutput(output: string): Array<{ name: string; versions: string }> {
-  const clean = output.replace(/\[[0-9;]*[mGKHF]/g, '');
+  const clean = output.replace(/\x1b\[[\d;]*[A-Za-z]/g, '');
   const results: Array<{ name: string; versions: string }> = [];
   for (const line of clean.split('\n')) {
     const trimmed = line.trim();
@@ -932,13 +1416,23 @@ async function updateAngularPackages() {
   const { workspaceRoot } = resolved;
 
   let capturedOutput = '';
+  let checkExitCode = 0;
   await vscode.window.withProgress(
     { location: vscode.ProgressLocation.Notification, title: 'Checking for Angular package updates…', cancellable: false },
     async () => {
       const result = await spawnCapture('ng', ['update'], workspaceRoot);
       capturedOutput = result.stdout;
+      checkExitCode = result.exitCode;
     },
   );
+
+  if (checkExitCode !== 0) {
+    ngOutput.clear();
+    ngOutput.appendLine(capturedOutput);
+    ngOutput.show(true);
+    vscode.window.showErrorMessage("Failed to check for Angular updates. See 'Angular CLI Plus: ng' output for details.");
+    return;
+  }
 
   const packages = parseNgUpdateOutput(capturedOutput);
   if (packages.length === 0) {
@@ -997,7 +1491,7 @@ async function runNgUpdate(packages: string[], allowDirty: boolean, force: boole
   }
 }
 
-async function restartAngularServe() {
+async function restartAngularServe(context: vscode.ExtensionContext) {
   if (activeServeTerminals.size === 0) {
     vscode.window.showErrorMessage('No active ng serve / ng build --watch terminals found.');
     return;
@@ -1007,23 +1501,47 @@ async function restartAngularServe() {
   if (activeServeTerminals.size === 1) {
     projectName = [...activeServeTerminals.keys()][0];
   } else {
-    const picked = await vscode.window.showQuickPick([...activeServeTerminals.keys()], {
+    const items = [...activeServeTerminals.entries()].map(([name, e]) => ({
+      label: name,
+      description: e.debugConfig ? '$(debug) debug session active' : undefined,
+    }));
+    const picked = await vscode.window.showQuickPick(items, {
       placeHolder: 'Select terminal to restart',
       title: 'Angular Restart',
     });
     if (!picked) {
       return;
     }
-    projectName = picked;
+    projectName = picked.label;
   }
 
   const entry = activeServeTerminals.get(projectName)!;
+
+  // Stop any running debug session for this entry before restarting
+  if (entry.activeDebugSession) {
+    await vscode.debug.stopDebugging(entry.activeDebugSession);
+    entry.activeDebugSession = undefined;
+    await new Promise<void>((r) => setTimeout(r, 500));
+  }
+
   entry.terminal.show();
   entry.terminal.sendText('\x03');
   await new Promise<void>((r) => setTimeout(r, 300));
   entry.terminal.sendText('y');
   await new Promise<void>((r) => setTimeout(r, 700));
   entry.terminal.sendText(entry.command);
+
+  if (entry.debugConfig) {
+    const { workspaceFolder, port, sessionName, browserSetting, browserDebugConfig } = entry.debugConfig;
+    launchBrowserDebugSession(context, workspaceFolder, entry.terminal, {
+      port,
+      sessionName,
+      browserSetting,
+      browserDebugConfig,
+      progressTitle: `Reattaching debugger for "${projectName}" on port ${port}…`,
+      serverName: projectName,
+    });
+  }
 }
 
 function waitForPort(
