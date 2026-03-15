@@ -4,6 +4,12 @@ All notable changes to the "angular-cli-plus" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.3.1]
+
+### Changed
+
+- **Close Terminals** (`Ctrl+Shift+A C`) reworked: instead of silently closing all finished terminals it now opens a searchable, multi-select QuickPick listing **all** active extension terminals. Each entry shows the terminal name and its current state — `running`, `terminated`, or `errored`. Use the native select-all checkbox or search to filter, then confirm to close the selected terminals
+
 ## [1.3.0]
 
 ### Added

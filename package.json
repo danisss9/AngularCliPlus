@@ -4,7 +4,7 @@
   "description": "Angular CLI commands, schematics generator, and project tools for VS Code",
   "repository": "https://github.com/danisss9/AngularCliPlus",
   "publisher": "danisss9",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "icon": "icon.png",
   "engines": {
     "vscode": "^1.107.0"
@@ -132,7 +132,7 @@
       },
       {
         "command": "angular-cli-plus.clearTerminals",
-        "title": "Clear Finished Terminals",
+        "title": "Close Terminals",
         "category": "Angular CLI Plus"
       }
     ],

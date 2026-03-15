@@ -1237,17 +1237,56 @@ async function debugBuildWatchProject(context: vscode.ExtensionContext) {
   });
 }
 
-function clearFinishedTerminals() {
-  let count = 0;
-  for (const terminal of extensionTerminals) {
-    if (terminal.exitStatus !== undefined) {
-      terminal.dispose();
-      extensionTerminals.delete(terminal);
-      count++;
-    }
+async function clearFinishedTerminals() {
+  if (extensionTerminals.size === 0) {
+    vscode.window.showInformationMessage('No extension terminals to close.');
+    return;
   }
-  if (count === 0) {
-    vscode.window.showInformationMessage('No finished extension terminals to close.');
+
+  function getTerminalState(terminal: vscode.Terminal): { label: string; icon: string } {
+    if (terminal.exitStatus === undefined) {
+      return { label: 'running', icon: '$(play)' };
+    }
+    if (terminal.exitStatus.code === 0) {
+      return { label: 'terminated', icon: '$(check)' };
+    }
+    return { label: 'errored', icon: '$(error)' };
+  }
+
+  type TerminalItem = vscode.QuickPickItem & { terminal: vscode.Terminal };
+
+  const terminals = [...extensionTerminals];
+  const terminalItems: TerminalItem[] = terminals.map((t) => {
+    const state = getTerminalState(t);
+    return {
+      label: `${state.icon} ${t.name}`,
+      description: state.label,
+      terminal: t,
+    };
+  });
+
+  const qp = vscode.window.createQuickPick<TerminalItem>();
+  qp.items = terminalItems;
+  qp.canSelectMany = true;
+  qp.placeholder = 'Search and select terminals to close...';
+  qp.title = 'Close Terminals';
+
+  const chosen = await new Promise<TerminalItem[]>((resolve) => {
+    qp.onDidAccept(() => {
+      resolve([...qp.selectedItems]);
+      qp.hide();
+    });
+    qp.onDidHide(() => resolve([]));
+    qp.show();
+  });
+
+  for (const item of chosen) {
+    item.terminal.dispose();
+    extensionTerminals.delete(item.terminal);
+  }
+
+  if (chosen.length > 0) {
+    vscode.window.showInformationMessage(`Closed ${chosen.length} terminal${chosen.length > 1 ? 's' : ''}.`);
   }
 }
 

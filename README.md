@@ -38,7 +38,7 @@ A VS Code extension providing Angular CLI commands, schematics generation, and p
 | Angular: Restart Serve               | `Ctrl+Shift+A R` | Restarts any active serve/build-watch terminal; re-attaches the debugger if a debug session was running        |
 | Angular: Lint Project                | `Ctrl+Shift+A L` | Runs `ng lint` for a selected project                                                                          |
 | Angular: Update Packages             | `Ctrl+Shift+A U` | Shows available package updates and runs `ng update` for selected packages                                     |
-| Angular: Clear Finished Terminals    | `Ctrl+Shift+A C` | Closes all extension terminals whose process has finished but whose panel is still open                        |
+| Angular: Close Terminals             | `Ctrl+Shift+A C` | Opens a searchable multi-select list of all extension terminals with their state (running / terminated / errored) — select which ones to close |
 
 ### Failure notifications and retry
 
@@ -88,7 +88,7 @@ Use the keyboard shortcuts (`Ctrl+Shift+A` followed by a letter) or search for *
 - **Restart Serve** (`Ctrl+Shift+A R`): restart any active `ng serve`, `ng build --watch`, Storybook, or static server terminal; if a debug session is attached it is stopped first and re-attached after the restart
 - **Lint** (`Ctrl+Shift+A L`): select a project and run `ng lint`
 - **Update** (`Ctrl+Shift+A U`): checks for available package updates, shows a multi-select list, then runs `ng update`; offers `--force` on failure
-- **Clear Finished Terminals** (`Ctrl+Shift+A C`): dispose all extension terminals whose process has already exited
+- **Close Terminals** (`Ctrl+Shift+A C`): opens a searchable multi-select QuickPick of all extension terminals; each entry shows the terminal name and state (`running`, `terminated`, `errored`); use the select-all checkbox or search to filter, then confirm to close the selected terminals
 
 ### Debugging
 
