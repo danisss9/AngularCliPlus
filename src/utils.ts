@@ -4,6 +4,51 @@ import * as path from 'path';
 import type { AngularJson, AngularProject } from './types';
 import { activeServeTerminals, extensionTerminals, getExtensionContext } from './state';
 
+export { toKebabCase, findMatchingProjects } from './pure-utils';
+import { findBestProjectForPath } from './pure-utils';
+export { findBestProjectForPath };
+
+// ── angular.json cache ────────────────────────────────────────────────────────
+
+interface AngularJsonCacheEntry {
+  projects: { [name: string]: AngularProject };
+  mtimeMs: number;
+}
+
+const angularJsonCache = new Map<string, AngularJsonCacheEntry>();
+
+/** Invalidate the cache for a workspace root (called when the file changes). */
+export function invalidateAngularJsonCache(workspaceRoot: string): void {
+  angularJsonCache.delete(workspaceRoot);
+}
+
+/**
+ * Reads and parses angular.json for the given workspace root.
+ * Returns the cached result if the file has not changed since the last read.
+ */
+function readAngularJson(workspaceRoot: string): AngularJson | null {
+  const filePath = path.join(workspaceRoot, 'angular.json');
+  let mtimeMs: number;
+  try {
+    mtimeMs = fs.statSync(filePath).mtimeMs;
+  } catch {
+    return null;
+  }
+
+  const cached = angularJsonCache.get(workspaceRoot);
+  if (cached && cached.mtimeMs === mtimeMs) {
+    return { projects: cached.projects };
+  }
+
+  try {
+    const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as AngularJson;
+    angularJsonCache.set(workspaceRoot, { projects: parsed.projects ?? {}, mtimeMs });
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 // ── Workspace helpers ──────────────────────────────────────────────────────────
 
 export async function resolveWorkspaceAndAngularJson(): Promise<{
@@ -38,10 +83,8 @@ export async function resolveWorkspaceAndAngularJson(): Promise<{
     return null;
   }
 
-  let angularJson: AngularJson;
-  try {
-    angularJson = JSON.parse(fs.readFileSync(angularJsonPath, 'utf-8')) as AngularJson;
-  } catch {
+  const angularJson = readAngularJson(workspaceRoot);
+  if (!angularJson) {
     vscode.window.showErrorMessage('Failed to parse angular.json');
     return null;
   }
@@ -93,24 +136,7 @@ export function detectActiveFileProject(
 ): string | null {
   const activeFile = vscode.window.activeTextEditor?.document.uri.fsPath;
   if (!activeFile) { return null; }
-
-  const fileDir = path.dirname(activeFile);
-  const fileDirNorm = fileDir.endsWith(path.sep) ? fileDir : fileDir + path.sep;
-
-  let bestMatch: { name: string; rootLen: number } | null = null;
-  for (const [name, project] of Object.entries(projects)) {
-    const roots = [project.root, project.sourceRoot].filter(Boolean) as string[];
-    for (const r of roots) {
-      const absRoot = path.isAbsolute(r) ? r : path.join(workspaceRoot, r);
-      const absRootNorm = absRoot.endsWith(path.sep) ? absRoot : absRoot + path.sep;
-      if (fileDirNorm.startsWith(absRootNorm)) {
-        if (!bestMatch || absRootNorm.length > bestMatch.rootLen) {
-          bestMatch = { name, rootLen: absRootNorm.length };
-        }
-      }
-    }
-  }
-  return bestMatch?.name ?? null;
+  return findBestProjectForPath(activeFile, workspaceRoot, projects);
 }
 
 export async function pickProjectWithCurrentFile(
@@ -220,8 +246,3 @@ export function runInTerminal(
   return terminal;
 }
 
-// ── String helpers ─────────────────────────────────────────────────────────────
-
-export function toKebabCase(str: string): string {
-  return str.replaceAll(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
-}

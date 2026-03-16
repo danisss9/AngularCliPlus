@@ -2,53 +2,13 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as cp from 'child_process';
-import * as semver from 'semver';
 import { npmOutput, depCheckTimeouts, logDiagnostic } from './state';
+import { semverSatisfies, validateCustomCommand } from './pure-utils';
+import { invalidateAngularJsonCache } from './utils';
 
 // ── Timing constants ───────────────────────────────────────────────────────────
 const DEP_CHECK_STARTUP_DELAY_MS = 3000;
 const DEP_CHECK_CHANGE_DELAY_MS = 2000;
-
-// ── Input validation ──────────────────────────────────────────────────────────
-
-/**
- * Validates a user-provided shell command before execution.
- * Returns an error message string if invalid, or null if valid.
- */
-export function validateCustomCommand(command: string): string | null {
-  if (!command || command.trim() === '') {
-    return 'Command cannot be empty';
-  }
-  // Block obviously dangerous patterns: command chaining with unescaped operators
-  // that could be injected via settings (e.g. "npm install; rm -rf /")
-  if (/;\s*(rm|del|format|mkfs|dd)\b/i.test(command)) {
-    return `Command contains potentially dangerous operations`;
-  }
-  return null;
-}
-
-// ── Semver check (delegates to battle-tested semver package) ──────────────────
-
-export function semverSatisfies(installed: string, required: string): boolean {
-  const req = required.trim();
-  if (!req || req === '*' || req === 'latest') {
-    return true;
-  }
-  // Skip non-semver specs (git, file, workspace, URLs)
-  if (/^(git|file:|workspace:|https?:|github:)/.test(req)) {
-    return true;
-  }
-
-  try {
-    const coerced = semver.coerce(installed);
-    if (!coerced) { return false; }
-    return semver.satisfies(coerced, req);
-  } catch {
-    // If semver can't parse it, fall back to allowing the version
-    logDiagnostic(`semver parse failed for installed="${installed}" required="${req}"`);
-    return true;
-  }
-}
 
 // ── npm / ng spawning ─────────────────────────────────────────────────────────
 
@@ -216,6 +176,15 @@ export function setupDependencyCheck(context: vscode.ExtensionContext, workspace
   );
   pkgWatcher.onDidChange(() => scheduleDependencyCheck(workspaceRoot, DEP_CHECK_CHANGE_DELAY_MS));
   context.subscriptions.push(pkgWatcher);
+
+  // Invalidate the angular.json cache whenever the file is saved
+  const angularJsonWatcher = vscode.workspace.createFileSystemWatcher(
+    new vscode.RelativePattern(vscode.Uri.file(workspaceRoot), 'angular.json'),
+  );
+  angularJsonWatcher.onDidChange(() => invalidateAngularJsonCache(workspaceRoot));
+  angularJsonWatcher.onDidCreate(() => invalidateAngularJsonCache(workspaceRoot));
+  angularJsonWatcher.onDidDelete(() => invalidateAngularJsonCache(workspaceRoot));
+  context.subscriptions.push(angularJsonWatcher);
 }
 
 export function scheduleDependencyCheck(workspaceRoot: string, delayMs: number) {
@@ -241,7 +210,7 @@ export async function checkDependencies(workspaceRoot: string) {
   const pkgPath = path.join(workspaceRoot, 'package.json');
   let pkg: { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
   try {
-    pkg = JSON.parse(await fs.promises.readFile(pkgPath, 'utf-8'));
+    pkg = JSON.parse(await fs.promises.readFile(pkgPath, 'utf-8')) as typeof pkg;
   } catch (err) {
     logDiagnostic(`Failed to read package.json for dependency check: ${err}`);
     return;
@@ -271,8 +240,8 @@ export async function checkDependencies(workspaceRoot: string) {
     Object.entries(allDeps).map(async ([name, required]) => {
       const nmPkg = path.join(nmDir, name, 'package.json');
       try {
-        const { version } = JSON.parse(await fs.promises.readFile(nmPkg, 'utf-8'));
-        if (!semverSatisfies(version as string, required)) {
+        const { version } = JSON.parse(await fs.promises.readFile(nmPkg, 'utf-8')) as { version: string };
+        if (!semverSatisfies(version, required)) {
           outdated.push(name);
         }
       } catch {
@@ -372,7 +341,7 @@ export async function checkToolVersions(workspaceRoot: string) {
   const pkgPath = path.join(workspaceRoot, 'package.json');
   let pkg: { engines?: Record<string, string> };
   try {
-    pkg = JSON.parse(await fs.promises.readFile(pkgPath, 'utf-8'));
+    pkg = JSON.parse(await fs.promises.readFile(pkgPath, 'utf-8')) as typeof pkg;
   } catch (err) {
     logDiagnostic(`Failed to read package.json for tool version check: ${err}`);
     return;

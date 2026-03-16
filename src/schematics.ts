@@ -2,8 +2,9 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { AngularJson, GenerateOptions, SchematicType } from './types';
-import { runInTerminal, toKebabCase } from './utils';
+import { runInTerminal } from './utils';
 import { logDiagnostic } from './state';
+import { buildNgGenerateCommand as buildCommand, isValidSchematicName, findMatchingProjects } from './pure-utils';
 
 export async function generatengSchematic(schematic: SchematicType, uri: vscode.Uri) {
   const folderPath = uri.fsPath;
@@ -15,7 +16,7 @@ export async function generatengSchematic(schematic: SchematicType, uri: vscode.
       if (!value || value.trim() === '') {
         return 'Name cannot be empty';
       }
-      if (!/^[a-z][a-z0-9-]*$/.test(value)) {
+      if (!isValidSchematicName(value)) {
         return 'Name must start with a lowercase letter and contain only lowercase letters, numbers, and hyphens';
       }
       return null;
@@ -45,8 +46,7 @@ export async function generatengSchematic(schematic: SchematicType, uri: vscode.
     options.project = detectedProject.trim();
   }
 
-  const command = buildNgGenerateCommand(schematic, name, options);
-  const finalCommand = `${command} ${name}`;
+  const finalCommand = `${buildCommand(schematic, options)} ${name}`;
 
   runInTerminal(`Angular CLI Plus: ${schematic}`, finalCommand, folderPath, {
     successMessage: `${schematic} "${name}" generated successfully.`,
@@ -89,20 +89,7 @@ export async function detectAngularProject(
     return promptForProjectName();
   }
 
-  const normalised = selectedFolderPath.endsWith(path.sep)
-    ? selectedFolderPath
-    : selectedFolderPath + path.sep;
-
-  const matching = projectNames.filter((name) => {
-    const project = projects[name];
-    const roots = [project.root, project.sourceRoot].filter(Boolean) as string[];
-
-    return roots.some((r) => {
-      const absRoot = path.isAbsolute(r) ? r : path.join(workspaceRoot, r);
-      const absRootNormalised = absRoot.endsWith(path.sep) ? absRoot : absRoot + path.sep;
-      return normalised.startsWith(absRootNormalised) || normalised === absRootNormalised;
-    });
-  });
+  const matching = findMatchingProjects(selectedFolderPath, workspaceRoot, projects);
 
   if (matching.length === 1) {
     vscode.window.showInformationMessage(`Using Angular project: ${matching[0]}`);
@@ -148,29 +135,3 @@ export function getOptionsForSchematic(
   return options;
 }
 
-export function buildNgGenerateCommand(
-  schematic: SchematicType,
-  name: string,
-  options: GenerateOptions,
-): string {
-  let command = `ng generate ${schematic}`;
-
-  Object.keys(options).forEach((key) => {
-    const value = options[key];
-    const kebabKey = toKebabCase(key);
-
-    if (typeof value === 'boolean') {
-      if (value === true) {
-        command += ` --${kebabKey}`;
-      } else {
-        command += ` --${kebabKey}=false`;
-      }
-    } else if (typeof value === 'string') {
-      command += ` --${kebabKey}=${value}`;
-    }
-  });
-
-  // The caller appends the name; we don't duplicate it here
-  // Strip the trailing " <name>" if buildNgGenerateCommand ever added it
-  return command;
-}

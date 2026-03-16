@@ -110,6 +110,28 @@ For a browser not in the list, or for a non-standard install path, set `angularC
 
 Run **Angular CLI Plus: npm: Install** or **Angular CLI Plus: npm: Clean Install** from the Command Palette. Output is streamed to the **Angular CLI Plus: npm** output channel. The extension also automatically prompts you to run `npm install` when it detects missing or outdated packages on startup or after a git branch switch.
 
+## Troubleshooting
+
+### Commands don't appear in the Command Palette
+Make sure the workspace contains an `angular.json` file. The extension activates automatically when VS Code opens.
+
+### Debug session fails to start
+- Verify the selected browser is installed. Brave, Opera, and Opera GX require installation at the standard path; set `angularCliPlus.debug.browserExecutablePath` for non-standard locations.
+- For Firefox, install the **Debugger for Firefox** VS Code extension.
+- For Safari, install the **Safari Debugger** VS Code extension and use macOS.
+
+### Dependency check triggers too often / not at all
+- Toggle `angularCliPlus.checkDependencies.enabled` in VS Code settings.
+- The check fires on startup, on every `git checkout` (branch switch), and whenever `package.json` is saved.
+- Diagnostic logs are available in the **Angular CLI Plus: diagnostics** output channel (`View › Output`, then select the channel from the dropdown).
+
+### `ng` / `npm` command not found
+- Ensure Node.js and the Angular CLI are on your `PATH`. Restart VS Code after installing them.
+- The **Angular CLI Plus: npm** output channel shows the full output of every npm operation.
+
+### Custom install command is rejected
+Commands containing `; rm`, `; del`, `; format`, `; mkfs`, or `; dd` are blocked as a safety measure. Use a plain package-manager invocation (e.g. `pnpm install --frozen-lockfile`).
+
 ## Requirements
 
 - Node.js and npm must be installed

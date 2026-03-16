@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as cp from 'child_process';
+import * as path from 'path';
 import { ngOutput, extensionTerminals } from './state';
 import {
   resolveWorkspaceAndAngularJson,
@@ -10,6 +11,7 @@ import {
   setLastProject,
 } from './utils';
 import { spawnCapture } from './dependencies';
+import { parseNgUpdateOutput } from './pure-utils';
 
 // ── Serve ─────────────────────────────────────────────────────────────────────
 
@@ -93,9 +95,9 @@ export async function testAngularProject() {
   const uiFlag = uiMode ? ' --ui' : '';
 
   if (picked === CURRENT_FILE && activeFile) {
-    const relPath = require('path').relative(workspaceRoot, activeFile).replaceAll(require('path').sep, '/');
+    const relPath = path.relative(workspaceRoot, activeFile).replaceAll(path.sep, '/');
     testCommand = `ng test --include ${relPath}${watchFlag}${uiFlag}`;
-    terminalName = `ng test (${require('path').basename(activeFile)})`;
+    terminalName = `ng test (${path.basename(activeFile)})`;
   } else if (CURRENT_PROJECT_LABEL && picked === CURRENT_PROJECT_LABEL) {
     setLastProject('test', currentInTestable!);
     testCommand = `ng test --project ${currentInTestable}${watchFlag}${uiFlag}`;
@@ -255,19 +257,6 @@ export function spawnNg(args: string[], cwd: string): Promise<number> {
   });
 }
 
-export function parseNgUpdateOutput(output: string): Array<{ name: string; versions: string }> {
-  const clean = output.replace(/\x1b\[[\d;]*[A-Za-z]/g, '');
-  const results: Array<{ name: string; versions: string }> = [];
-  for (const line of clean.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed) { continue; }
-    const match = trimmed.match(/^(@?[\w/.-]+)\s+(\S+\s*->\s*\S+)/);
-    if (match) {
-      results.push({ name: match[1], versions: match[2].replace(/\s+/g, ' ') });
-    }
-  }
-  return results;
-}
 
 export async function updateAngularPackages() {
   const resolved = await resolveWorkspaceAndAngularJson();
