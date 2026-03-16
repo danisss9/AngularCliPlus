@@ -61,7 +61,7 @@ export function semverSatisfies(installed: string, required: string): boolean {
 
   try {
     const coerced = semver.coerce(installed);
-    if (!coerced) { return false; }
+    if (!coerced) { return true; } // unparseable installed version: safe default
     return semver.satisfies(coerced, req);
   } catch {
     return true;
