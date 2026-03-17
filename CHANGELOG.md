@@ -4,6 +4,12 @@ All notable changes to the "angular-cli-plus" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.3.2]
+
+### Changed
+
+- Internal code readability improvements and expanded test coverage
+
 ## [1.3.1]
 
 ### Changed
