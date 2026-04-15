@@ -33,11 +33,11 @@ export function invalidateAngularJsonCache(workspaceRoot: string): void {
  * Reads and parses angular.json for the given workspace root.
  * Returns the cached result if the file has not changed since the last read.
  */
-function readAngularJson(workspaceRoot: string): AngularJson | null {
+async function readAngularJson(workspaceRoot: string): Promise<AngularJson | null> {
   const filePath = path.join(workspaceRoot, 'angular.json');
   let mtimeMs: number;
   try {
-    mtimeMs = fs.statSync(filePath).mtimeMs;
+    mtimeMs = (await fs.promises.stat(filePath)).mtimeMs;
   } catch {
     return null;
   }
@@ -48,10 +48,11 @@ function readAngularJson(workspaceRoot: string): AngularJson | null {
   }
 
   try {
-    const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as AngularJson;
+    const parsed = JSON.parse(await fs.promises.readFile(filePath, 'utf-8')) as AngularJson;
     angularJsonCache.set(workspaceRoot, { projects: parsed.projects ?? {}, mtimeMs });
     return parsed;
-  } catch {
+  } catch (err) {
+    logDiagnostic(`Failed to parse angular.json at ${filePath}: ${err}`);
     return null;
   }
 }
@@ -90,7 +91,7 @@ export async function resolveWorkspaceAndAngularJson(): Promise<{
     return null;
   }
 
-  const angularJson = readAngularJson(workspaceRoot);
+  const angularJson = await readAngularJson(workspaceRoot);
   if (!angularJson) {
     vscode.window.showErrorMessage('Failed to parse angular.json');
     return null;
@@ -203,7 +204,6 @@ export async function pickProjectWithCurrentFile(
 // ── Terminal helpers ───────────────────────────────────────────────────────────
 
 const RESTART_CTRL_C_DELAY_MS = 500;
-const RESTART_CONFIRM_DELAY_MS = 300;
 
 /**
  * Creates a terminal, runs a command, and shows a success notification on exit
@@ -216,7 +216,7 @@ const RESTART_CONFIRM_DELAY_MS = 300;
  *   others the existing terminal is focused and returned as-is.
  * - Terminated/errored: the old terminal is disposed and a fresh one is opened.
  */
-export function runInTerminal(
+export async function runInTerminal(
   name: string,
   command: string,
   cwd: string,
@@ -226,7 +226,7 @@ export function runInTerminal(
     retryLabel?: string;
     onRetry?: () => void;
   },
-): vscode.Terminal {
+): Promise<vscode.Terminal> {
   // ── Reuse check ────────────────────────────────────────────────────────────
   const existing = [...extensionTerminals].find((t) => t.name === name);
   if (existing) {
@@ -234,24 +234,28 @@ export function runInTerminal(
     if (isRunning) {
       if (options?.trackAsServe) {
         // Serve/watch terminal already running — offer restart
-        void (async () => {
-          const action = await vscode.window.showInformationMessage(
-            `"${name}" is already running. Restart it?`,
-            'Restart',
-            'Show',
-          );
-          if (action === 'Restart') {
-            existing.show();
-            existing.sendText('\x03');
-            await new Promise<void>((r) => setTimeout(r, RESTART_CTRL_C_DELAY_MS));
-            existing.sendText('y');
-            await new Promise<void>((r) => setTimeout(r, RESTART_CONFIRM_DELAY_MS));
-            existing.sendText(command);
-          } else if (action === 'Show') {
-            existing.show();
-          }
-        })();
-        return existing;
+        const action = await vscode.window.showInformationMessage(
+          `"${name}" is already running. Restart it?`,
+          'Restart',
+          'Show',
+        );
+        // Re-check terminal is still valid after awaiting user input
+        if (existing.exitStatus !== undefined) {
+          extensionTerminals.delete(existing);
+          removePersistedTerminalEntry(name);
+          // Fall through to create a new terminal below
+        } else if (action === 'Restart') {
+          existing.show();
+          existing.sendText('\x03');
+          await new Promise<void>((r) => setTimeout(r, RESTART_CTRL_C_DELAY_MS));
+          existing.sendText(command);
+          return existing;
+        } else if (action === 'Show') {
+          existing.show();
+          return existing;
+        } else {
+          return existing;
+        }
       } else {
         // Non-serve terminal already running — just show it
         existing.show();
@@ -322,7 +326,7 @@ export function runInTerminal(
           if (options.onRetry) {
             options.onRetry();
           } else {
-            runInTerminal(name, command, cwd, options);
+            void runInTerminal(name, command, cwd, options);
           }
         }
       } else {

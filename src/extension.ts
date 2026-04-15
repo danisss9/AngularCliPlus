@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
 import type { SchematicType } from './types';
 import {
   npmOutput,
@@ -130,14 +132,18 @@ export function activate(context: vscode.ExtensionContext) {
 
   for (const folder of vscode.workspace.workspaceFolders ?? []) {
     setupDependencyCheck(context, folder.uri.fsPath);
-    checkToolVersions(folder.uri.fsPath);
+    if (fs.existsSync(path.join(folder.uri.fsPath, 'angular.json'))) {
+      void checkToolVersions(folder.uri.fsPath);
+    }
   }
 
   context.subscriptions.push(
     vscode.workspace.onDidChangeWorkspaceFolders((e) => {
       for (const folder of e.added) {
         setupDependencyCheck(context, folder.uri.fsPath);
-        checkToolVersions(folder.uri.fsPath);
+        if (fs.existsSync(path.join(folder.uri.fsPath, 'angular.json'))) {
+          void checkToolVersions(folder.uri.fsPath);
+        }
       }
     }),
   );
@@ -155,7 +161,7 @@ export function activate(context: vscode.ExtensionContext) {
           .get<boolean>('checkToolVersions.enabled', true);
         if (tvEnabled) {
           for (const folder of vscode.workspace.workspaceFolders ?? []) {
-            checkToolVersions(folder.uri.fsPath);
+            void checkToolVersions(folder.uri.fsPath);
           }
         }
       }

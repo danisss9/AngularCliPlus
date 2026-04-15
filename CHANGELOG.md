@@ -4,6 +4,38 @@ All notable changes to the "angular-cli-plus" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.3.4]
+
+### Fixed
+
+- **Schematics run from wrong directory** — `ng generate` commands now run from the workspace root (where `angular.json` lives) instead of the right-clicked folder, which previously caused the command to fail
+- **Spawn promises could hang forever** — all child-process spawn helpers (`spawnNg`, `spawnNpm`, `spawnCapture`, `spawnShellCommand`) now handle the `error` event so the promise resolves instead of hanging indefinitely when the binary is not found
+- **Stray "y" sent on terminal restart** — restarting a serve/watch terminal no longer sends a blind `y` keystroke (intended only for `ng serve`'s confirmation prompt) which could be misinterpreted by other processes like `ng build --watch` or Storybook
+- **Case-sensitive path matching on Windows** — project detection from `angular.json` now compares paths case-insensitively on Windows, preventing mismatches when drive letters or folder names differ in casing
+- **QuickPick resource leak** — the Close Terminals picker is now properly `.dispose()`d after use
+- **Version prefix regex** — the tool-version check regex was matching `v/` instead of `v`; corrected to `/^v/`
+- **Unquoted string values in generated commands** — `ng generate` flag values containing spaces or shell metacharacters are now quoted
+- **Synchronous file I/O** — `angular.json` is now read with `fs.promises` instead of blocking the extension host thread
+- **Debug session listener leak** — the `onDidTerminateDebugSession` listener is now cleaned up when the terminal closes, preventing listener accumulation across debug sessions
+- **esbuild error handler crash** — the build error reporter now guards against `null` location objects
+- **Command validation hardening** — `validateCustomCommand` now also blocks `$()` and backtick shell substitution in addition to the existing `; rm`-style patterns
+- **Spurious tool-version warnings** — `checkToolVersions` on activation is now gated on `angular.json` existing, so non-Angular workspaces with an `engines` field no longer receive unexpected notifications
+- **Unhandled `fs.watch` errors** — the `.git/HEAD` file watcher now has an `error` event handler to prevent uncaught exceptions
+- **Command injection in shell argument escaping** — `buildNgGenerateCommand` now escapes backslashes and double quotes inside option values before wrapping them in double quotes, preventing shell breakout via crafted option values
+- **Unescaped output path in debug server command** — the `{outputPath}` placeholder in the static server command template is now properly escaped before quoting, preventing command injection via paths containing quotes or shell metacharacters
+- **Fire-and-forget terminal restart dialog** — `runInTerminal` is now `async`; the restart confirmation dialog is properly awaited instead of being dispatched as a detached promise, ensuring callers can rely on the returned terminal being in the expected state
+- **Listener cleanup race in debug sessions** — the `onDidTerminateDebugSession` and `onDidCloseTerminal` listeners now share a guarded `disposeListeners()` helper that prevents double-disposal when both events fire near-simultaneously
+- **Unhandled errors in browser debug launcher** — the `withProgress` callback in `launchBrowserDebugSession` is now wrapped in a `try/catch` that logs the error and shows a user-facing notification instead of silently swallowing failures
+- **Terminal reuse race condition** — `runInTerminal` now re-checks `exitStatus` after awaiting the user's restart/show dialog; if the terminal was disposed while the dialog was open, it falls through to create a fresh terminal instead of operating on a stale reference
+- **Double socket destruction in `waitForPort`** — socket event handlers now use a `handled` flag to ensure `destroy()` and the retry timer are only triggered once, even if both `timeout` and `error` events fire
+- **Improved custom command validation** — `validateCustomCommand` now additionally blocks chained `powershell`, `cmd`, `bash`, `sh`, `curl`, `wget`, `nc`, `ncat` invocations and suspicious output redirections to absolute paths
+- **Silent `angular.json` parse errors** — parse failures in `readAngularJson` now log the underlying error message to the diagnostics output channel instead of silently returning `null`
+- **Unknown browser setting silently defaults to Chrome** — unrecognised `angularCliPlus.debug.browser` values now log a diagnostic warning before falling back to Chrome
+- **Unquoted project names in shell commands** — all `--project` arguments in `ng serve`, `ng test`, `ng lint`, `ng build`, and `ng build --watch` commands are now quoted to handle project names containing spaces or special characters
+- **Unquoted file path in `ng test --include`** — the relative spec-file path is now quoted to prevent breakage on paths with spaces
+- **Unhandled promise rejection in dependency check** — the `setTimeout` callback in `scheduleDependencyCheck` now catches and logs rejections from the async `checkDependencies` call; fire-and-forget `checkToolVersions` calls in activation are now explicitly `void`-prefixed
+- **Unsafe non-null assertions in debug commands** — `entries.find(...)!` in storybook debug now returns early if no match is found instead of crashing; `activeServeTerminals.get(...)!` in restart now shows an error message instead of throwing
+
 ## [1.3.3]
 
 ### Fixed

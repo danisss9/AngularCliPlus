@@ -18,6 +18,10 @@ export function spawnNpm(args: string[], cwd: string): Promise<number> {
     const proc = cp.spawn('npm', args, { cwd, shell: true });
     proc.stdout.on('data', (d: Buffer) => npmOutput.append(d.toString()));
     proc.stderr.on('data', (d: Buffer) => npmOutput.append(d.toString()));
+    proc.on('error', (err) => {
+      npmOutput.appendLine(`Failed to start process: ${err.message}`);
+      resolve(1);
+    });
     proc.on('close', (code) => resolve(code ?? 1));
   });
 }
@@ -28,6 +32,10 @@ export function spawnShellCommand(command: string, cwd: string): Promise<number>
     const proc = cp.spawn(command, [], { cwd, shell: true });
     proc.stdout.on('data', (d: Buffer) => npmOutput.append(d.toString()));
     proc.stderr.on('data', (d: Buffer) => npmOutput.append(d.toString()));
+    proc.on('error', (err) => {
+      npmOutput.appendLine(`Failed to start process: ${err.message}`);
+      resolve(1);
+    });
     proc.on('close', (code) => resolve(code ?? 1));
   });
 }
@@ -75,7 +83,9 @@ export async function runNpmInstall(clean: boolean, force = false, workspaceRoot
     if (exitCode === 0) {
       vscode.window.showInformationMessage('Clean install completed successfully.');
     } else {
-      vscode.window.showErrorMessage("Custom clean install failed. Check the 'Angular CLI Plus: npm' output for details.");
+      vscode.window.showErrorMessage(
+        "Custom clean install failed. Check the 'Angular CLI Plus: npm' output for details.",
+      );
     }
     return;
   }
@@ -91,7 +101,9 @@ export async function runNpmInstall(clean: boolean, force = false, workspaceRoot
     if (exitCode === 0) {
       vscode.window.showInformationMessage('Install completed successfully.');
     } else {
-      vscode.window.showErrorMessage("Custom install failed. Check the 'Angular CLI Plus: npm' output for details.");
+      vscode.window.showErrorMessage(
+        "Custom install failed. Check the 'Angular CLI Plus: npm' output for details.",
+      );
     }
     return;
   }
@@ -159,7 +171,10 @@ export function setupDependencyCheck(context: vscode.ExtensionContext, workspace
   const gitHead = path.join(workspaceRoot, '.git', 'HEAD');
   if (fs.existsSync(gitHead)) {
     try {
-      const fsWatcher = fs.watch(gitHead, () => scheduleDependencyCheck(workspaceRoot, DEP_CHECK_CHANGE_DELAY_MS));
+      const fsWatcher = fs.watch(gitHead, () =>
+        scheduleDependencyCheck(workspaceRoot, DEP_CHECK_CHANGE_DELAY_MS),
+      );
+      fsWatcher.on('error', (err) => logDiagnostic(`fs.watch error for .git/HEAD: ${err}`));
       context.subscriptions.push({ dispose: () => fsWatcher.close() });
     } catch (err) {
       logDiagnostic(`fs.watch unavailable for .git/HEAD (${err}), falling back to VS Code watcher`);
@@ -196,7 +211,9 @@ export function scheduleDependencyCheck(workspaceRoot: string, delayMs: number) 
     workspaceRoot,
     setTimeout(() => {
       depCheckTimeouts.delete(workspaceRoot);
-      checkDependencies(workspaceRoot);
+      checkDependencies(workspaceRoot).catch((err) =>
+        logDiagnostic(`Dependency check failed: ${err}`),
+      );
     }, delayMs),
   );
 }
@@ -240,7 +257,9 @@ export async function checkDependencies(workspaceRoot: string) {
     Object.entries(allDeps).map(async ([name, required]) => {
       const nmPkg = path.join(nmDir, name, 'package.json');
       try {
-        const { version } = JSON.parse(await fs.promises.readFile(nmPkg, 'utf-8')) as { version: string };
+        const { version } = JSON.parse(await fs.promises.readFile(nmPkg, 'utf-8')) as {
+          version: string;
+        };
         if (!semverSatisfies(version, required)) {
           outdated.push(name);
         }
@@ -282,12 +301,23 @@ export async function runCheckDependencies(workspaceRoot: string) {
 
 // ── Tool version checking ─────────────────────────────────────────────────────
 
-export function spawnCapture(cmd: string, args: string[], cwd: string): Promise<{ stdout: string; exitCode: number }> {
+export function spawnCapture(
+  cmd: string,
+  args: string[],
+  cwd: string,
+): Promise<{ stdout: string; exitCode: number }> {
   return new Promise((resolve) => {
     let out = '';
     const proc = cp.spawn(cmd, args, { cwd, shell: true });
-    proc.stdout.on('data', (d: Buffer) => { out += d.toString(); });
-    proc.stderr.on('data', (d: Buffer) => { out += d.toString(); });
+    proc.stdout.on('data', (d: Buffer) => {
+      out += d.toString();
+    });
+    proc.stderr.on('data', (d: Buffer) => {
+      out += d.toString();
+    });
+    proc.on('error', (err) =>
+      resolve({ stdout: `Failed to start process: ${err.message}`, exitCode: 1 }),
+    );
     proc.on('close', (code) => resolve({ stdout: out, exitCode: code ?? 1 }));
   });
 }
@@ -305,7 +335,11 @@ export async function attemptToolUpdate(
   const tryCmd = async (cmd: string, args: string[]): Promise<boolean> => {
     let exitCode = 1;
     await vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: `Updating ${tool}…`, cancellable: false },
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: `Updating ${tool}…`,
+        cancellable: false,
+      },
       async () => {
         exitCode = await spawnShellCommand(`${cmd} ${args.join(' ')}`, workspaceRoot);
       },
@@ -313,12 +347,12 @@ export async function attemptToolUpdate(
     return exitCode === 0;
   };
 
-  if (selfUpdate && await tryCmd(selfUpdate.cmd, selfUpdate.args)) {
+  if (selfUpdate && (await tryCmd(selfUpdate.cmd, selfUpdate.args))) {
     vscode.window.showInformationMessage(`${tool} updated successfully.`);
     return;
   }
 
-  if (npmGlobalPkg && await tryCmd('npm', ['install', '-g', npmGlobalPkg])) {
+  if (npmGlobalPkg && (await tryCmd('npm', ['install', '-g', npmGlobalPkg]))) {
     vscode.window.showInformationMessage(`${tool} updated successfully via npm.`);
     return;
   }
@@ -348,13 +382,16 @@ export async function checkToolVersions(workspaceRoot: string) {
   }
 
   const engines = pkg.engines ?? {};
-  const toolInfo: Record<string, {
-    cmd: string;
-    args: string[];
-    url: string;
-    selfUpdate?: { cmd: string; args: string[] };
-    npmGlobalPkg?: string;
-  }> = {
+  const toolInfo: Record<
+    string,
+    {
+      cmd: string;
+      args: string[];
+      url: string;
+      selfUpdate?: { cmd: string; args: string[] };
+      npmGlobalPkg?: string;
+    }
+  > = {
     node: {
       cmd: 'node',
       args: ['--version'],
@@ -398,12 +435,26 @@ export async function checkToolVersions(workspaceRoot: string) {
         const info = toolInfo[tool];
         const { stdout, exitCode } = await spawnCapture(info.cmd, info.args, workspaceRoot);
         if (exitCode !== 0) {
-          invalid.push({ tool, required, installed: null, url: info.url, selfUpdate: info.selfUpdate, npmGlobalPkg: info.npmGlobalPkg });
+          invalid.push({
+            tool,
+            required,
+            installed: null,
+            url: info.url,
+            selfUpdate: info.selfUpdate,
+            npmGlobalPkg: info.npmGlobalPkg,
+          });
           return;
         }
-        const installed = stdout.trim().replace(/^v\//, '');
+        const installed = stdout.trim().replace(/^v/, '');
         if (!semverSatisfies(installed, required)) {
-          invalid.push({ tool, required, installed, url: info.url, selfUpdate: info.selfUpdate, npmGlobalPkg: info.npmGlobalPkg });
+          invalid.push({
+            tool,
+            required,
+            installed,
+            url: info.url,
+            selfUpdate: info.selfUpdate,
+            npmGlobalPkg: info.npmGlobalPkg,
+          });
         }
       }),
   );
@@ -411,14 +462,21 @@ export async function checkToolVersions(workspaceRoot: string) {
   for (const { tool, required, installed, url, selfUpdate, npmGlobalPkg } of invalid) {
     if (!installed) {
       if (npmGlobalPkg) {
-        const npmAvailable = (await spawnCapture('npm', ['--version'], workspaceRoot)).exitCode === 0;
+        const npmAvailable =
+          (await spawnCapture('npm', ['--version'], workspaceRoot)).exitCode === 0;
         if (npmAvailable) {
           npmOutput.clear();
           npmOutput.show(true);
           let exitCode = 1;
           await vscode.window.withProgress(
-            { location: vscode.ProgressLocation.Notification, title: `Installing ${tool}…`, cancellable: false },
-            async () => { exitCode = await spawnShellCommand(`npm install -g ${npmGlobalPkg}`, workspaceRoot); },
+            {
+              location: vscode.ProgressLocation.Notification,
+              title: `Installing ${tool}…`,
+              cancellable: false,
+            },
+            async () => {
+              exitCode = await spawnShellCommand(`npm install -g ${npmGlobalPkg}`, workspaceRoot);
+            },
           );
           if (exitCode === 0) {
             vscode.window.showInformationMessage(`${tool} installed successfully.`);
@@ -445,7 +503,9 @@ export async function checkToolVersions(workspaceRoot: string) {
     }
 
     const canAutoUpdate = !!(selfUpdate || npmGlobalPkg);
-    const buttons: string[] = canAutoUpdate ? ['Update', 'Open Download Page'] : ['Open Download Page'];
+    const buttons: string[] = canAutoUpdate
+      ? ['Update', 'Open Download Page']
+      : ['Open Download Page'];
     const action = await vscode.window.showWarningMessage(
       `${tool} ${installed} does not satisfy required version ${required}`,
       ...buttons,

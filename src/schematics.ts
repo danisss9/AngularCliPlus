@@ -4,7 +4,11 @@ import * as path from 'path';
 import type { AngularJson, GenerateOptions, SchematicType } from './types';
 import { runInTerminal } from './utils';
 import { logDiagnostic } from './state';
-import { buildNgGenerateCommand as buildCommand, isValidSchematicName, findMatchingProjects } from './pure-utils';
+import {
+  buildNgGenerateCommand as buildCommand,
+  isValidSchematicName,
+  findMatchingProjects,
+} from './pure-utils';
 
 export async function generatengSchematic(schematic: SchematicType, uri: vscode.Uri) {
   const folderPath = uri.fsPath;
@@ -48,7 +52,7 @@ export async function generatengSchematic(schematic: SchematicType, uri: vscode.
 
   const finalCommand = `${buildCommand(schematic, options)} ${name}`;
 
-  runInTerminal(`Angular CLI Plus: ${schematic}`, finalCommand, folderPath, {
+  runInTerminal(`Angular CLI Plus: ${schematic}`, finalCommand, workspaceFolder.uri.fsPath, {
     successMessage: `${schematic} "${name}" generated successfully.`,
   });
 }
@@ -134,4 +138,3 @@ export function getOptionsForSchematic(
 
   return options;
 }
-

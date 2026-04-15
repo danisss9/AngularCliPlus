@@ -15,7 +15,6 @@ import {
 // ── Timing constants ───────────────────────────────────────────────────────────
 const RESTART_DEBUG_STOP_DELAY_MS = 500;
 const RESTART_CTRL_C_DELAY_MS = 300;
-const RESTART_CONFIRM_DELAY_MS = 700;
 const PORT_CHECK_INTERVAL_MS = 1000;
 const PORT_CHECK_SOCKET_TIMEOUT_MS = 1000;
 const STOP_ALL_DELAYED_MS = 2000;
@@ -26,7 +25,10 @@ function findExecutable(candidates: string[]): string | undefined {
   return candidates.find((p) => fs.existsSync(p));
 }
 
-export function getBrowserDebugConfig(browser: string, executableOverride: string): BrowserDebugConfig | null {
+export function getBrowserDebugConfig(
+  browser: string,
+  executableOverride: string,
+): BrowserDebugConfig | null {
   if (executableOverride) {
     if (!fs.existsSync(executableOverride)) {
       vscode.window.showErrorMessage(`Browser executable not found: ${executableOverride}`);
@@ -45,15 +47,23 @@ export function getBrowserDebugConfig(browser: string, executableOverride: strin
       const exe = findExecutable(
         process.platform === 'win32'
           ? [
-              path.join(process.env['PROGRAMFILES'] ?? 'C:\\Program Files', 'BraveSoftware\\Brave-Browser\\Application\\brave.exe'),
-              path.join(process.env['LOCALAPPDATA'] ?? '', 'BraveSoftware\\Brave-Browser\\Application\\brave.exe'),
+              path.join(
+                process.env['PROGRAMFILES'] ?? 'C:\\Program Files',
+                'BraveSoftware\\Brave-Browser\\Application\\brave.exe',
+              ),
+              path.join(
+                process.env['LOCALAPPDATA'] ?? '',
+                'BraveSoftware\\Brave-Browser\\Application\\brave.exe',
+              ),
             ]
           : process.platform === 'darwin'
             ? ['/Applications/Brave Browser.app/Contents/MacOS/Brave Browser']
             : ['/usr/bin/brave-browser', '/usr/bin/brave'],
       );
       if (!exe) {
-        vscode.window.showErrorMessage('Brave browser not found. Install it or set "angularCliPlus.debug.browserExecutablePath".');
+        vscode.window.showErrorMessage(
+          'Brave browser not found. Install it or set "angularCliPlus.debug.browserExecutablePath".',
+        );
         return null;
       }
       return { type: 'chrome', runtimeExecutable: exe };
@@ -70,7 +80,9 @@ export function getBrowserDebugConfig(browser: string, executableOverride: strin
             : ['/usr/bin/opera'],
       );
       if (!exe) {
-        vscode.window.showErrorMessage('Opera not found. Install it or set "angularCliPlus.debug.browserExecutablePath".');
+        vscode.window.showErrorMessage(
+          'Opera not found. Install it or set "angularCliPlus.debug.browserExecutablePath".',
+        );
         return null;
       }
       return { type: 'chrome', runtimeExecutable: exe };
@@ -84,7 +96,9 @@ export function getBrowserDebugConfig(browser: string, executableOverride: strin
             : [],
       );
       if (!exe) {
-        vscode.window.showErrorMessage('Opera GX not found. Install it or set "angularCliPlus.debug.browserExecutablePath".');
+        vscode.window.showErrorMessage(
+          'Opera GX not found. Install it or set "angularCliPlus.debug.browserExecutablePath".',
+        );
         return null;
       }
       return { type: 'chrome', runtimeExecutable: exe };
@@ -98,6 +112,7 @@ export function getBrowserDebugConfig(browser: string, executableOverride: strin
       }
       return { type: 'safari' };
     default:
+      logDiagnostic(`Unknown browser setting "${browser}", defaulting to Chrome`);
       return { type: 'chrome' };
   }
 }
@@ -115,7 +130,13 @@ export async function debugAngularProject(context: vscode.ExtensionContext) {
     .filter(([, p]) => !p.projectType || p.projectType === 'application')
     .map(([n]) => n);
 
-  const projectName = await pickProjectWithCurrentFile(workspaceRoot, projects, appProjects, 'Angular Debug: Select Project', 'debug');
+  const projectName = await pickProjectWithCurrentFile(
+    workspaceRoot,
+    projects,
+    appProjects,
+    'Angular Debug: Select Project',
+    'debug',
+  );
   if (!projectName) {
     return;
   }
@@ -131,13 +152,21 @@ export async function debugAngularProject(context: vscode.ExtensionContext) {
   }
   const sessionName = `Angular Debug (${projectName})`;
 
-  const serveCommand = `ng serve --project ${projectName}`;
+  const serveCommand = `ng serve --project "${projectName}"`;
   const serveTerminalName = `ng serve (${projectName})`;
-  const terminal = runInTerminal(serveTerminalName, serveCommand, workspaceRoot, { trackAsServe: true });
+  const terminal = await runInTerminal(serveTerminalName, serveCommand, workspaceRoot, {
+    trackAsServe: true,
+  });
 
   const serveEntry = activeServeTerminals.get(serveTerminalName);
   if (serveEntry) {
-    serveEntry.debugConfig = { workspaceFolder, port, sessionName, browserSetting, browserDebugConfig };
+    serveEntry.debugConfig = {
+      workspaceFolder,
+      port,
+      sessionName,
+      browserSetting,
+      browserDebugConfig,
+    };
   }
 
   logDiagnostic(`Starting debug session for ${projectName} on port ${port}`);
@@ -151,7 +180,9 @@ export async function debugAngularProject(context: vscode.ExtensionContext) {
     serverName: 'ng serve',
     onSessionStarted: (session) => {
       const e = activeServeTerminals.get(serveTerminalName);
-      if (e) { e.activeDebugSession = session; }
+      if (e) {
+        e.activeDebugSession = session;
+      }
     },
   });
 }
@@ -167,7 +198,9 @@ export async function debugStorybookProject(context: vscode.ExtensionContext) {
   if (workspaceFolders.length === 1) {
     workspaceFolder = workspaceFolders[0];
   } else {
-    const picked = await vscode.window.showWorkspaceFolderPick({ placeHolder: 'Select workspace folder' });
+    const picked = await vscode.window.showWorkspaceFolderPick({
+      placeHolder: 'Select workspace folder',
+    });
     if (!picked) {
       return;
     }
@@ -187,7 +220,9 @@ export async function debugStorybookProject(context: vscode.ExtensionContext) {
   const angularJsonPath = path.join(workspaceRoot, 'angular.json');
   if (fs.existsSync(angularJsonPath)) {
     try {
-      const angularJson = JSON.parse(fs.readFileSync(angularJsonPath, 'utf-8')) as { projects?: Record<string, AngularProject> };
+      const angularJson = JSON.parse(fs.readFileSync(angularJsonPath, 'utf-8')) as {
+        projects?: Record<string, AngularProject>;
+      };
       for (const [projectName, project] of Object.entries(angularJson.projects ?? {})) {
         if (project.architect?.storybook) {
           entries.push({
@@ -206,7 +241,9 @@ export async function debugStorybookProject(context: vscode.ExtensionContext) {
     const pkgPath = path.join(workspaceRoot, 'package.json');
     if (fs.existsSync(pkgPath)) {
       try {
-        const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8')) as { scripts?: Record<string, string> };
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8')) as {
+          scripts?: Record<string, string>;
+        };
         if (pkg.scripts?.storybook) {
           entries.push({ label: 'storybook', command: 'npm run storybook', port: 6006 });
         }
@@ -230,10 +267,7 @@ export async function debugStorybookProject(context: vscode.ExtensionContext) {
     const lastStorybook = getLastProject('storybookDebug');
     const lastEntry = lastStorybook ? entries.find((e) => e.label === lastStorybook) : null;
     const labels = entries.map((e) => e.label);
-    const items = [
-      ...(lastEntry ? [`$(history)  Last used (${lastEntry.label})`] : []),
-      ...labels,
-    ];
+    const items = [...(lastEntry ? [`$(history)  Last used (${lastEntry.label})`] : []), ...labels];
     const picked = await vscode.window.showQuickPick(items, {
       title: 'Storybook Debug: Select Project',
       placeHolder: 'Select a project',
@@ -244,7 +278,11 @@ export async function debugStorybookProject(context: vscode.ExtensionContext) {
     if (lastEntry && picked === `$(history)  Last used (${lastEntry.label})`) {
       entry = lastEntry;
     } else {
-      entry = entries.find((e) => e.label === picked)!;
+      const found = entries.find((e) => e.label === picked);
+      if (!found) {
+        return;
+      }
+      entry = found;
       setLastProject('storybookDebug', entry.label);
     }
   }
@@ -262,11 +300,19 @@ export async function debugStorybookProject(context: vscode.ExtensionContext) {
 
   const sessionName = `Storybook Debug (${entry.label})`;
   const storybookTerminalName = `storybook (${entry.label})`;
-  const terminal = runInTerminal(storybookTerminalName, entry.command, workspaceRoot, { trackAsServe: true });
+  const terminal = await runInTerminal(storybookTerminalName, entry.command, workspaceRoot, {
+    trackAsServe: true,
+  });
 
   const storybookEntry = activeServeTerminals.get(storybookTerminalName);
   if (storybookEntry) {
-    storybookEntry.debugConfig = { workspaceFolder, port, sessionName, browserSetting, browserDebugConfig };
+    storybookEntry.debugConfig = {
+      workspaceFolder,
+      port,
+      sessionName,
+      browserSetting,
+      browserDebugConfig,
+    };
   }
 
   logDiagnostic(`Starting storybook debug session for ${entry.label} on port ${port}`);
@@ -280,12 +326,18 @@ export async function debugStorybookProject(context: vscode.ExtensionContext) {
     serverName: 'Storybook',
     onSessionStarted: (session) => {
       const e = activeServeTerminals.get(storybookTerminalName);
-      if (e) { e.activeDebugSession = session; }
+      if (e) {
+        e.activeDebugSession = session;
+      }
     },
   });
 }
 
-export function resolveOutputPath(project: AngularProject, projectName: string, workspaceRoot: string): string {
+export function resolveOutputPath(
+  project: AngularProject,
+  projectName: string,
+  workspaceRoot: string,
+): string {
   const outputPath = project.architect?.build?.options?.outputPath;
 
   if (typeof outputPath === 'string') {
@@ -315,7 +367,13 @@ export async function debugBuildWatchProject(context: vscode.ExtensionContext) {
     .filter(([, p]) => !p.projectType || p.projectType === 'application')
     .map(([n]) => n);
 
-  const projectName = await pickProjectWithCurrentFile(workspaceRoot, projects, appProjects, 'Angular Debug Build Watch: Select Project', 'debugBuildWatch');
+  const projectName = await pickProjectWithCurrentFile(
+    workspaceRoot,
+    projects,
+    appProjects,
+    'Angular Debug Build Watch: Select Project',
+    'debugBuildWatch',
+  );
   if (!projectName) {
     return;
   }
@@ -328,13 +386,17 @@ export async function debugBuildWatchProject(context: vscode.ExtensionContext) {
       ? vsConfig.get<string>('build.configuration', 'production')
       : watchConfig;
   const configFlag = effectiveConfig !== 'default' ? ` --configuration=${effectiveConfig}` : '';
-  const buildCommand = `ng build --project ${projectName}${configFlag} --watch`;
+  const buildCommand = `ng build --project "${projectName}"${configFlag} --watch`;
 
   const outputPath = resolveOutputPath(projects[projectName], projectName, workspaceRoot);
   const port = vsConfig.get<number>('buildWatch.servePort', 4201);
-  const serverCommandTemplate = vsConfig.get<string>('buildWatch.staticServerCommand', 'npx serve {outputPath} -l {port}');
+  const serverCommandTemplate = vsConfig.get<string>(
+    'buildWatch.staticServerCommand',
+    'npx serve {outputPath} -l {port}',
+  );
+  const escapedOutputPath = outputPath.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
   const serverCommand = serverCommandTemplate
-    .replace('{outputPath}', `"${outputPath}"`)
+    .replace('{outputPath}', `"${escapedOutputPath}"`)
     .replace('{port}', String(port));
 
   const browserSetting = vsConfig.get<string>('debug.browser', 'chrome');
@@ -348,12 +410,22 @@ export async function debugBuildWatchProject(context: vscode.ExtensionContext) {
   const serveTerminalName = `serve (${projectName})`;
   const sessionName = `Angular Debug Build Watch (${projectName})`;
 
-  const buildTerminal = runInTerminal(buildTerminalName, buildCommand, workspaceRoot, { trackAsServe: true });
-  const serveTerminal = runInTerminal(serveTerminalName, serverCommand, workspaceRoot, { trackAsServe: true });
+  const buildTerminal = await runInTerminal(buildTerminalName, buildCommand, workspaceRoot, {
+    trackAsServe: true,
+  });
+  const serveTerminal = await runInTerminal(serveTerminalName, serverCommand, workspaceRoot, {
+    trackAsServe: true,
+  });
 
   const serveEntry = activeServeTerminals.get(serveTerminalName);
   if (serveEntry) {
-    serveEntry.debugConfig = { workspaceFolder, port, sessionName, browserSetting, browserDebugConfig };
+    serveEntry.debugConfig = {
+      workspaceFolder,
+      port,
+      sessionName,
+      browserSetting,
+      browserDebugConfig,
+    };
   }
 
   logDiagnostic(`Starting build watch debug session for ${projectName} on port ${port}`);
@@ -368,7 +440,9 @@ export async function debugBuildWatchProject(context: vscode.ExtensionContext) {
     additionalTerminals: [buildTerminal],
     onSessionStarted: (session) => {
       const e = activeServeTerminals.get(serveTerminalName);
-      if (e) { e.activeDebugSession = session; }
+      if (e) {
+        e.activeDebugSession = session;
+      }
     },
   });
 }
@@ -397,7 +471,11 @@ export async function restartAngularServe(context: vscode.ExtensionContext) {
     projectName = picked.label;
   }
 
-  const entry = activeServeTerminals.get(projectName)!;
+  const entry = activeServeTerminals.get(projectName);
+  if (!entry) {
+    vscode.window.showErrorMessage(`Terminal "${projectName}" is no longer active.`);
+    return;
+  }
 
   if (entry.activeDebugSession) {
     await vscode.debug.stopDebugging(entry.activeDebugSession);
@@ -408,12 +486,11 @@ export async function restartAngularServe(context: vscode.ExtensionContext) {
   entry.terminal.show();
   entry.terminal.sendText('\x03');
   await new Promise<void>((r) => setTimeout(r, RESTART_CTRL_C_DELAY_MS));
-  entry.terminal.sendText('y');
-  await new Promise<void>((r) => setTimeout(r, RESTART_CONFIRM_DELAY_MS));
   entry.terminal.sendText(entry.command);
 
   if (entry.debugConfig) {
-    const { workspaceFolder, port, sessionName, browserSetting, browserDebugConfig } = entry.debugConfig;
+    const { workspaceFolder, port, sessionName, browserSetting, browserDebugConfig } =
+      entry.debugConfig;
     launchBrowserDebugSession(context, workspaceFolder, entry.terminal, {
       port,
       sessionName,
@@ -459,68 +536,100 @@ export function launchBrowserDebugSession(
   };
 
   vscode.window.withProgress(
-    { location: vscode.ProgressLocation.Notification, title: options.progressTitle, cancellable: true },
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: options.progressTitle,
+      cancellable: true,
+    },
     async (progress, token) => {
-      const ready = await waitForPort(options.port, 600_000, token);
+      try {
+        const ready = await waitForPort(options.port, 600_000, token);
 
-      if (token.isCancellationRequested) {
-        stopAll();
-        return;
-      }
-
-      if (!ready) {
-        vscode.window.showErrorMessage(
-          `${options.serverName} did not become ready on port ${options.port} within 10 minutes`,
-        );
-        stopAll();
-        return;
-      }
-
-      progress.report({ message: 'Server ready — launching debugger…' });
-
-      let targetSession: vscode.DebugSession | undefined;
-
-      const startListener = vscode.debug.onDidStartDebugSession((session) => {
-        if (session.name === options.sessionName) {
-          targetSession = session;
-          options.onSessionStarted?.(session);
-          startListener.dispose();
+        if (token.isCancellationRequested) {
+          stopAll();
+          return;
         }
-      });
-      context.subscriptions.push(startListener);
 
-      const started = await vscode.debug.startDebugging(workspaceFolder, {
-        ...options.browserDebugConfig,
-        request: 'launch',
-        name: options.sessionName,
-        url: `http://localhost:${options.port}`,
-        webRoot: '${workspaceFolder}',
-      });
+        if (!ready) {
+          vscode.window.showErrorMessage(
+            `${options.serverName} did not become ready on port ${options.port} within 10 minutes`,
+          );
+          stopAll();
+          return;
+        }
 
-      if (!started) {
-        startListener.dispose();
-        const extensionHint: Record<string, string> = {
-          firefox: 'Make sure the "Debugger for Firefox" extension is installed in VS Code.',
-          safari: 'Make sure the "Safari Debugger" extension is installed in VS Code.',
-        };
-        const hint = extensionHint[options.browserDebugConfig.type] ?? `Make sure the ${options.browserSetting} debugger extension is available in VS Code.`;
-        vscode.window.showErrorMessage(`Failed to start ${options.browserSetting} debug session. ${hint}`);
-        stopAll();
-        return;
-      }
+        progress.report({ message: 'Server ready — launching debugger…' });
 
-      const endListener = vscode.debug.onDidTerminateDebugSession((session) => {
-        if (targetSession && session.id === targetSession.id) {
-          for (const e of activeServeTerminals.values()) {
-            if (e.activeDebugSession?.id === session.id) {
-              e.activeDebugSession = undefined;
-            }
+        let targetSession: vscode.DebugSession | undefined;
+
+        const startListener = vscode.debug.onDidStartDebugSession((session) => {
+          if (session.name === options.sessionName) {
+            targetSession = session;
+            options.onSessionStarted?.(session);
+            startListener.dispose();
           }
-          stopAllDelayed();
-          endListener.dispose();
+        });
+        context.subscriptions.push(startListener);
+
+        const started = await vscode.debug.startDebugging(workspaceFolder, {
+          ...options.browserDebugConfig,
+          request: 'launch',
+          name: options.sessionName,
+          url: `http://localhost:${options.port}`,
+          webRoot: '${workspaceFolder}',
+        });
+
+        if (!started) {
+          startListener.dispose();
+          const extensionHint: Record<string, string> = {
+            firefox: 'Make sure the "Debugger for Firefox" extension is installed in VS Code.',
+            safari: 'Make sure the "Safari Debugger" extension is installed in VS Code.',
+          };
+          const hint =
+            extensionHint[options.browserDebugConfig.type] ??
+            `Make sure the ${options.browserSetting} debugger extension is available in VS Code.`;
+          vscode.window.showErrorMessage(
+            `Failed to start ${options.browserSetting} debug session. ${hint}`,
+          );
+          stopAll();
+          return;
         }
-      });
-      context.subscriptions.push(endListener);
+
+        let listenersDisposed = false;
+        const disposeListeners = () => {
+          if (listenersDisposed) {
+            return;
+          }
+          listenersDisposed = true;
+          endListener.dispose();
+          terminalCloseListener.dispose();
+        };
+
+        const endListener = vscode.debug.onDidTerminateDebugSession((session) => {
+          if (targetSession && session.id === targetSession.id) {
+            for (const e of activeServeTerminals.values()) {
+              if (e.activeDebugSession?.id === session.id) {
+                e.activeDebugSession = undefined;
+              }
+            }
+            stopAllDelayed();
+            disposeListeners();
+          }
+        });
+
+        // Clean up endListener if the terminal closes before the debug session ends
+        const terminalCloseListener = vscode.window.onDidCloseTerminal((closed) => {
+          if (closed === terminal) {
+            disposeListeners();
+          }
+        });
+
+        context.subscriptions.push(endListener, terminalCloseListener);
+      } catch (err) {
+        logDiagnostic(`Error in debug session launcher: ${err}`);
+        vscode.window.showErrorMessage(`Failed to launch debug session: ${err}`);
+        stopAll();
+      }
     },
   );
 }
@@ -544,12 +653,22 @@ export function waitForPort(
       const socket = new net.Socket();
       socket.setTimeout(PORT_CHECK_SOCKET_TIMEOUT_MS);
 
+      let handled = false;
+
       socket.on('connect', () => {
+        if (handled) {
+          return;
+        }
+        handled = true;
         socket.destroy();
         resolve(true);
       });
 
       const onFail = () => {
+        if (handled) {
+          return;
+        }
+        handled = true;
         socket.destroy();
         setTimeout(attempt, PORT_CHECK_INTERVAL_MS);
       };
@@ -565,11 +684,15 @@ export function waitForPort(
 
 // ── Debug config helper ───────────────────────────────────────────────────────
 
-export function resolveBrowserConfig(vsConfig: vscode.WorkspaceConfiguration): { browserSetting: string; browserDebugConfig: BrowserDebugConfig } | null {
+export function resolveBrowserConfig(
+  vsConfig: vscode.WorkspaceConfiguration,
+): { browserSetting: string; browserDebugConfig: BrowserDebugConfig } | null {
   const browserSetting = vsConfig.get<string>('debug.browser', 'chrome');
   const executableOverride = (vsConfig.get<string>('debug.browserExecutablePath') ?? '').trim();
   const browserDebugConfig = getBrowserDebugConfig(browserSetting, executableOverride);
-  if (!browserDebugConfig) { return null; }
+  if (!browserDebugConfig) {
+    return null;
+  }
   return { browserSetting, browserDebugConfig };
 }
 

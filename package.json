@@ -4,7 +4,7 @@
   "description": "Angular CLI commands, schematics generator, and project tools for VS Code",
   "repository": "https://github.com/danisss9/AngularCliPlus",
   "publisher": "danisss9",
-  "version": "1.3.3",
+  "version": "1.3.4",
   "icon": "icon.png",
   "engines": {
     "vscode": "^1.107.0"

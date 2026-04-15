@@ -24,10 +24,7 @@ export function toKebabCase(str: string): string {
 
 // ── Command building ──────────────────────────────────────────────────────────
 
-export function buildNgGenerateCommand(
-  schematic: SchematicType,
-  options: GenerateOptions,
-): string {
+export function buildNgGenerateCommand(schematic: SchematicType, options: GenerateOptions): string {
   let command = `ng generate ${schematic}`;
 
   for (const key of Object.keys(options)) {
@@ -37,7 +34,10 @@ export function buildNgGenerateCommand(
     if (typeof value === 'boolean') {
       command += value ? ` --${kebabKey}` : ` --${kebabKey}=false`;
     } else if (typeof value === 'string') {
-      command += ` --${kebabKey}=${value}`;
+      const escaped = value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+      const safe =
+        escaped.includes(' ') || /["'`$|&;(){}]/.test(escaped) ? `"${escaped}"` : escaped;
+      command += ` --${kebabKey}=${safe}`;
     }
   }
 
@@ -61,7 +61,9 @@ export function semverSatisfies(installed: string, required: string): boolean {
 
   try {
     const coerced = semver.coerce(installed);
-    if (!coerced) { return true; } // unparseable installed version: safe default
+    if (!coerced) {
+      return true;
+    } // unparseable installed version: safe default
     return semver.satisfies(coerced, req);
   } catch {
     return true;
@@ -78,8 +80,17 @@ export function validateCustomCommand(command: string): string | null {
   if (!command || command.trim() === '') {
     return 'Command cannot be empty';
   }
-  if (/;\s*(rm|del|format|mkfs|dd)\b/i.test(command)) {
+  if (/[;|&`$]\s*(rm|del|format|mkfs|dd)\b/i.test(command)) {
     return 'Command contains potentially dangerous operations';
+  }
+  if (/\$\(|`/.test(command)) {
+    return 'Command contains shell substitution which is not allowed';
+  }
+  if (/[;|&]\s*(powershell|cmd|bash|sh|curl|wget|nc|ncat)\b/i.test(command)) {
+    return 'Command contains potentially dangerous chained operations';
+  }
+  if (/>\s*\/dev\/|>\s*[A-Za-z]:\\/.test(command)) {
+    return 'Command contains suspicious output redirection';
   }
   return null;
 }
@@ -95,7 +106,9 @@ export function parseNgUpdateOutput(output: string): Array<{ name: string; versi
   const results: Array<{ name: string; versions: string }> = [];
   for (const line of clean.split('\n')) {
     const trimmed = line.trim();
-    if (!trimmed) { continue; }
+    if (!trimmed) {
+      continue;
+    }
     const match = trimmed.match(/^(@?[\w/.-]+)\s+(\S+\s*->\s*\S+)/);
     if (match) {
       results.push({ name: match[1], versions: match[2].replace(/\s+/g, ' ') });
@@ -116,6 +129,7 @@ export function findMatchingProjects(
   projects: { [name: string]: AngularProject },
 ): string[] {
   const normalised = folderPath.endsWith(path.sep) ? folderPath : folderPath + path.sep;
+  const caseSensitive = process.platform !== 'win32';
 
   return Object.keys(projects).filter((name) => {
     const project = projects[name];
@@ -124,7 +138,12 @@ export function findMatchingProjects(
     return roots.some((r) => {
       const absRoot = path.isAbsolute(r) ? r : path.join(workspaceRoot, r);
       const absRootNorm = absRoot.endsWith(path.sep) ? absRoot : absRoot + path.sep;
-      return normalised.startsWith(absRootNorm) || normalised === absRootNorm;
+      if (caseSensitive) {
+        return normalised.startsWith(absRootNorm) || normalised === absRootNorm;
+      }
+      const nLower = normalised.toLowerCase();
+      const rLower = absRootNorm.toLowerCase();
+      return nLower.startsWith(rLower) || nLower === rLower;
     });
   });
 }
@@ -141,6 +160,7 @@ export function findBestProjectForPath(
 ): string | null {
   const fileDir = path.dirname(filePath);
   const fileDirNorm = fileDir.endsWith(path.sep) ? fileDir : fileDir + path.sep;
+  const caseSensitive = process.platform !== 'win32';
 
   let bestMatch: { name: string; rootLen: number } | null = null;
 
@@ -149,7 +169,10 @@ export function findBestProjectForPath(
     for (const r of roots) {
       const absRoot = path.isAbsolute(r) ? r : path.join(workspaceRoot, r);
       const absRootNorm = absRoot.endsWith(path.sep) ? absRoot : absRoot + path.sep;
-      if (fileDirNorm.startsWith(absRootNorm)) {
+      const matches = caseSensitive
+        ? fileDirNorm.startsWith(absRootNorm)
+        : fileDirNorm.toLowerCase().startsWith(absRootNorm.toLowerCase());
+      if (matches) {
         if (!bestMatch || absRootNorm.length > bestMatch.rootLen) {
           bestMatch = { name, rootLen: absRootNorm.length };
         }

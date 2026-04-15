@@ -37,7 +37,7 @@ export async function serveAngularProject() {
     return;
   }
 
-  const serveCommand = `ng serve --project ${projectName}`;
+  const serveCommand = `ng serve --project "${projectName}"`;
   const terminalName = `ng serve (${projectName})`;
   runInTerminal(terminalName, serveCommand, workspaceRoot, { trackAsServe: true });
 }
@@ -108,21 +108,21 @@ export async function testAngularProject() {
 
   if (picked === CURRENT_FILE && activeFile) {
     const relPath = path.relative(workspaceRoot, activeFile).replaceAll(path.sep, '/');
-    testCommand = `ng test --include ${relPath}${watchFlag}${uiFlag}`;
+    testCommand = `ng test --include "${relPath}"${watchFlag}${uiFlag}`;
     terminalName = `ng test (${path.basename(activeFile)})`;
   } else if (CURRENT_PROJECT_LABEL && picked === CURRENT_PROJECT_LABEL) {
     setLastProject('test', currentInTestable!);
-    testCommand = `ng test --project ${currentInTestable}${watchFlag}${uiFlag}`;
+    testCommand = `ng test --project "${currentInTestable}"${watchFlag}${uiFlag}`;
     terminalName = `ng test (${currentInTestable})`;
   } else if (LAST_LABEL && picked === LAST_LABEL) {
-    testCommand = `ng test --project ${lastInTestable}${watchFlag}${uiFlag}`;
+    testCommand = `ng test --project "${lastInTestable}"${watchFlag}${uiFlag}`;
     terminalName = `ng test (${lastInTestable})`;
   } else if (picked === ALL_PROJECTS) {
     testCommand = `ng test${watchFlag}${uiFlag}`;
     terminalName = 'ng test (all)';
   } else {
     setLastProject('test', picked);
-    testCommand = `ng test --project ${picked}${watchFlag}${uiFlag}`;
+    testCommand = `ng test --project "${picked}"${watchFlag}${uiFlag}`;
     terminalName = `ng test (${picked})`;
   }
 
@@ -154,7 +154,7 @@ export async function lintAngularProject() {
   }
 
   const terminalName = `ng lint (${projectName})`;
-  const lintCommand = `ng lint --project ${projectName}`;
+  const lintCommand = `ng lint --project "${projectName}"`;
   runInTerminal(terminalName, lintCommand, workspaceRoot, {
     successMessage: `ng lint (${projectName}) completed successfully.`,
     retryLabel: 'Retry',
@@ -206,7 +206,7 @@ async function runNgBuild(watch: boolean) {
   const watchFlag = watch ? ' --watch' : '';
 
   const terminalName = watch ? `ng build --watch (${projectName})` : `ng build (${projectName})`;
-  const buildCommand = `ng build --project ${projectName}${configFlag}${watchFlag}`;
+  const buildCommand = `ng build --project "${projectName}"${configFlag}${watchFlag}`;
   runInTerminal(terminalName, buildCommand, workspaceRoot, {
     trackAsServe: watch,
     successMessage: watch ? undefined : `ng build (${projectName}) completed successfully.`,
@@ -282,6 +282,7 @@ export async function clearFinishedTerminals() {
     qp.onDidHide(() => resolve([]));
     qp.show();
   });
+  qp.dispose();
 
   for (const item of chosen) {
     item.terminal.dispose();
@@ -303,6 +304,10 @@ export function spawnNg(args: string[], cwd: string): Promise<number> {
     const proc = cp.spawn('ng', args, { cwd, shell: true });
     proc.stdout.on('data', (d: Buffer) => ngOutput.append(d.toString()));
     proc.stderr.on('data', (d: Buffer) => ngOutput.append(d.toString()));
+    proc.on('error', (err) => {
+      ngOutput.appendLine(`Failed to start process: ${err.message}`);
+      resolve(1);
+    });
     proc.on('close', (code) => resolve(code ?? 1));
   });
 }

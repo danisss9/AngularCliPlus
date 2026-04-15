@@ -137,7 +137,7 @@ Make sure the workspace contains an `angular.json` file. The extension activates
 
 ### Custom install command is rejected
 
-Commands containing `; rm`, `; del`, `; format`, `; mkfs`, or `; dd` are blocked as a safety measure. Use a plain package-manager invocation (e.g. `pnpm install --frozen-lockfile`).
+Commands containing dangerous patterns (`; rm`, `&& rm`, `| del`, `$()`, backtick substitution, etc.) are blocked as a safety measure. Use a plain package-manager invocation (e.g. `pnpm install --frozen-lockfile`).
 
 ## Requirements
 
