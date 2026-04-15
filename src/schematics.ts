@@ -9,6 +9,8 @@ import {
   isValidSchematicName,
   findMatchingProjects,
 } from './pure-utils';
+import { detectCliVersion } from './version';
+import { supportsStandalone, isStandaloneDefault } from './version-adapter';
 
 export async function generatengSchematic(schematic: SchematicType, uri: vscode.Uri) {
   const folderPath = uri.fsPath;
@@ -49,6 +51,10 @@ export async function generatengSchematic(schematic: SchematicType, uri: vscode.
   if (detectedProject && detectedProject.trim() !== '') {
     options.project = detectedProject.trim();
   }
+
+  // Adapt standalone flag based on CLI version
+  const cliVersion = await detectCliVersion(workspaceFolder.uri.fsPath);
+  adaptStandaloneOption(options, schematic, cliVersion);
 
   const finalCommand = `${buildCommand(schematic, options)} ${name}`;
 
@@ -137,4 +143,43 @@ export function getOptionsForSchematic(
   }
 
   return options;
+}
+
+const STANDALONE_SCHEMATICS: ReadonlySet<SchematicType> = new Set([
+  'component',
+  'directive',
+  'pipe',
+]);
+
+/**
+ * Adapts the `standalone` option based on CLI version:
+ * - CLI <14: remove `standalone` (not supported)
+ * - CLI 14-16: keep user setting as-is (default is false)
+ * - CLI 17+: if user explicitly set `standalone: false`, keep it;
+ *            otherwise remove it (default is already true)
+ */
+function adaptStandaloneOption(
+  options: GenerateOptions,
+  schematic: SchematicType,
+  cliVersion: number | null,
+): void {
+  if (!STANDALONE_SCHEMATICS.has(schematic)) {
+    delete options.standalone;
+    return;
+  }
+
+  if (!supportsStandalone(cliVersion)) {
+    // CLI <14: flag doesn't exist
+    delete options.standalone;
+    return;
+  }
+
+  if (isStandaloneDefault(cliVersion)) {
+    // CLI 17+: standalone is default; only pass --standalone=false if user explicitly wants modules
+    if (options.standalone === true) {
+      delete options.standalone; // already the default, no need to pass it
+    }
+    // options.standalone === false is kept as-is to override the default
+  }
+  // CLI 14-16: keep whatever the user configured (default is module-based)
 }

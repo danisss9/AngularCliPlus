@@ -11,6 +11,8 @@ import {
   getLastProject,
   setLastProject,
 } from './utils';
+import { detectCliVersion } from './version';
+import { resolveOutputPathStrategy, getBuildConfigFlag } from './version-adapter';
 
 // ── Timing constants ───────────────────────────────────────────────────────────
 const RESTART_DEBUG_STOP_DELAY_MS = 500;
@@ -337,6 +339,7 @@ export function resolveOutputPath(
   project: AngularProject,
   projectName: string,
   workspaceRoot: string,
+  cliVersion?: number | null,
 ): string {
   const outputPath = project.architect?.build?.options?.outputPath;
 
@@ -351,7 +354,16 @@ export function resolveOutputPath(
     return path.isAbsolute(combined) ? combined : path.join(workspaceRoot, combined);
   }
 
-  // Default: Angular 17+ uses dist/<project>/browser, older uses dist/<project>
+  // Use version-based strategy when available, with filesystem fallback
+  if (cliVersion !== undefined && cliVersion !== null) {
+    const strategy = resolveOutputPathStrategy(cliVersion);
+    if (strategy === 'browser-subdir') {
+      return path.join(workspaceRoot, 'dist', projectName, 'browser');
+    }
+    return path.join(workspaceRoot, 'dist', projectName);
+  }
+
+  // Fallback: check filesystem (no version info available)
   const newStyle = path.join(workspaceRoot, 'dist', projectName, 'browser');
   return fs.existsSync(newStyle) ? newStyle : path.join(workspaceRoot, 'dist', projectName);
 }
@@ -378,6 +390,8 @@ export async function debugBuildWatchProject(context: vscode.ExtensionContext) {
     return;
   }
 
+  const cliVersion = await detectCliVersion(workspaceRoot);
+
   const vsConfig = vscode.workspace.getConfiguration('angularCliPlus');
 
   const watchConfig = vsConfig.get<string>('watch.configuration', 'development');
@@ -385,10 +399,10 @@ export async function debugBuildWatchProject(context: vscode.ExtensionContext) {
     watchConfig === 'inherit'
       ? vsConfig.get<string>('build.configuration', 'production')
       : watchConfig;
-  const configFlag = effectiveConfig !== 'default' ? ` --configuration=${effectiveConfig}` : '';
+  const configFlag = getBuildConfigFlag(effectiveConfig, cliVersion);
   const buildCommand = `ng build --project "${projectName}"${configFlag} --watch`;
 
-  const outputPath = resolveOutputPath(projects[projectName], projectName, workspaceRoot);
+  const outputPath = resolveOutputPath(projects[projectName], projectName, workspaceRoot, cliVersion);
   const port = vsConfig.get<number>('buildWatch.servePort', 4201);
   const serverCommandTemplate = vsConfig.get<string>(
     'buildWatch.staticServerCommand',

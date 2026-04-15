@@ -4,6 +4,19 @@ A VS Code extension providing Angular CLI commands, schematics generation, and p
 
 ## Features
 
+### Automatic Angular CLI version detection
+
+The extension detects the Angular CLI version in each workspace and automatically adapts commands to use the correct flags:
+
+| CLI Version | Build Flag | Standalone | Output Path | Test UI |
+| ----------- | ---------------------------- | ------------------------------ | ----------------------------- | ------- |
+| 8–11 | `--prod` | N/A | `dist/<project>/` | N/A |
+| 12–13 | `--configuration=production` | N/A | `dist/<project>/` | N/A |
+| 14–16 | `--configuration=production` | `--standalone` (default false) | `dist/<project>/` | N/A |
+| 17+ | `--configuration=production` | default true | `dist/<project>/browser/` | `--ui` |
+
+Detection runs via `ng version` (with a `node_modules/@angular/cli` fallback), is cached per workspace root, and refreshes automatically when `package.json` changes. When the version cannot be determined, the extension falls back to modern defaults.
+
 ### Schematics generator
 
 - **Right-click context menu integration**: Generate Angular schematics by right-clicking any folder in the Explorer
@@ -148,6 +161,7 @@ Commands containing dangerous patterns (`; rm`, `&& rm`, `| del`, `$()`, backtic
 - Node.js and npm must be installed
 - Angular CLI must be installed in your project or globally (`@angular/cli`)
 - Your workspace must be an Angular project
+- Supports Angular CLI version 8 and above
 
 ## Extension Settings
 

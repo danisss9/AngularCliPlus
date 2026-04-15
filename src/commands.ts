@@ -13,6 +13,8 @@ import {
   pickWorkspaceFolder,
 } from './utils';
 import { spawnCapture } from './dependencies';
+import { detectCliVersion } from './version';
+import { getBuildConfigFlag, supportsTestUiFlag } from './version-adapter';
 import {
   parseNgUpdateOutput,
   parseComponentFilePath,
@@ -181,11 +183,13 @@ export async function testAngularProject() {
   let testCommand: string;
   let terminalName: string;
 
+  const cliVersion = await detectCliVersion(workspaceRoot);
+
   const config = vscode.workspace.getConfiguration('angularCliPlus');
   const watchMode = config.get<boolean>('test.watch', false);
   const watchFlag = watchMode ? ' --watch' : ' --watch=false';
   const uiMode = config.get<boolean>('test.ui', false);
-  const uiFlag = uiMode ? ' --ui' : '';
+  const uiFlag = uiMode && supportsTestUiFlag(cliVersion) ? ' --ui' : '';
 
   if (picked === CURRENT_FILE && activeFile) {
     const relPath = path.relative(workspaceRoot, activeFile).replaceAll(path.sep, '/');
@@ -272,6 +276,8 @@ async function runNgBuild(watch: boolean) {
     return;
   }
 
+  const cliVersion = await detectCliVersion(workspaceRoot);
+
   const config = vscode.workspace.getConfiguration('angularCliPlus');
   let effectiveConfig: string;
   if (watch) {
@@ -283,7 +289,7 @@ async function runNgBuild(watch: boolean) {
   } else {
     effectiveConfig = config.get<string>('build.configuration', 'production');
   }
-  const configFlag = effectiveConfig !== 'default' ? ` --configuration=${effectiveConfig}` : '';
+  const configFlag = getBuildConfigFlag(effectiveConfig, cliVersion);
   const watchFlag = watch ? ' --watch' : '';
 
   const terminalName = watch ? `ng build --watch (${projectName})` : `ng build (${projectName})`;

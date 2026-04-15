@@ -8,11 +8,20 @@ import {
   isValidSchematicName,
   SCHEMATIC_NAME_REGEX,
   parseNgUpdateOutput,
+  parseNgVersionOutput,
   findMatchingProjects,
   findBestProjectForPath,
   parseComponentFilePath,
   getComponentSiblingPaths,
 } from '../pure-utils';
+import {
+  getBuildConfigFlag,
+  getProductionFlag,
+  supportsStandalone,
+  isStandaloneDefault,
+  resolveOutputPathStrategy,
+  supportsTestUiFlag,
+} from '../version-adapter';
 import type { AngularProject } from '../types';
 
 // ── semverSatisfies ───────────────────────────────────────────────────────────
@@ -565,4 +574,150 @@ suite('getComponentSiblingPaths', () => {
     const paths = getComponentSiblingPaths('C:\\Users\\test\\hero');
     assert.ok(paths.every((p) => p.startsWith('C:\\Users\\test\\hero.component.')));
   });
+});
+
+// ── parseNgVersionOutput ──────────────────────────────────────────────────────
+
+suite('parseNgVersionOutput', () => {
+  test('parses standard ng version output (CLI 17)', () => {
+    const output = [
+      '',
+      '     _                      _                 ____ _     ___',
+      '    / \\   _ __   __ _ _   _| | __ _ _ __     / ___| |   |_ _|',
+      '   / △ \\ | \'_ \\ / _` | | | | |/ _` | \'__|   | |   | |    | |',
+      '  / ___ \\| | | | (_| | |_| | | (_| | |      | |___| |___ | |',
+      ' /_/   \\_\\_| |_|\\__, |\\__,_|_|\\__,_|_|       \\____|_____|___|',
+      '                |___/',
+      '',
+      'Angular CLI: 17.3.8',
+      'Node: 20.11.1',
+      'Package Manager: npm 10.2.4',
+    ].join('\n');
+    assert.strictEqual(parseNgVersionOutput(output), 17);
+  });
+
+  test('parses CLI 8 output', () => {
+    const output = 'Angular CLI: 8.3.29\nNode: 12.22.12';
+    assert.strictEqual(parseNgVersionOutput(output), 8);
+  });
+
+  test('parses CLI 12 output', () => {
+    const output = 'Angular CLI: 12.2.18\nNode: 14.20.0';
+    assert.strictEqual(parseNgVersionOutput(output), 12);
+  });
+
+  test('parses CLI 14 output', () => {
+    const output = 'Angular CLI: 14.2.13\nNode: 16.20.2';
+    assert.strictEqual(parseNgVersionOutput(output), 14);
+  });
+
+  test('parses CLI 19 output', () => {
+    const output = 'Angular CLI: 19.0.0\nNode: 22.0.0';
+    assert.strictEqual(parseNgVersionOutput(output), 19);
+  });
+
+  test('strips ANSI codes before parsing', () => {
+    const output = '\x1b[32mAngular CLI: 17.1.0\x1b[0m\nNode: 20.0.0';
+    assert.strictEqual(parseNgVersionOutput(output), 17);
+  });
+
+  test('returns null for empty string', () => {
+    assert.strictEqual(parseNgVersionOutput(''), null);
+  });
+
+  test('returns null for unrelated output', () => {
+    assert.strictEqual(parseNgVersionOutput('command not found: ng'), null);
+  });
+
+  test('returns null for output without version line', () => {
+    const output = 'Node: 20.11.1\nPackage Manager: npm 10.2.4';
+    assert.strictEqual(parseNgVersionOutput(output), null);
+  });
+});
+
+// ── getProductionFlag ─────────────────────────────────────────────────────────
+
+suite('getProductionFlag', () => {
+  test('CLI 8 → --prod', () => assert.strictEqual(getProductionFlag(8), ' --prod'));
+  test('CLI 11 → --prod', () => assert.strictEqual(getProductionFlag(11), ' --prod'));
+  test('CLI 12 → --configuration=production', () =>
+    assert.strictEqual(getProductionFlag(12), ' --configuration=production'));
+  test('CLI 17 → --configuration=production', () =>
+    assert.strictEqual(getProductionFlag(17), ' --configuration=production'));
+  test('null (unknown) → --configuration=production', () =>
+    assert.strictEqual(getProductionFlag(null), ' --configuration=production'));
+});
+
+// ── getBuildConfigFlag ────────────────────────────────────────────────────────
+
+suite('getBuildConfigFlag', () => {
+  test('default config → empty string regardless of version', () => {
+    assert.strictEqual(getBuildConfigFlag('default', 8), '');
+    assert.strictEqual(getBuildConfigFlag('default', 17), '');
+    assert.strictEqual(getBuildConfigFlag('default', null), '');
+  });
+
+  test('production on CLI 8 → --prod', () =>
+    assert.strictEqual(getBuildConfigFlag('production', 8), ' --prod'));
+  test('production on CLI 11 → --prod', () =>
+    assert.strictEqual(getBuildConfigFlag('production', 11), ' --prod'));
+  test('production on CLI 12 → --configuration=production', () =>
+    assert.strictEqual(getBuildConfigFlag('production', 12), ' --configuration=production'));
+  test('production on CLI 17 → --configuration=production', () =>
+    assert.strictEqual(getBuildConfigFlag('production', 17), ' --configuration=production'));
+  test('production on null → --configuration=production', () =>
+    assert.strictEqual(getBuildConfigFlag('production', null), ' --configuration=production'));
+
+  test('development on CLI 8 → --configuration=development', () =>
+    assert.strictEqual(getBuildConfigFlag('development', 8), ' --configuration=development'));
+  test('development on CLI 17 → --configuration=development', () =>
+    assert.strictEqual(getBuildConfigFlag('development', 17), ' --configuration=development'));
+
+  test('custom config name on any version', () =>
+    assert.strictEqual(getBuildConfigFlag('staging', 14), ' --configuration=staging'));
+});
+
+// ── supportsStandalone ────────────────────────────────────────────────────────
+
+suite('supportsStandalone', () => {
+  test('CLI 8 → false', () => assert.strictEqual(supportsStandalone(8), false));
+  test('CLI 13 → false', () => assert.strictEqual(supportsStandalone(13), false));
+  test('CLI 14 → true', () => assert.strictEqual(supportsStandalone(14), true));
+  test('CLI 17 → true', () => assert.strictEqual(supportsStandalone(17), true));
+  test('null → true (assume modern)', () => assert.strictEqual(supportsStandalone(null), true));
+});
+
+// ── isStandaloneDefault ───────────────────────────────────────────────────────
+
+suite('isStandaloneDefault', () => {
+  test('CLI 14 → false', () => assert.strictEqual(isStandaloneDefault(14), false));
+  test('CLI 16 → false', () => assert.strictEqual(isStandaloneDefault(16), false));
+  test('CLI 17 → true', () => assert.strictEqual(isStandaloneDefault(17), true));
+  test('CLI 19 → true', () => assert.strictEqual(isStandaloneDefault(19), true));
+  test('null → true (assume modern)', () => assert.strictEqual(isStandaloneDefault(null), true));
+});
+
+// ── resolveOutputPathStrategy ─────────────────────────────────────────────────
+
+suite('resolveOutputPathStrategy', () => {
+  test('CLI 8 → legacy', () => assert.strictEqual(resolveOutputPathStrategy(8), 'legacy'));
+  test('CLI 14 → legacy', () => assert.strictEqual(resolveOutputPathStrategy(14), 'legacy'));
+  test('CLI 16 → legacy', () => assert.strictEqual(resolveOutputPathStrategy(16), 'legacy'));
+  test('CLI 17 → browser-subdir', () =>
+    assert.strictEqual(resolveOutputPathStrategy(17), 'browser-subdir'));
+  test('CLI 19 → browser-subdir', () =>
+    assert.strictEqual(resolveOutputPathStrategy(19), 'browser-subdir'));
+  test('null → browser-subdir (assume modern)', () =>
+    assert.strictEqual(resolveOutputPathStrategy(null), 'browser-subdir'));
+});
+
+// ── supportsTestUiFlag ────────────────────────────────────────────────────────
+
+suite('supportsTestUiFlag', () => {
+  test('CLI 8 → false', () => assert.strictEqual(supportsTestUiFlag(8), false));
+  test('CLI 14 → false', () => assert.strictEqual(supportsTestUiFlag(14), false));
+  test('CLI 16 → false', () => assert.strictEqual(supportsTestUiFlag(16), false));
+  test('CLI 17 → true', () => assert.strictEqual(supportsTestUiFlag(17), true));
+  test('CLI 19 → true', () => assert.strictEqual(supportsTestUiFlag(19), true));
+  test('null → true (assume modern)', () => assert.strictEqual(supportsTestUiFlag(null), true));
 });

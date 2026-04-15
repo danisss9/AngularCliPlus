@@ -98,6 +98,21 @@ export function validateCustomCommand(command: string): string | null {
 // ── ng update output parsing ──────────────────────────────────────────────────
 
 /**
+ * Parses the output of `ng version` (after stripping ANSI codes) and returns
+ * the major version number, or null if it cannot be determined.
+ */
+export function parseNgVersionOutput(output: string): number | null {
+  const clean = output.replace(/\x1b\[[\d;]*[A-Za-z]/g, '');
+  const match = clean.match(/Angular CLI:\s*(\d+)\.\d+\.\d+/);
+  if (match) {
+    return parseInt(match[1], 10);
+  }
+  return null;
+}
+
+// ── ng update output parsing ──────────────────────────────────────────────────
+
+/**
  * Parses the output of `ng update` (after stripping ANSI codes) into a list of
  * packages with their current → target version strings.
  */

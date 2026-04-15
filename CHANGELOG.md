@@ -8,6 +8,11 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ### Added
 
+- **Angular CLI version detection** — the extension now automatically detects the Angular CLI version used in each workspace (via `ng version`, with a `node_modules` fallback) and adapts commands accordingly. The detected version is cached per workspace root and invalidated whenever `package.json` changes. Supports Angular CLI 8+
+  - **Build**: CLI <12 uses `--prod`; CLI 12+ uses `--configuration=production`
+  - **Schematics**: `--standalone` flag is stripped for CLI <14 (unsupported), kept as-is for CLI 14–16, and omitted when redundant on CLI 17+ (standalone is the default)
+  - **Test**: the `--ui` flag (Vitest UI) is only passed on CLI 17+ where Vitest is supported
+  - **Output path resolution**: uses the detected version to choose between `dist/<project>/` (legacy) and `dist/<project>/browser/` (CLI 17+), with a filesystem fallback when version info is unavailable
 - **Angular: Switch Component File** (`Ctrl+Shift+A Tab`): quickly switch between a component's related files (`.component.ts`, `.component.html`, `.component.scss`/`.css`/`.sass`/`.less`, `.component.spec.ts`) via a QuickPick that shows all existing sibling files with descriptive icons; the current file is pre-selected so you can arrow or tab to the desired file and press Enter to open it in the same editor column
 - **Angular: Run npm Script** (`Ctrl+Shift+A N`): shows a searchable QuickPick listing all scripts defined in the workspace's `package.json`; each entry shows the script name and its command; select one to run it in a dedicated terminal
 

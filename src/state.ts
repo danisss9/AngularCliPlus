@@ -8,6 +8,11 @@ export const diagnosticOutput = vscode.window.createOutputChannel('Angular CLI P
 export const activeServeTerminals = new Map<string, ServeEntry>();
 export const extensionTerminals = new Set<vscode.Terminal>();
 export const depCheckTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+export const cliVersionCache = new Map<string, number | null>();
+
+export function invalidateCliVersionCache(workspaceRoot: string): void {
+  cliVersionCache.delete(workspaceRoot);
+}
 
 const TERMINAL_ENTRIES_KEY = 'terminalEntries';
 

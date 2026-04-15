@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as cp from 'child_process';
-import { npmOutput, depCheckTimeouts, logDiagnostic } from './state';
+import { npmOutput, depCheckTimeouts, logDiagnostic, invalidateCliVersionCache } from './state';
 import { semverSatisfies, validateCustomCommand } from './pure-utils';
 import { invalidateAngularJsonCache } from './utils';
 
@@ -189,7 +189,10 @@ export function setupDependencyCheck(context: vscode.ExtensionContext, workspace
   const pkgWatcher = vscode.workspace.createFileSystemWatcher(
     new vscode.RelativePattern(vscode.Uri.file(workspaceRoot), 'package.json'),
   );
-  pkgWatcher.onDidChange(() => scheduleDependencyCheck(workspaceRoot, DEP_CHECK_CHANGE_DELAY_MS));
+  pkgWatcher.onDidChange(() => {
+    invalidateCliVersionCache(workspaceRoot);
+    scheduleDependencyCheck(workspaceRoot, DEP_CHECK_CHANGE_DELAY_MS);
+  });
   context.subscriptions.push(pkgWatcher);
 
   // Invalidate the angular.json cache whenever the file is saved
