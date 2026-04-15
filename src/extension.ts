@@ -5,8 +5,11 @@ import {
   ngOutput,
   diagnosticOutput,
   activeServeTerminals,
+  extensionTerminals,
   depCheckTimeouts,
   setExtensionContext,
+  loadPersistedTerminalEntries,
+  removePersistedTerminalEntry,
 } from './state';
 import { generatengSchematic } from './schematics';
 import {
@@ -36,6 +39,30 @@ import { pickWorkspaceFolder } from './utils';
 export function activate(context: vscode.ExtensionContext) {
   setExtensionContext(context);
 
+  // ── Reclaim terminals that survived a VS Code restart ─────────────────────
+  const persisted = loadPersistedTerminalEntries();
+  for (const openTerminal of vscode.window.terminals) {
+    const entry = persisted[openTerminal.name];
+    if (!entry) {
+      continue;
+    }
+    extensionTerminals.add(openTerminal);
+    if (entry.trackAsServe) {
+      activeServeTerminals.set(openTerminal.name, {
+        terminal: openTerminal,
+        command: entry.command,
+        cwd: entry.cwd,
+      });
+    }
+  }
+  // Remove persisted entries whose terminals no longer exist
+  const openNames = new Set(vscode.window.terminals.map((t) => t.name));
+  for (const name of Object.keys(persisted)) {
+    if (!openNames.has(name)) {
+      removePersistedTerminalEntry(name);
+    }
+  }
+
   // Register commands for each schematic type
   const schematics: SchematicType[] = [
     'component',
@@ -60,17 +87,31 @@ export function activate(context: vscode.ExtensionContext) {
   });
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('angular-cli-plus.debugAngular', () => debugAngularProject(context)),
-    vscode.commands.registerCommand('angular-cli-plus.debugStorybook', () => debugStorybookProject(context)),
-    vscode.commands.registerCommand('angular-cli-plus.debugBuildWatch', () => debugBuildWatchProject(context)),
+    vscode.commands.registerCommand('angular-cli-plus.debugAngular', () =>
+      debugAngularProject(context),
+    ),
+    vscode.commands.registerCommand('angular-cli-plus.debugStorybook', () =>
+      debugStorybookProject(context),
+    ),
+    vscode.commands.registerCommand('angular-cli-plus.debugBuildWatch', () =>
+      debugBuildWatchProject(context),
+    ),
     vscode.commands.registerCommand('angular-cli-plus.serveAngular', () => serveAngularProject()),
     vscode.commands.registerCommand('angular-cli-plus.buildAngular', () => buildAngularProject()),
-    vscode.commands.registerCommand('angular-cli-plus.buildAngularWatch', () => buildAngularProjectWatch()),
-    vscode.commands.registerCommand('angular-cli-plus.restartAngularServe', () => restartAngularServe(context)),
+    vscode.commands.registerCommand('angular-cli-plus.buildAngularWatch', () =>
+      buildAngularProjectWatch(),
+    ),
+    vscode.commands.registerCommand('angular-cli-plus.restartAngularServe', () =>
+      restartAngularServe(context),
+    ),
     vscode.commands.registerCommand('angular-cli-plus.testAngular', () => testAngularProject()),
     vscode.commands.registerCommand('angular-cli-plus.lintAngular', () => lintAngularProject()),
-    vscode.commands.registerCommand('angular-cli-plus.updateAngular', () => updateAngularPackages()),
-    vscode.commands.registerCommand('angular-cli-plus.clearTerminals', () => clearFinishedTerminals()),
+    vscode.commands.registerCommand('angular-cli-plus.updateAngular', () =>
+      updateAngularPackages(),
+    ),
+    vscode.commands.registerCommand('angular-cli-plus.clearTerminals', () =>
+      clearFinishedTerminals(),
+    ),
     vscode.commands.registerCommand('angular-cli-plus.npmInstall', () => runNpmInstall(false)),
     vscode.commands.registerCommand('angular-cli-plus.npmCleanInstall', () => runNpmInstall(true)),
     vscode.commands.registerCommand('angular-cli-plus.checkDependencies', async () => {
@@ -101,16 +142,8 @@ export function activate(context: vscode.ExtensionContext) {
     }),
   );
 
-  context.subscriptions.push(
-    vscode.window.onDidCloseTerminal((closed) => {
-      for (const [key, entry] of activeServeTerminals) {
-        if (entry.terminal === closed) {
-          activeServeTerminals.delete(key);
-          break;
-        }
-      }
-    }),
-  );
+  // activeServeTerminals / extensionTerminals cleanup is handled inside
+  // runInTerminal()'s onDidCloseTerminal listener. Nothing extra needed here.
 
   context.subscriptions.push(npmOutput, ngOutput, diagnosticOutput);
 

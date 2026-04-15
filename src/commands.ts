@@ -26,7 +26,13 @@ export async function serveAngularProject() {
     .filter(([, p]) => !p.projectType || p.projectType === 'application')
     .map(([n]) => n);
 
-  const projectName = await pickProjectWithCurrentFile(workspaceRoot, projects, appProjects, 'Angular Serve: Select Project', 'serve');
+  const projectName = await pickProjectWithCurrentFile(
+    workspaceRoot,
+    projects,
+    appProjects,
+    'Angular Serve: Select Project',
+    'serve',
+  );
   if (!projectName) {
     return;
   }
@@ -61,11 +67,17 @@ export async function testAngularProject() {
   const CURRENT_FILE = '$(file)  Run current test file';
 
   const currentProject = detectActiveFileProject(workspaceRoot, projects);
-  const currentInTestable = currentProject && testableProjects.includes(currentProject) ? currentProject : null;
-  const CURRENT_PROJECT_LABEL = currentInTestable ? `$(file)  Current project (${currentInTestable})` : null;
+  const currentInTestable =
+    currentProject && testableProjects.includes(currentProject) ? currentProject : null;
+  const CURRENT_PROJECT_LABEL = currentInTestable
+    ? `$(file)  Current project (${currentInTestable})`
+    : null;
 
   const lastTest = getLastProject('test');
-  const lastInTestable = lastTest && testableProjects.includes(lastTest) && lastTest !== currentInTestable ? lastTest : null;
+  const lastInTestable =
+    lastTest && testableProjects.includes(lastTest) && lastTest !== currentInTestable
+      ? lastTest
+      : null;
   const LAST_LABEL = lastInTestable ? `$(history)  Last used (${lastInTestable})` : null;
 
   const choices = [
@@ -130,7 +142,13 @@ export async function lintAngularProject() {
   const { workspaceRoot, projects } = resolved;
 
   const allProjects = Object.keys(projects);
-  const projectName = await pickProjectWithCurrentFile(workspaceRoot, projects, allProjects, 'Angular Lint: Select Project', 'lint');
+  const projectName = await pickProjectWithCurrentFile(
+    workspaceRoot,
+    projects,
+    allProjects,
+    'Angular Lint: Select Project',
+    'lint',
+  );
   if (!projectName) {
     return;
   }
@@ -162,7 +180,13 @@ async function runNgBuild(watch: boolean) {
 
   const allProjects = Object.keys(projects);
   const title = watch ? 'Angular Build Watch: Select Project' : 'Angular Build: Select Project';
-  const projectName = await pickProjectWithCurrentFile(workspaceRoot, projects, allProjects, title, watch ? 'buildWatch' : 'build');
+  const projectName = await pickProjectWithCurrentFile(
+    workspaceRoot,
+    projects,
+    allProjects,
+    title,
+    watch ? 'buildWatch' : 'build',
+  );
   if (!projectName) {
     return;
   }
@@ -198,25 +222,47 @@ export async function clearFinishedTerminals() {
     return;
   }
 
-  function getTerminalState(terminal: vscode.Terminal): { label: string; icon: string } {
+  type TerminalState = 'running' | 'terminated' | 'errored' | 'killed';
+
+  function getTerminalState(terminal: vscode.Terminal): {
+    state: TerminalState;
+    label: string;
+    icon: string;
+  } {
     if (terminal.exitStatus === undefined) {
-      return { label: 'running', icon: '$(play)' };
+      return { state: 'running', label: 'running', icon: '$(play)' };
+    }
+    if (terminal.exitStatus.code === undefined) {
+      return { state: 'killed', label: 'killed', icon: '$(circle-slash)' };
     }
     if (terminal.exitStatus.code === 0) {
-      return { label: 'terminated', icon: '$(check)' };
+      return { state: 'terminated', label: 'terminated', icon: '$(check)' };
     }
-    return { label: 'errored', icon: '$(error)' };
+    return { state: 'errored', label: 'errored', icon: '$(error)' };
   }
 
-  type TerminalItem = vscode.QuickPickItem & { terminal: vscode.Terminal };
+  const stateOrder: Record<TerminalState, number> = {
+    errored: 0,
+    killed: 1,
+    terminated: 2,
+    running: 3,
+  };
 
-  const terminals = [...extensionTerminals];
+  type TerminalItem = vscode.QuickPickItem & { terminal: vscode.Terminal; state: TerminalState };
+
+  const terminals = [...extensionTerminals].sort((a, b) => {
+    const sa = getTerminalState(a);
+    const sb = getTerminalState(b);
+    return stateOrder[sa.state] - stateOrder[sb.state];
+  });
+
   const terminalItems: TerminalItem[] = terminals.map((t) => {
-    const state = getTerminalState(t);
+    const { state, label, icon } = getTerminalState(t);
     return {
-      label: `${state.icon} ${t.name}`,
-      description: state.label,
+      label: `${icon} ${t.name}`,
+      description: label,
       terminal: t,
+      state,
     };
   });
 
@@ -225,6 +271,8 @@ export async function clearFinishedTerminals() {
   qp.canSelectMany = true;
   qp.placeholder = 'Search and select terminals to close...';
   qp.title = 'Close Terminals';
+  // Pre-select finished (non-running) terminals
+  qp.selectedItems = terminalItems.filter((i) => i.state !== 'running');
 
   const chosen = await new Promise<TerminalItem[]>((resolve) => {
     qp.onDidAccept(() => {
@@ -241,7 +289,9 @@ export async function clearFinishedTerminals() {
   }
 
   if (chosen.length > 0) {
-    vscode.window.showInformationMessage(`Closed ${chosen.length} terminal${chosen.length > 1 ? 's' : ''}.`);
+    vscode.window.showInformationMessage(
+      `Closed ${chosen.length} terminal${chosen.length > 1 ? 's' : ''}.`,
+    );
   }
 }
 
@@ -257,7 +307,6 @@ export function spawnNg(args: string[], cwd: string): Promise<number> {
   });
 }
 
-
 export async function updateAngularPackages() {
   const resolved = await resolveWorkspaceAndAngularJson();
   if (!resolved) {
@@ -268,7 +317,11 @@ export async function updateAngularPackages() {
   let capturedOutput = '';
   let checkExitCode = 0;
   await vscode.window.withProgress(
-    { location: vscode.ProgressLocation.Notification, title: 'Checking for Angular package updates…', cancellable: false },
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: 'Checking for Angular package updates…',
+      cancellable: false,
+    },
     async () => {
       const result = await spawnCapture('ng', ['update'], workspaceRoot);
       capturedOutput = result.stdout;
@@ -280,7 +333,9 @@ export async function updateAngularPackages() {
     ngOutput.clear();
     ngOutput.appendLine(capturedOutput);
     ngOutput.show(true);
-    vscode.window.showErrorMessage("Failed to check for Angular updates. See 'Angular CLI Plus: ng' output for details.");
+    vscode.window.showErrorMessage(
+      "Failed to check for Angular updates. See 'Angular CLI Plus: ng' output for details.",
+    );
     return;
   }
 
@@ -304,10 +359,20 @@ export async function updateAngularPackages() {
   const config = vscode.workspace.getConfiguration('angularCliPlus');
   const allowDirty = config.get<boolean>('update.allowDirty', false);
 
-  await runNgUpdate(selected.map((s) => s.label), allowDirty, false, workspaceRoot);
+  await runNgUpdate(
+    selected.map((s) => s.label),
+    allowDirty,
+    false,
+    workspaceRoot,
+  );
 }
 
-export async function runNgUpdate(packages: string[], allowDirty: boolean, force: boolean, workspaceRoot: string) {
+export async function runNgUpdate(
+  packages: string[],
+  allowDirty: boolean,
+  force: boolean,
+  workspaceRoot: string,
+) {
   const args = ['update', ...packages];
   if (allowDirty) {
     args.push('--allow-dirty');

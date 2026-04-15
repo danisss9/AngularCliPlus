@@ -2,7 +2,14 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { AngularJson, AngularProject } from './types';
-import { activeServeTerminals, extensionTerminals, getExtensionContext } from './state';
+import {
+  activeServeTerminals,
+  extensionTerminals,
+  getExtensionContext,
+  logDiagnostic,
+  persistTerminalEntry,
+  removePersistedTerminalEntry,
+} from './state';
 
 export { toKebabCase, findMatchingProjects } from './pure-utils';
 import { findBestProjectForPath } from './pure-utils';
@@ -101,7 +108,9 @@ export async function pickWorkspaceFolder(): Promise<string | null> {
   if (folders.length === 1) {
     return folders[0].uri.fsPath;
   }
-  const picked = await vscode.window.showWorkspaceFolderPick({ placeHolder: 'Select workspace folder' });
+  const picked = await vscode.window.showWorkspaceFolderPick({
+    placeHolder: 'Select workspace folder',
+  });
   return picked?.uri.fsPath ?? null;
 }
 
@@ -135,7 +144,9 @@ export function detectActiveFileProject(
   projects: { [name: string]: AngularProject },
 ): string | null {
   const activeFile = vscode.window.activeTextEditor?.document.uri.fsPath;
-  if (!activeFile) { return null; }
+  if (!activeFile) {
+    return null;
+  }
   return findBestProjectForPath(activeFile, workspaceRoot, projects);
 }
 
@@ -171,25 +182,39 @@ export async function pickProjectWithCurrentFile(
     placeHolder: 'Select Angular project',
     title,
   });
-  if (!picked) { return null; }
+  if (!picked) {
+    return null;
+  }
   if (CURRENT_LABEL && picked === CURRENT_LABEL) {
-    if (commandKey) { setLastProject(commandKey, currentInList!); }
+    if (commandKey) {
+      setLastProject(commandKey, currentInList!);
+    }
     return currentInList!;
   }
   if (LAST_LABEL && picked === LAST_LABEL) {
     return lastInList!;
   }
-  if (commandKey) { setLastProject(commandKey, picked); }
+  if (commandKey) {
+    setLastProject(commandKey, picked);
+  }
   return picked;
 }
 
 // ── Terminal helpers ───────────────────────────────────────────────────────────
+
+const RESTART_CTRL_C_DELAY_MS = 500;
+const RESTART_CONFIRM_DELAY_MS = 300;
 
 /**
  * Creates a terminal, runs a command, and shows a success notification on exit
  * code 0 or a warning notification with an optional Retry button on non-zero
  * exit. When `retryLabel` is set and no `onRetry` handler is provided, the
  * exact same command is re-launched automatically.
+ *
+ * If a terminal with the same name already exists in `extensionTerminals`:
+ * - Running: for serve/watch terminals the user is offered to restart; for
+ *   others the existing terminal is focused and returned as-is.
+ * - Terminated/errored: the old terminal is disposed and a fresh one is opened.
  */
 export function runInTerminal(
   name: string,
@@ -202,8 +227,49 @@ export function runInTerminal(
     onRetry?: () => void;
   },
 ): vscode.Terminal {
+  // ── Reuse check ────────────────────────────────────────────────────────────
+  const existing = [...extensionTerminals].find((t) => t.name === name);
+  if (existing) {
+    const isRunning = existing.exitStatus === undefined;
+    if (isRunning) {
+      if (options?.trackAsServe) {
+        // Serve/watch terminal already running — offer restart
+        void (async () => {
+          const action = await vscode.window.showInformationMessage(
+            `"${name}" is already running. Restart it?`,
+            'Restart',
+            'Show',
+          );
+          if (action === 'Restart') {
+            existing.show();
+            existing.sendText('\x03');
+            await new Promise<void>((r) => setTimeout(r, RESTART_CTRL_C_DELAY_MS));
+            existing.sendText('y');
+            await new Promise<void>((r) => setTimeout(r, RESTART_CONFIRM_DELAY_MS));
+            existing.sendText(command);
+          } else if (action === 'Show') {
+            existing.show();
+          }
+        })();
+        return existing;
+      } else {
+        // Non-serve terminal already running — just show it
+        existing.show();
+        return existing;
+      }
+    } else {
+      // Terminated or errored — clean up before creating fresh
+      existing.dispose();
+      extensionTerminals.delete(existing);
+      removePersistedTerminalEntry(name);
+    }
+  }
+
+  // ── Create new terminal ────────────────────────────────────────────────────
   const terminal = vscode.window.createTerminal({ name, cwd });
   extensionTerminals.add(terminal);
+  persistTerminalEntry(name, { command, cwd, trackAsServe: options?.trackAsServe ?? false });
+
   if (options?.trackAsServe) {
     activeServeTerminals.set(name, { terminal, command, cwd });
   }
@@ -216,10 +282,29 @@ export function runInTerminal(
     }
     disposable.dispose();
     extensionTerminals.delete(closed);
+    removePersistedTerminalEntry(name);
 
-    const code = closed.exitStatus?.code;
+    // Also clean up activeServeTerminals here so we don't rely solely on the
+    // extension.ts handler
+    for (const [key, entry] of activeServeTerminals) {
+      if (entry.terminal === closed) {
+        activeServeTerminals.delete(key);
+        break;
+      }
+    }
+
+    const exitStatus = closed.exitStatus;
+    if (exitStatus === undefined) {
+      // Should not happen (we're inside onDidCloseTerminal), but guard anyway
+      return;
+    }
+
+    const code = exitStatus.code;
     if (code === undefined) {
-      return; // terminal was killed without a proper exit (e.g. user closed the tab mid-run)
+      // Terminal was killed without a proper exit (e.g. user closed the tab
+      // mid-run or the process was force-killed).
+      logDiagnostic(`Terminal "${name}" closed without an exit code (killed/forced close).`);
+      return;
     }
 
     if (code === 0) {
@@ -229,7 +314,10 @@ export function runInTerminal(
     } else {
       const retryLabel = options?.retryLabel;
       if (retryLabel) {
-        const action = await vscode.window.showWarningMessage(`${name} failed (exit code ${code}).`, retryLabel);
+        const action = await vscode.window.showWarningMessage(
+          `${name} failed (exit code ${code}).`,
+          retryLabel,
+        );
         if (action === retryLabel) {
           if (options.onRetry) {
             options.onRetry();
@@ -245,4 +333,3 @@ export function runInTerminal(
 
   return terminal;
 }
-

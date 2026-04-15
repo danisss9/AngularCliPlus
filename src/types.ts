@@ -49,6 +49,12 @@ export interface AngularJson {
   defaultProject?: string;
 }
 
+export interface PersistedTerminalEntry {
+  command: string;
+  cwd: string;
+  trackAsServe: boolean;
+}
+
 export type SchematicType =
   | 'component'
   | 'service'

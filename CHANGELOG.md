@@ -4,6 +4,15 @@ All notable changes to the "angular-cli-plus" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.3.3]
+
+### Fixed
+
+- **Terminal reclamation after restart** — extension-owned terminals that survive a VS Code reload are now re-adopted on activation. Their metadata (`command`, `cwd`, `trackAsServe`) is persisted in `workspaceState` so they appear correctly in the Close Terminals picker and the Restart Serve quick pick without needing to re-run commands
+- **Terminal reuse for same command** — running a command whose terminal is already open no longer creates a duplicate. If the terminal is still running, it is focused (or, for serve/watch terminals, the user is offered a Restart / Show choice). If it has finished, the old panel is disposed and a fresh one is opened
+- **Terminal state detection** — the Close Terminals picker now distinguishes four states: `running` (still active), `killed` (closed without an exit code), `terminated` (exit 0), and `errored` (non-zero exit). Finished terminals (errored, killed, terminated) are sorted to the top and pre-selected so pressing Enter clears them immediately. Killed terminals are no longer silently conflated with running ones
+- **Killed terminal logging** — terminals closed without an exit code (e.g. the user drags the panel closed mid-run) are now logged to the **Angular CLI Plus: diagnostics** output channel instead of being silently swallowed
+
 ## [1.3.2]
 
 ### Changed
