@@ -26,19 +26,21 @@ A VS Code extension providing Angular CLI commands, schematics generation, and p
 
 ### Angular CLI commands (Command Palette & keyboard shortcuts)
 
-| Command                        | Shortcut         | Description                                                                                                                                                                                  |
-| ------------------------------ | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Angular: Serve Application     | `Ctrl+Shift+A S` | Runs `ng serve` for a selected project                                                                                                                                                       |
-| Angular: Debug Application     | `Ctrl+Shift+A D` | Starts `ng serve`, waits for the dev server, then attaches a browser debugger                                                                                                                |
-| Angular: Debug Storybook       | `Ctrl+Shift+A K` | Starts Storybook, waits for it to be ready, then attaches a browser debugger                                                                                                                 |
-| Angular: Debug Build (Watch)   | `Ctrl+Shift+A H` | Runs `ng build --watch` + a static file server, then attaches a browser debugger                                                                                                             |
-| Angular: Build Project         | `Ctrl+Shift+A B` | Runs `ng build` with the configured build configuration                                                                                                                                      |
-| Angular: Build Project (Watch) | `Ctrl+Shift+A W` | Runs `ng build --watch` with the configured watch configuration                                                                                                                              |
-| Angular: Test Project          | `Ctrl+Shift+A T` | Runs `ng test` for a project, all projects, or the currently open spec file                                                                                                                  |
-| Angular: Restart Serve         | `Ctrl+Shift+A R` | Restarts any active serve/build-watch terminal; re-attaches the debugger if a debug session was running                                                                                      |
-| Angular: Lint Project          | `Ctrl+Shift+A L` | Runs `ng lint` for a selected project                                                                                                                                                        |
-| Angular: Update Packages       | `Ctrl+Shift+A U` | Shows available package updates and runs `ng update` for selected packages                                                                                                                   |
-| Angular: Close Terminals       | `Ctrl+Shift+A C` | Opens a searchable multi-select list of all extension terminals with their state (running / terminated / errored / killed) — finished terminals are pre-selected; select which ones to close |
+| Command                        | Shortcut           | Description                                                                                                                                                                                  |
+| ------------------------------ | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Angular: Serve Application     | `Ctrl+Shift+A S`   | Runs `ng serve` for a selected project                                                                                                                                                       |
+| Angular: Debug Application     | `Ctrl+Shift+A D`   | Starts `ng serve`, waits for the dev server, then attaches a browser debugger                                                                                                                |
+| Angular: Debug Storybook       | `Ctrl+Shift+A K`   | Starts Storybook, waits for it to be ready, then attaches a browser debugger                                                                                                                 |
+| Angular: Debug Build (Watch)   | `Ctrl+Shift+A H`   | Runs `ng build --watch` + a static file server, then attaches a browser debugger                                                                                                             |
+| Angular: Build Project         | `Ctrl+Shift+A B`   | Runs `ng build` with the configured build configuration                                                                                                                                      |
+| Angular: Build Project (Watch) | `Ctrl+Shift+A W`   | Runs `ng build --watch` with the configured watch configuration                                                                                                                              |
+| Angular: Test Project          | `Ctrl+Shift+A T`   | Runs `ng test` for a project, all projects, or the currently open spec file                                                                                                                  |
+| Angular: Restart Serve         | `Ctrl+Shift+A R`   | Restarts any active serve/build-watch terminal; re-attaches the debugger if a debug session was running                                                                                      |
+| Angular: Lint Project          | `Ctrl+Shift+A L`   | Runs `ng lint` for a selected project                                                                                                                                                        |
+| Angular: Update Packages       | `Ctrl+Shift+A U`   | Shows available package updates and runs `ng update` for selected packages                                                                                                                   |
+| Angular: Switch Component File | `Ctrl+Shift+A Tab` | Quickly switch between a component's `.ts`, `.html`, `.scss`/`.css`, and `.spec.ts` files via a QuickPick                                                                                    |
+| Angular: Run npm Script        | `Ctrl+Shift+A N`   | Shows a searchable list of all npm scripts from `package.json` and runs the selected one in a terminal                                                                                       |
+| Angular: Close Terminals       | `Ctrl+Shift+A C`   | Opens a searchable multi-select list of all extension terminals with their state (running / terminated / errored / killed) — finished terminals are pre-selected; select which ones to close |
 
 ### Failure notifications and retry
 
@@ -90,6 +92,8 @@ Use the keyboard shortcuts (`Ctrl+Shift+A` followed by a letter) or search for *
 - **Restart Serve** (`Ctrl+Shift+A R`): restart any active `ng serve`, `ng build --watch`, Storybook, or static server terminal; if a debug session is attached it is stopped first and re-attached after the restart
 - **Lint** (`Ctrl+Shift+A L`): select a project and run `ng lint`
 - **Update** (`Ctrl+Shift+A U`): checks for available package updates, shows a multi-select list, then runs `ng update`; offers `--force` on failure
+- **Switch Component File** (`Ctrl+Shift+A Tab`): switch between a component's related files (`.ts`, `.html`, `.scss`/`.css`/`.sass`/`.less`, `.spec.ts`) — shows a QuickPick with icons for each file type; the current file is pre-selected
+- **Run npm Script** (`Ctrl+Shift+A N`): shows a searchable list of all scripts from `package.json`; select one to run it in a dedicated terminal
 - **Close Terminals** (`Ctrl+Shift+A C`): opens a searchable multi-select QuickPick of all extension terminals; each entry shows the terminal name and state (`running`, `terminated`, `errored`, or `killed`); finished terminals are pre-selected and sorted to the top so pressing Enter clears them immediately; use the select-all checkbox or search to filter further
 
 ### Debugging

@@ -182,3 +182,43 @@ export function findBestProjectForPath(
 
   return bestMatch?.name ?? null;
 }
+
+// ── Component file switching ──────────────────────────────────────────────────
+
+/** Known Angular component file suffixes in display order. */
+const COMPONENT_SUFFIXES = [
+  '.component.ts',
+  '.component.html',
+  '.component.css',
+  '.component.scss',
+  '.component.sass',
+  '.component.less',
+  '.component.spec.ts',
+];
+
+/**
+ * Given an Angular component file path, returns the base path (everything
+ * before the component suffix) and the current suffix.  Returns `null` for
+ * files that don't match any known component suffix.
+ */
+export function parseComponentFilePath(
+  filePath: string,
+): { basePath: string; suffix: string } | null {
+  const lower = filePath.toLowerCase();
+  // Sort longest-first so `.spec.ts` matches before `.ts`
+  const sorted = [...COMPONENT_SUFFIXES].sort((a, b) => b.length - a.length);
+  for (const suffix of sorted) {
+    if (lower.endsWith(suffix)) {
+      return { basePath: filePath.slice(0, filePath.length - suffix.length), suffix };
+    }
+  }
+  return null;
+}
+
+/**
+ * Returns all candidate sibling file paths for a component, based on the
+ * known suffix list.  The current file is included in the result.
+ */
+export function getComponentSiblingPaths(basePath: string): string[] {
+  return COMPONENT_SUFFIXES.map((s) => basePath + s);
+}

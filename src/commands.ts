@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as cp from 'child_process';
+import * as fs from 'fs';
 import * as path from 'path';
 import { ngOutput, extensionTerminals } from './state';
 import {
@@ -9,9 +10,89 @@ import {
   detectActiveFileProject,
   getLastProject,
   setLastProject,
+  pickWorkspaceFolder,
 } from './utils';
 import { spawnCapture } from './dependencies';
-import { parseNgUpdateOutput } from './pure-utils';
+import {
+  parseNgUpdateOutput,
+  parseComponentFilePath,
+  getComponentSiblingPaths,
+} from './pure-utils';
+
+// ── Component file switching ──────────────────────────────────────────────────
+
+export async function switchComponentFile() {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) {
+    vscode.window.showErrorMessage('No active editor');
+    return;
+  }
+
+  const currentPath = editor.document.uri.fsPath;
+  const parsed = parseComponentFilePath(currentPath);
+  if (!parsed) {
+    vscode.window.showInformationMessage('Current file is not an Angular component file');
+    return;
+  }
+
+  const candidates = getComponentSiblingPaths(parsed.basePath);
+  const existing = candidates.filter((p) => fs.existsSync(p));
+
+  if (existing.length <= 1) {
+    vscode.window.showInformationMessage('No sibling component files found');
+    return;
+  }
+
+  const extLabel = (filePath: string): string => {
+    const ext = filePath.slice(parsed.basePath.length);
+    switch (ext) {
+      case '.component.ts':
+        return '$(symbol-class)  TypeScript (.component.ts)';
+      case '.component.html':
+        return '$(code)  Template (.component.html)';
+      case '.component.css':
+      case '.component.scss':
+      case '.component.sass':
+      case '.component.less':
+        return `$(symbol-color)  Styles (${ext.slice('.component.'.length)})`;
+      case '.component.spec.ts':
+        return '$(beaker)  Test (.component.spec.ts)';
+      default:
+        return ext;
+    }
+  };
+
+  type FileItem = vscode.QuickPickItem & { filePath: string };
+  const items: FileItem[] = existing.map((p) => ({
+    label: extLabel(p),
+    filePath: p,
+    description: p === currentPath ? '(current)' : undefined,
+  }));
+
+  const qp = vscode.window.createQuickPick<FileItem>();
+  qp.items = items;
+  qp.placeholder = 'Switch to component file…';
+  qp.title = `Switch: ${path.basename(parsed.basePath)}.component.*`;
+  qp.activeItems = items.filter((i) => i.filePath === currentPath);
+  qp.matchOnDescription = true;
+
+  const chosen = await new Promise<FileItem | undefined>((resolve) => {
+    qp.onDidAccept(() => {
+      resolve(qp.selectedItems[0]);
+      qp.hide();
+    });
+    qp.onDidHide(() => resolve(undefined));
+    qp.show();
+  });
+  qp.dispose();
+
+  if (!chosen || chosen.filePath === currentPath) {
+    return;
+  }
+
+  const doc = await vscode.workspace.openTextDocument(chosen.filePath);
+  await vscode.window.showTextDocument(doc, editor.viewColumn);
+}
 
 // ── Serve ─────────────────────────────────────────────────────────────────────
 
@@ -409,4 +490,49 @@ export async function runNgUpdate(
       "ng update --force also failed. Check the 'Angular CLI Plus: ng' output for details.",
     );
   }
+}
+
+// ── Run npm script ────────────────────────────────────────────────────────────
+
+export async function runNpmScript() {
+  const workspaceRoot = await pickWorkspaceFolder();
+  if (!workspaceRoot) {
+    return;
+  }
+
+  const pkgPath = path.join(workspaceRoot, 'package.json');
+  if (!fs.existsSync(pkgPath)) {
+    vscode.window.showErrorMessage('No package.json found in the workspace root.');
+    return;
+  }
+
+  let pkgJson: { scripts?: Record<string, string> };
+  try {
+    pkgJson = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+  } catch {
+    vscode.window.showErrorMessage('Failed to parse package.json.');
+    return;
+  }
+
+  const scripts = pkgJson.scripts;
+  if (!scripts || Object.keys(scripts).length === 0) {
+    vscode.window.showInformationMessage('No npm scripts found in package.json.');
+    return;
+  }
+
+  const items: vscode.QuickPickItem[] = Object.entries(scripts).map(([name, cmd]) => ({
+    label: name,
+    description: cmd,
+  }));
+
+  const picked = await vscode.window.showQuickPick(items, {
+    placeHolder: 'Select an npm script to run',
+    matchOnDescription: true,
+  });
+  if (!picked) {
+    return;
+  }
+
+  const terminalName = `npm: ${picked.label}`;
+  await runInTerminal(terminalName, `npm run ${picked.label}`, workspaceRoot);
 }

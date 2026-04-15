@@ -4,6 +4,13 @@ All notable changes to the "angular-cli-plus" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.4.0]
+
+### Added
+
+- **Angular: Switch Component File** (`Ctrl+Shift+A Tab`): quickly switch between a component's related files (`.component.ts`, `.component.html`, `.component.scss`/`.css`/`.sass`/`.less`, `.component.spec.ts`) via a QuickPick that shows all existing sibling files with descriptive icons; the current file is pre-selected so you can arrow or tab to the desired file and press Enter to open it in the same editor column
+- **Angular: Run npm Script** (`Ctrl+Shift+A N`): shows a searchable QuickPick listing all scripts defined in the workspace's `package.json`; each entry shows the script name and its command; select one to run it in a dedicated terminal
+
 ## [1.3.4]
 
 ### Fixed

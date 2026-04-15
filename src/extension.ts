@@ -28,6 +28,8 @@ import {
   buildAngularProjectWatch,
   clearFinishedTerminals,
   updateAngularPackages,
+  switchComponentFile,
+  runNpmScript,
 } from './commands';
 import {
   runNpmInstall,
@@ -111,9 +113,13 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('angular-cli-plus.updateAngular', () =>
       updateAngularPackages(),
     ),
+    vscode.commands.registerCommand('angular-cli-plus.switchComponentFile', () =>
+      switchComponentFile(),
+    ),
     vscode.commands.registerCommand('angular-cli-plus.clearTerminals', () =>
       clearFinishedTerminals(),
     ),
+    vscode.commands.registerCommand('angular-cli-plus.runNpmScript', () => runNpmScript()),
     vscode.commands.registerCommand('angular-cli-plus.npmInstall', () => runNpmInstall(false)),
     vscode.commands.registerCommand('angular-cli-plus.npmCleanInstall', () => runNpmInstall(true)),
     vscode.commands.registerCommand('angular-cli-plus.checkDependencies', async () => {

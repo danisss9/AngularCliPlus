@@ -10,6 +10,8 @@ import {
   parseNgUpdateOutput,
   findMatchingProjects,
   findBestProjectForPath,
+  parseComponentFilePath,
+  getComponentSiblingPaths,
 } from '../pure-utils';
 import type { AngularProject } from '../types';
 
@@ -484,5 +486,83 @@ suite('findBestProjectForPath', () => {
       nested,
     );
     assert.strictEqual(result, 'child');
+  });
+});
+
+// ── parseComponentFilePath ────────────────────────────────────────────────────
+
+suite('parseComponentFilePath', () => {
+  test('.component.ts is recognised', () => {
+    const result = parseComponentFilePath('/app/src/hero/hero.component.ts');
+    assert.ok(result);
+    assert.strictEqual(result.basePath, '/app/src/hero/hero');
+    assert.strictEqual(result.suffix, '.component.ts');
+  });
+  test('.component.html is recognised', () => {
+    const result = parseComponentFilePath('/app/hero.component.html');
+    assert.ok(result);
+    assert.strictEqual(result.basePath, '/app/hero');
+    assert.strictEqual(result.suffix, '.component.html');
+  });
+  test('.component.scss is recognised', () => {
+    const result = parseComponentFilePath('/app/hero.component.scss');
+    assert.ok(result);
+    assert.strictEqual(result.suffix, '.component.scss');
+  });
+  test('.component.css is recognised', () => {
+    const result = parseComponentFilePath('/app/hero.component.css');
+    assert.ok(result);
+    assert.strictEqual(result.suffix, '.component.css');
+  });
+  test('.component.sass is recognised', () => {
+    const result = parseComponentFilePath('/app/hero.component.sass');
+    assert.ok(result);
+    assert.strictEqual(result.suffix, '.component.sass');
+  });
+  test('.component.less is recognised', () => {
+    const result = parseComponentFilePath('/app/hero.component.less');
+    assert.ok(result);
+    assert.strictEqual(result.suffix, '.component.less');
+  });
+  test('.component.spec.ts is recognised (not confused with .component.ts)', () => {
+    const result = parseComponentFilePath('/app/hero.component.spec.ts');
+    assert.ok(result);
+    assert.strictEqual(result.basePath, '/app/hero');
+    assert.strictEqual(result.suffix, '.component.spec.ts');
+  });
+  test('non-component .ts file returns null', () => {
+    assert.strictEqual(parseComponentFilePath('/app/hero.service.ts'), null);
+  });
+  test('plain .ts file returns null', () => {
+    assert.strictEqual(parseComponentFilePath('/app/main.ts'), null);
+  });
+  test('empty string returns null', () => {
+    assert.strictEqual(parseComponentFilePath(''), null);
+  });
+  test('case-insensitive matching (Windows paths)', () => {
+    const result = parseComponentFilePath('C:\\App\\Hero.Component.TS');
+    assert.ok(result);
+    assert.strictEqual(result.suffix, '.component.ts');
+    assert.strictEqual(result.basePath, 'C:\\App\\Hero');
+  });
+});
+
+// ── getComponentSiblingPaths ──────────────────────────────────────────────────
+
+suite('getComponentSiblingPaths', () => {
+  test('returns all known suffixes', () => {
+    const paths = getComponentSiblingPaths('/app/hero');
+    assert.strictEqual(paths.length, 7);
+    assert.ok(paths.includes('/app/hero.component.ts'));
+    assert.ok(paths.includes('/app/hero.component.html'));
+    assert.ok(paths.includes('/app/hero.component.css'));
+    assert.ok(paths.includes('/app/hero.component.scss'));
+    assert.ok(paths.includes('/app/hero.component.sass'));
+    assert.ok(paths.includes('/app/hero.component.less'));
+    assert.ok(paths.includes('/app/hero.component.spec.ts'));
+  });
+  test('preserves basePath exactly', () => {
+    const paths = getComponentSiblingPaths('C:\\Users\\test\\hero');
+    assert.ok(paths.every((p) => p.startsWith('C:\\Users\\test\\hero.component.')));
   });
 });
