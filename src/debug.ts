@@ -402,7 +402,12 @@ export async function debugBuildWatchProject(context: vscode.ExtensionContext) {
   const configFlag = getBuildConfigFlag(effectiveConfig, cliVersion);
   const buildCommand = `ng build --project "${projectName}"${configFlag} --watch`;
 
-  const outputPath = resolveOutputPath(projects[projectName], projectName, workspaceRoot, cliVersion);
+  const outputPath = resolveOutputPath(
+    projects[projectName],
+    projectName,
+    workspaceRoot,
+    cliVersion,
+  );
   const port = vsConfig.get<number>('buildWatch.servePort', 4201);
   const serverCommandTemplate = vsConfig.get<string>(
     'buildWatch.staticServerCommand',

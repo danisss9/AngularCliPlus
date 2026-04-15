@@ -31,7 +31,9 @@ export async function detectCliVersion(workspaceRoot: string): Promise<number | 
   if (majorVersion !== null) {
     logDiagnostic(`Detected Angular CLI major version: ${majorVersion} in ${workspaceRoot}`);
   } else {
-    logDiagnostic(`Could not detect Angular CLI version in ${workspaceRoot}, using modern defaults`);
+    logDiagnostic(
+      `Could not detect Angular CLI version in ${workspaceRoot}, using modern defaults`,
+    );
   }
 
   return majorVersion;
