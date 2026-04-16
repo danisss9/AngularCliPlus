@@ -7,6 +7,13 @@ export const diagnosticOutput = vscode.window.createOutputChannel('Angular CLI P
 
 export const activeServeTerminals = new Map<string, ServeEntry>();
 export const extensionTerminals = new Set<vscode.Terminal>();
+/**
+ * Tracks terminals whose last shell command has finished executing.
+ * Maps terminal → exit code of that command (undefined when the code is unknown).
+ * Populated by `onDidEndTerminalShellExecution`; entries are removed when
+ * the terminal is closed or when a new command is sent to the same terminal.
+ */
+export const finishedTerminals = new Map<vscode.Terminal, number | undefined>();
 export const depCheckTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
 export const cliVersionCache = new Map<string, number | null>();
 

@@ -8,6 +8,7 @@ import {
   diagnosticOutput,
   activeServeTerminals,
   extensionTerminals,
+  finishedTerminals,
   depCheckTimeouts,
   setExtensionContext,
   loadPersistedTerminalEntries,
@@ -156,6 +157,24 @@ export function activate(context: vscode.ExtensionContext) {
 
   // activeServeTerminals / extensionTerminals cleanup is handled inside
   // runInTerminal()'s onDidCloseTerminal listener. Nothing extra needed here.
+
+  // Track when a shell command finishes inside one of our terminals so we can
+  // tell whether the terminal is still busy or idle (the terminal's shell
+  // process may still be alive even after the command exits).
+  context.subscriptions.push(
+    vscode.window.onDidEndTerminalShellExecution((e) => {
+      if (extensionTerminals.has(e.terminal)) {
+        finishedTerminals.set(e.terminal, e.exitCode);
+      }
+    }),
+  );
+
+  // Clean up finishedTerminals when a terminal is closed so we don't leak.
+  context.subscriptions.push(
+    vscode.window.onDidCloseTerminal((closed) => {
+      finishedTerminals.delete(closed);
+    }),
+  );
 
   context.subscriptions.push(npmOutput, ngOutput, diagnosticOutput);
 

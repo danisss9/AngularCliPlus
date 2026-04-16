@@ -5,6 +5,7 @@ import type { AngularJson, AngularProject } from './types';
 import {
   activeServeTerminals,
   extensionTerminals,
+  finishedTerminals,
   getExtensionContext,
   logDiagnostic,
   persistTerminalEntry,
@@ -230,7 +231,12 @@ export async function runInTerminal(
   // ── Reuse check ────────────────────────────────────────────────────────────
   const existing = [...extensionTerminals].find((t) => t.name === name);
   if (existing) {
-    const isRunning = existing.exitStatus === undefined;
+    // A terminal's command is still running when the shell hasn't exited AND
+    // shell-integration hasn't reported the command as finished yet.
+    const shellExited = existing.exitStatus !== undefined;
+    const commandDone = finishedTerminals.has(existing);
+    const isRunning = !shellExited && !commandDone;
+
     if (isRunning) {
       if (options?.trackAsServe) {
         // Serve/watch terminal already running — offer restart
@@ -240,14 +246,20 @@ export async function runInTerminal(
           'Show',
         );
         // Re-check terminal is still valid after awaiting user input
-        if (existing.exitStatus !== undefined) {
+        const nowDone =
+          existing.exitStatus !== undefined || finishedTerminals.has(existing);
+        if (nowDone) {
+          existing.dispose();
           extensionTerminals.delete(existing);
+          finishedTerminals.delete(existing);
           removePersistedTerminalEntry(name);
           // Fall through to create a new terminal below
         } else if (action === 'Restart') {
           existing.show();
+          finishedTerminals.delete(existing);
           existing.sendText('\x03');
           await new Promise<void>((r) => setTimeout(r, RESTART_CTRL_C_DELAY_MS));
+          finishedTerminals.delete(existing);
           existing.sendText(command);
           return existing;
         } else if (action === 'Show') {
@@ -262,9 +274,10 @@ export async function runInTerminal(
         return existing;
       }
     } else {
-      // Terminated or errored — clean up before creating fresh
+      // Command finished or shell exited — clean up before creating fresh
       existing.dispose();
       extensionTerminals.delete(existing);
+      finishedTerminals.delete(existing);
       removePersistedTerminalEntry(name);
     }
   }
@@ -280,42 +293,25 @@ export async function runInTerminal(
   terminal.show();
   terminal.sendText(command);
 
-  const disposable = vscode.window.onDidCloseTerminal(async (closed) => {
-    if (closed !== terminal) {
+  // ── Notifications on command completion (via shell integration) ─────────
+  // `onDidEndTerminalShellExecution` fires when the command sent to the
+  // terminal finishes — even though the terminal's shell process is still
+  // alive — so we can surface success/failure immediately instead of waiting
+  // for the user to close the terminal tab.
+  let notified = false;
+  const shellExecDisposable = vscode.window.onDidEndTerminalShellExecution(async (e) => {
+    if (e.terminal !== terminal || notified) {
       return;
     }
-    disposable.dispose();
-    extensionTerminals.delete(closed);
-    removePersistedTerminalEntry(name);
+    notified = true;
+    shellExecDisposable.dispose();
 
-    // Also clean up activeServeTerminals here so we don't rely solely on the
-    // extension.ts handler
-    for (const [key, entry] of activeServeTerminals) {
-      if (entry.terminal === closed) {
-        activeServeTerminals.delete(key);
-        break;
-      }
-    }
-
-    const exitStatus = closed.exitStatus;
-    if (exitStatus === undefined) {
-      // Should not happen (we're inside onDidCloseTerminal), but guard anyway
-      return;
-    }
-
-    const code = exitStatus.code;
-    if (code === undefined) {
-      // Terminal was killed without a proper exit (e.g. user closed the tab
-      // mid-run or the process was force-killed).
-      logDiagnostic(`Terminal "${name}" closed without an exit code (killed/forced close).`);
-      return;
-    }
-
+    const code = e.exitCode;
     if (code === 0) {
       if (options?.successMessage) {
         vscode.window.showInformationMessage(options.successMessage);
       }
-    } else {
+    } else if (code !== undefined) {
       const retryLabel = options?.retryLabel;
       if (retryLabel) {
         const action = await vscode.window.showWarningMessage(
@@ -331,6 +327,27 @@ export async function runInTerminal(
         }
       } else {
         vscode.window.showWarningMessage(`${name} failed (exit code ${code}).`);
+      }
+    }
+  });
+
+  // ── Cleanup on terminal close ──────────────────────────────────────────────
+  const closeDisposable = vscode.window.onDidCloseTerminal((closed) => {
+    if (closed !== terminal) {
+      return;
+    }
+    closeDisposable.dispose();
+    shellExecDisposable.dispose();
+    extensionTerminals.delete(closed);
+    finishedTerminals.delete(closed);
+    removePersistedTerminalEntry(name);
+
+    // Also clean up activeServeTerminals here so we don't rely solely on the
+    // extension.ts handler
+    for (const [key, entry] of activeServeTerminals) {
+      if (entry.terminal === closed) {
+        activeServeTerminals.delete(key);
+        break;
       }
     }
   });

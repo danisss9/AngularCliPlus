@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
-import { ngOutput, extensionTerminals } from './state';
+import { ngOutput, extensionTerminals, finishedTerminals } from './state';
 import {
   resolveWorkspaceAndAngularJson,
   runInTerminal,
@@ -316,16 +316,31 @@ export async function clearFinishedTerminals() {
     label: string;
     icon: string;
   } {
-    if (terminal.exitStatus === undefined) {
-      return { state: 'running', label: 'running', icon: '$(play)' };
+    // Check if the shell process itself has exited first
+    if (terminal.exitStatus !== undefined) {
+      if (terminal.exitStatus.code === undefined) {
+        return { state: 'killed', label: 'killed', icon: '$(circle-slash)' };
+      }
+      if (terminal.exitStatus.code === 0) {
+        return { state: 'terminated', label: 'terminated', icon: '$(check)' };
+      }
+      return { state: 'errored', label: 'errored', icon: '$(error)' };
     }
-    if (terminal.exitStatus.code === undefined) {
-      return { state: 'killed', label: 'killed', icon: '$(circle-slash)' };
+
+    // Shell is still alive — check whether the command we sent has finished
+    // (detected via shell-integration's onDidEndTerminalShellExecution).
+    if (finishedTerminals.has(terminal)) {
+      const code = finishedTerminals.get(terminal);
+      if (code === undefined) {
+        return { state: 'killed', label: 'killed', icon: '$(circle-slash)' };
+      }
+      if (code === 0) {
+        return { state: 'terminated', label: 'terminated', icon: '$(check)' };
+      }
+      return { state: 'errored', label: 'errored', icon: '$(error)' };
     }
-    if (terminal.exitStatus.code === 0) {
-      return { state: 'terminated', label: 'terminated', icon: '$(check)' };
-    }
-    return { state: 'errored', label: 'errored', icon: '$(error)' };
+
+    return { state: 'running', label: 'running', icon: '$(play)' };
   }
 
   const stateOrder: Record<TerminalState, number> = {
@@ -374,6 +389,7 @@ export async function clearFinishedTerminals() {
   for (const item of chosen) {
     item.terminal.dispose();
     extensionTerminals.delete(item.terminal);
+    finishedTerminals.delete(item.terminal);
   }
 
   if (chosen.length > 0) {
