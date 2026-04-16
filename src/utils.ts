@@ -259,6 +259,9 @@ export async function runInTerminal(
           finishedTerminals.delete(existing);
           existing.sendText('\x03');
           await new Promise<void>((r) => setTimeout(r, RESTART_CTRL_C_DELAY_MS));
+          // The Ctrl+C above may have triggered onDidEndTerminalShellExecution
+          // during the delay, re-adding the terminal — clear it again before
+          // sending the fresh command.
           finishedTerminals.delete(existing);
           existing.sendText(command);
           return existing;
