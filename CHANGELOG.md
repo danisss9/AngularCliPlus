@@ -4,6 +4,15 @@ All notable changes to the "angular-cli-plus" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.4.1]
+
+### Fixed
+
+- **Terminal running detection** — terminals were incorrectly reported as "running" after their command finished or was cancelled with Ctrl+C, because the detection relied solely on `terminal.exitStatus` which is only set when the shell process exits. The extension now uses VS Code's `onDidEndTerminalShellExecution` event (shell integration) to track command completion independently of the shell lifecycle
+- **Terminal reuse for repeated commands** — re-running the same command (e.g. `ng build`) after it finished would just focus the existing terminal instead of launching a fresh run. Terminals whose command has completed are now correctly detected as idle and replaced with a new terminal
+- **Success/failure notifications delayed until terminal close** — notifications for command completion (success message, retry prompt) were tied to `onDidCloseTerminal` and only appeared when the user manually closed the terminal tab. They now fire immediately when the command finishes
+- **Close Terminals picker state** — the Close Terminals picker now correctly shows finished terminals as "terminated" or "errored" instead of "running"
+
 ## [1.4.0]
 
 ### Added
