@@ -4,6 +4,7 @@ import * as semver from 'semver';
 import { spawnCapture } from './dependencies';
 import { cliVersionCache, logDiagnostic } from './state';
 import { parseNgVersionOutput } from './pure-utils';
+import { resolveAngularCliSpawn } from './utils';
 
 /**
  * Detects the major version of the Angular CLI used in the given workspace.
@@ -41,7 +42,13 @@ export async function detectCliVersion(workspaceRoot: string): Promise<number | 
 
 async function detectFromNgVersion(workspaceRoot: string): Promise<number | null> {
   try {
-    const result = await spawnCapture('ng', ['version'], workspaceRoot);
+    const ngCommand = resolveAngularCliSpawn(workspaceRoot, ['version']);
+    const result = await spawnCapture(
+      ngCommand.command,
+      ngCommand.args,
+      workspaceRoot,
+      ngCommand.shell,
+    );
     if (result.exitCode === 0) {
       return parseNgVersionOutput(result.stdout);
     }

@@ -308,10 +308,11 @@ export function spawnCapture(
   cmd: string,
   args: string[],
   cwd: string,
+  shell = true,
 ): Promise<{ stdout: string; exitCode: number }> {
   return new Promise((resolve) => {
     let out = '';
-    const proc = cp.spawn(cmd, args, { cwd, shell: true });
+    const proc = cp.spawn(cmd, args, { cwd, shell });
     proc.stdout.on('data', (d: Buffer) => {
       out += d.toString();
     });

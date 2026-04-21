@@ -4,6 +4,18 @@ All notable changes to the "angular-cli-plus" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.4.1]
+
+### Fixed
+
+- **Schematic commands from the Command Palette** — `ng generate` commands no longer depend on an Explorer folder URI. They now resolve the target folder from the clicked Explorer folder, the active editor, or a workspace-folder picker, so generate commands work from both the Explorer and the Command Palette
+- **Workspace-local Angular CLI resolution** — Angular commands now prefer the workspace-local CLI from `node_modules/.bin` for terminal commands, `ng update`, and CLI version detection, so a global `ng` install is no longer required when `@angular/cli` is installed in the project
+- **Current spec-file test targeting** — running `Angular: Test Project` against the current `.spec.ts` file now passes the detected owning Angular project to `ng test`, preventing multi-project workspaces from falling back to the wrong project or the default target
+- **Build-watch debug port collisions** — `Angular: Debug Build (Watch)` now fails fast when the configured static-server port is already occupied instead of treating an unrelated listener as the server it just started
+- **Unsafe static-server command execution** — `angularCliPlus.buildWatch.staticServerCommand` is now validated before execution, matching the existing safety checks used for custom npm install commands
+- **Terminal reclaim by name after reload** — the extension no longer re-adopts pre-existing terminals by terminal name alone on activation, avoiding collisions with user-created terminals that happen to share the same name
+- **TypeScript Node environment drift** — `tsconfig.json` now explicitly includes the `node` and `mocha` type libraries so the repo typecheck reflects the intended extension runtime and test environment
+
 ## [1.4.0]
 
 ### Added

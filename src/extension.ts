@@ -7,7 +7,10 @@ import {
   ngOutput,
   diagnosticOutput,
   activeServeTerminals,
+  clearTrackedTerminalState,
   extensionTerminals,
+  setTrackedTerminalFinished,
+  setTrackedTerminalRunning,
   depCheckTimeouts,
   setExtensionContext,
   loadPersistedTerminalEntries,
@@ -43,28 +46,10 @@ import { pickWorkspaceFolder } from './utils';
 export function activate(context: vscode.ExtensionContext) {
   setExtensionContext(context);
 
-  // ── Reclaim terminals that survived a VS Code restart ─────────────────────
+  // ── Clear stale terminal entries from previous sessions ───────────────────
   const persisted = loadPersistedTerminalEntries();
-  for (const openTerminal of vscode.window.terminals) {
-    const entry = persisted[openTerminal.name];
-    if (!entry) {
-      continue;
-    }
-    extensionTerminals.add(openTerminal);
-    if (entry.trackAsServe) {
-      activeServeTerminals.set(openTerminal.name, {
-        terminal: openTerminal,
-        command: entry.command,
-        cwd: entry.cwd,
-      });
-    }
-  }
-  // Remove persisted entries whose terminals no longer exist
-  const openNames = new Set(vscode.window.terminals.map((t) => t.name));
   for (const name of Object.keys(persisted)) {
-    if (!openNames.has(name)) {
-      removePersistedTerminalEntry(name);
-    }
+    removePersistedTerminalEntry(name);
   }
 
   // Register commands for each schematic type
@@ -85,12 +70,22 @@ export function activate(context: vscode.ExtensionContext) {
   schematics.forEach((schematic) => {
     const disposable = vscode.commands.registerCommand(
       `angular-cli-plus.${schematic}`,
-      (uri: vscode.Uri) => generatengSchematic(schematic, uri),
+      (uri?: vscode.Uri) => generatengSchematic(schematic, uri),
     );
     context.subscriptions.push(disposable);
   });
 
   context.subscriptions.push(
+    vscode.window.onDidStartTerminalShellExecution((event) => {
+      if (extensionTerminals.has(event.terminal)) {
+        setTrackedTerminalRunning(event.terminal);
+      }
+    }),
+    vscode.window.onDidEndTerminalShellExecution((event) => {
+      if (extensionTerminals.has(event.terminal)) {
+        setTrackedTerminalFinished(event.terminal, event.exitCode);
+      }
+    }),
     vscode.commands.registerCommand('angular-cli-plus.debugAngular', () =>
       debugAngularProject(context),
     ),
@@ -156,6 +151,12 @@ export function activate(context: vscode.ExtensionContext) {
 
   // activeServeTerminals / extensionTerminals cleanup is handled inside
   // runInTerminal()'s onDidCloseTerminal listener. Nothing extra needed here.
+
+  context.subscriptions.push(
+    vscode.window.onDidCloseTerminal((terminal) => {
+      clearTrackedTerminalState(terminal);
+    }),
+  );
 
   context.subscriptions.push(npmOutput, ngOutput, diagnosticOutput);
 

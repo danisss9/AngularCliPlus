@@ -3,6 +3,7 @@ import * as cp from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { ngOutput, extensionTerminals } from './state';
+import { getTrackedTerminalState } from './state';
 import {
   resolveWorkspaceAndAngularJson,
   runInTerminal,
@@ -11,6 +12,8 @@ import {
   getLastProject,
   setLastProject,
   pickWorkspaceFolder,
+  buildAngularCliTerminalCommand,
+  resolveAngularCliSpawn,
 } from './utils';
 import { spawnCapture } from './dependencies';
 import { detectCliVersion } from './version';
@@ -120,7 +123,10 @@ export async function serveAngularProject() {
     return;
   }
 
-  const serveCommand = `ng serve --project "${projectName}"`;
+  const serveCommand = buildAngularCliTerminalCommand(
+    workspaceRoot,
+    `ng serve --project "${projectName}"`,
+  );
   const terminalName = `ng serve (${projectName})`;
   runInTerminal(terminalName, serveCommand, workspaceRoot, { trackAsServe: true });
 }
@@ -193,21 +199,36 @@ export async function testAngularProject() {
 
   if (picked === CURRENT_FILE && activeFile) {
     const relPath = path.relative(workspaceRoot, activeFile).replaceAll(path.sep, '/');
-    testCommand = `ng test --include "${relPath}"${watchFlag}${uiFlag}`;
-    terminalName = `ng test (${path.basename(activeFile)})`;
+    const projectFlag = currentInTestable ? ` --project "${currentInTestable}"` : '';
+    testCommand = buildAngularCliTerminalCommand(
+      workspaceRoot,
+      `ng test${projectFlag} --include "${relPath}"${watchFlag}${uiFlag}`,
+    );
+    terminalName = currentInTestable
+      ? `ng test (${currentInTestable}:${path.basename(activeFile)})`
+      : `ng test (${path.basename(activeFile)})`;
   } else if (CURRENT_PROJECT_LABEL && picked === CURRENT_PROJECT_LABEL) {
     setLastProject('test', currentInTestable!);
-    testCommand = `ng test --project "${currentInTestable}"${watchFlag}${uiFlag}`;
+    testCommand = buildAngularCliTerminalCommand(
+      workspaceRoot,
+      `ng test --project "${currentInTestable}"${watchFlag}${uiFlag}`,
+    );
     terminalName = `ng test (${currentInTestable})`;
   } else if (LAST_LABEL && picked === LAST_LABEL) {
-    testCommand = `ng test --project "${lastInTestable}"${watchFlag}${uiFlag}`;
+    testCommand = buildAngularCliTerminalCommand(
+      workspaceRoot,
+      `ng test --project "${lastInTestable}"${watchFlag}${uiFlag}`,
+    );
     terminalName = `ng test (${lastInTestable})`;
   } else if (picked === ALL_PROJECTS) {
-    testCommand = `ng test${watchFlag}${uiFlag}`;
+    testCommand = buildAngularCliTerminalCommand(workspaceRoot, `ng test${watchFlag}${uiFlag}`);
     terminalName = 'ng test (all)';
   } else {
     setLastProject('test', picked);
-    testCommand = `ng test --project "${picked}"${watchFlag}${uiFlag}`;
+    testCommand = buildAngularCliTerminalCommand(
+      workspaceRoot,
+      `ng test --project "${picked}"${watchFlag}${uiFlag}`,
+    );
     terminalName = `ng test (${picked})`;
   }
 
@@ -239,7 +260,10 @@ export async function lintAngularProject() {
   }
 
   const terminalName = `ng lint (${projectName})`;
-  const lintCommand = `ng lint --project "${projectName}"`;
+  const lintCommand = buildAngularCliTerminalCommand(
+    workspaceRoot,
+    `ng lint --project "${projectName}"`,
+  );
   runInTerminal(terminalName, lintCommand, workspaceRoot, {
     successMessage: `ng lint (${projectName}) completed successfully.`,
     retryLabel: 'Retry',
@@ -293,7 +317,10 @@ async function runNgBuild(watch: boolean) {
   const watchFlag = watch ? ' --watch' : '';
 
   const terminalName = watch ? `ng build --watch (${projectName})` : `ng build (${projectName})`;
-  const buildCommand = `ng build --project "${projectName}"${configFlag}${watchFlag}`;
+  const buildCommand = buildAngularCliTerminalCommand(
+    workspaceRoot,
+    `ng build --project "${projectName}"${configFlag}${watchFlag}`,
+  );
   runInTerminal(terminalName, buildCommand, workspaceRoot, {
     trackAsServe: watch,
     successMessage: watch ? undefined : `ng build (${projectName}) completed successfully.`,
@@ -309,13 +336,25 @@ export async function clearFinishedTerminals() {
     return;
   }
 
-  type TerminalState = 'running' | 'terminated' | 'errored' | 'killed';
-
   function getTerminalState(terminal: vscode.Terminal): {
-    state: TerminalState;
+    state: 'running' | 'terminated' | 'errored' | 'killed';
     label: string;
     icon: string;
   } {
+    const trackedState = getTrackedTerminalState(terminal);
+    if (trackedState) {
+      switch (trackedState) {
+        case 'running':
+          return { state: 'running', label: 'running', icon: '$(play)' };
+        case 'killed':
+          return { state: 'killed', label: 'killed', icon: '$(circle-slash)' };
+        case 'terminated':
+          return { state: 'terminated', label: 'terminated', icon: '$(check)' };
+        case 'errored':
+          return { state: 'errored', label: 'errored', icon: '$(error)' };
+      }
+    }
+
     if (terminal.exitStatus === undefined) {
       return { state: 'running', label: 'running', icon: '$(play)' };
     }
@@ -328,14 +367,17 @@ export async function clearFinishedTerminals() {
     return { state: 'errored', label: 'errored', icon: '$(error)' };
   }
 
-  const stateOrder: Record<TerminalState, number> = {
+  const stateOrder: Record<'running' | 'terminated' | 'errored' | 'killed', number> = {
     errored: 0,
     killed: 1,
     terminated: 2,
     running: 3,
   };
 
-  type TerminalItem = vscode.QuickPickItem & { terminal: vscode.Terminal; state: TerminalState };
+  type TerminalItem = vscode.QuickPickItem & {
+    terminal: vscode.Terminal;
+    state: 'running' | 'terminated' | 'errored' | 'killed';
+  };
 
   const terminals = [...extensionTerminals].sort((a, b) => {
     const sa = getTerminalState(a);
@@ -387,8 +429,9 @@ export async function clearFinishedTerminals() {
 
 export function spawnNg(args: string[], cwd: string): Promise<number> {
   return new Promise((resolve) => {
-    ngOutput.appendLine(`> ng ${args.join(' ')}\n`);
-    const proc = cp.spawn('ng', args, { cwd, shell: true });
+    const ngCommand = resolveAngularCliSpawn(cwd, args);
+    ngOutput.appendLine(`> ${ngCommand.displayCommand}\n`);
+    const proc = cp.spawn(ngCommand.command, ngCommand.args, { cwd, shell: ngCommand.shell });
     proc.stdout.on('data', (d: Buffer) => ngOutput.append(d.toString()));
     proc.stderr.on('data', (d: Buffer) => ngOutput.append(d.toString()));
     proc.on('error', (err) => {
@@ -415,7 +458,13 @@ export async function updateAngularPackages() {
       cancellable: false,
     },
     async () => {
-      const result = await spawnCapture('ng', ['update'], workspaceRoot);
+      const ngCommand = resolveAngularCliSpawn(workspaceRoot, ['update']);
+      const result = await spawnCapture(
+        ngCommand.command,
+        ngCommand.args,
+        workspaceRoot,
+        ngCommand.shell,
+      );
       capturedOutput = result.stdout;
       checkExitCode = result.exitCode;
     },

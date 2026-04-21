@@ -55,6 +55,8 @@ export interface PersistedTerminalEntry {
   trackAsServe: boolean;
 }
 
+export type TerminalCommandState = 'running' | 'terminated' | 'errored' | 'killed';
+
 export type SchematicType =
   | 'component'
   | 'service'

@@ -10,9 +10,11 @@ import {
   pickProjectWithCurrentFile,
   getLastProject,
   setLastProject,
+  buildAngularCliTerminalCommand,
 } from './utils';
 import { detectCliVersion } from './version';
 import { resolveOutputPathStrategy, getBuildConfigFlag } from './version-adapter';
+import { validateCustomCommand } from './pure-utils';
 
 // ── Timing constants ───────────────────────────────────────────────────────────
 const RESTART_DEBUG_STOP_DELAY_MS = 500;
@@ -154,7 +156,10 @@ export async function debugAngularProject(context: vscode.ExtensionContext) {
   }
   const sessionName = `Angular Debug (${projectName})`;
 
-  const serveCommand = `ng serve --project "${projectName}"`;
+  const serveCommand = buildAngularCliTerminalCommand(
+    workspaceRoot,
+    `ng serve --project "${projectName}"`,
+  );
   const serveTerminalName = `ng serve (${projectName})`;
   const terminal = await runInTerminal(serveTerminalName, serveCommand, workspaceRoot, {
     trackAsServe: true,
@@ -400,7 +405,10 @@ export async function debugBuildWatchProject(context: vscode.ExtensionContext) {
       ? vsConfig.get<string>('build.configuration', 'production')
       : watchConfig;
   const configFlag = getBuildConfigFlag(effectiveConfig, cliVersion);
-  const buildCommand = `ng build --project "${projectName}"${configFlag} --watch`;
+  const buildCommand = buildAngularCliTerminalCommand(
+    workspaceRoot,
+    `ng build --project "${projectName}"${configFlag} --watch`,
+  );
 
   const outputPath = resolveOutputPath(
     projects[projectName],
@@ -409,6 +417,13 @@ export async function debugBuildWatchProject(context: vscode.ExtensionContext) {
     cliVersion,
   );
   const port = vsConfig.get<number>('buildWatch.servePort', 4201);
+  if (await isPortInUse(port)) {
+    vscode.window.showErrorMessage(
+      `Port ${port} is already in use. Stop the existing process or change "angularCliPlus.buildWatch.servePort" before starting debug build watch.`,
+    );
+    return;
+  }
+
   const serverCommandTemplate = vsConfig.get<string>(
     'buildWatch.staticServerCommand',
     'npx serve {outputPath} -l {port}',
@@ -417,6 +432,13 @@ export async function debugBuildWatchProject(context: vscode.ExtensionContext) {
   const serverCommand = serverCommandTemplate
     .replace('{outputPath}', `"${escapedOutputPath}"`)
     .replace('{port}', String(port));
+  const serverCommandError = validateCustomCommand(serverCommand);
+  if (serverCommandError) {
+    vscode.window.showErrorMessage(
+      `Invalid build watch static server command: ${serverCommandError}`,
+    );
+    return;
+  }
 
   const browserSetting = vsConfig.get<string>('debug.browser', 'chrome');
   const executableOverride = (vsConfig.get<string>('debug.browserExecutablePath') ?? '').trim();
@@ -698,6 +720,28 @@ export function waitForPort(
     }
 
     attempt();
+  });
+}
+
+async function isPortInUse(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    socket.setTimeout(PORT_CHECK_SOCKET_TIMEOUT_MS);
+
+    let handled = false;
+    const finish = (inUse: boolean) => {
+      if (handled) {
+        return;
+      }
+      handled = true;
+      socket.destroy();
+      resolve(inUse);
+    };
+
+    socket.on('connect', () => finish(true));
+    socket.on('timeout', () => finish(false));
+    socket.on('error', () => finish(false));
+    socket.connect(port, 'localhost');
   });
 }
 

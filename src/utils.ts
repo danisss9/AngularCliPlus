@@ -4,11 +4,14 @@ import * as path from 'path';
 import type { AngularJson, AngularProject } from './types';
 import {
   activeServeTerminals,
+  clearTrackedTerminalState,
   extensionTerminals,
+  getTrackedTerminalState,
   getExtensionContext,
   logDiagnostic,
   persistTerminalEntry,
   removePersistedTerminalEntry,
+  setTrackedTerminalRunning,
 } from './state';
 
 export { toKebabCase, findMatchingProjects } from './pure-utils';
@@ -201,6 +204,53 @@ export async function pickProjectWithCurrentFile(
   return picked;
 }
 
+// ── Angular CLI helpers ──────────────────────────────────────────────────────
+
+function getLocalAngularCliPath(workspaceRoot: string): string | null {
+  const executable = process.platform === 'win32' ? 'ng.cmd' : 'ng';
+  const cliPath = path.join(workspaceRoot, 'node_modules', '.bin', executable);
+  return fs.existsSync(cliPath) ? cliPath : null;
+}
+
+function quoteShellPath(filePath: string): string {
+  return /\s/.test(filePath) ? `"${filePath.replace(/"/g, '\\"')}"` : filePath;
+}
+
+export function buildAngularCliTerminalCommand(workspaceRoot: string, command: string): string {
+  if (!command.startsWith('ng ')) {
+    return command;
+  }
+
+  const localCli = getLocalAngularCliPath(workspaceRoot);
+  if (!localCli) {
+    return command;
+  }
+
+  return `${quoteShellPath(localCli)} ${command.slice(3)}`;
+}
+
+export function resolveAngularCliSpawn(
+  workspaceRoot: string,
+  args: string[],
+): { command: string; args: string[]; shell: boolean; displayCommand: string } {
+  const localCli = getLocalAngularCliPath(workspaceRoot);
+  if (localCli) {
+    return {
+      command: localCli,
+      args,
+      shell: process.platform === 'win32',
+      displayCommand: `${quoteShellPath(localCli)} ${args.join(' ')}`,
+    };
+  }
+
+  return {
+    command: 'ng',
+    args,
+    shell: true,
+    displayCommand: `ng ${args.join(' ')}`,
+  };
+}
+
 // ── Terminal helpers ───────────────────────────────────────────────────────────
 
 const RESTART_CTRL_C_DELAY_MS = 500;
@@ -230,7 +280,7 @@ export async function runInTerminal(
   // ── Reuse check ────────────────────────────────────────────────────────────
   const existing = [...extensionTerminals].find((t) => t.name === name);
   if (existing) {
-    const isRunning = existing.exitStatus === undefined;
+    const isRunning = getTrackedTerminalState(existing) === 'running';
     if (isRunning) {
       if (options?.trackAsServe) {
         // Serve/watch terminal already running — offer restart
@@ -240,14 +290,16 @@ export async function runInTerminal(
           'Show',
         );
         // Re-check terminal is still valid after awaiting user input
-        if (existing.exitStatus !== undefined) {
+        if (getTrackedTerminalState(existing) !== 'running') {
           extensionTerminals.delete(existing);
+          clearTrackedTerminalState(existing);
           removePersistedTerminalEntry(name);
           // Fall through to create a new terminal below
         } else if (action === 'Restart') {
           existing.show();
           existing.sendText('\x03');
           await new Promise<void>((r) => setTimeout(r, RESTART_CTRL_C_DELAY_MS));
+          setTrackedTerminalRunning(existing);
           existing.sendText(command);
           return existing;
         } else if (action === 'Show') {
@@ -265,6 +317,7 @@ export async function runInTerminal(
       // Terminated or errored — clean up before creating fresh
       existing.dispose();
       extensionTerminals.delete(existing);
+      clearTrackedTerminalState(existing);
       removePersistedTerminalEntry(name);
     }
   }
@@ -278,6 +331,7 @@ export async function runInTerminal(
     activeServeTerminals.set(name, { terminal, command, cwd });
   }
   terminal.show();
+  setTrackedTerminalRunning(terminal);
   terminal.sendText(command);
 
   const disposable = vscode.window.onDidCloseTerminal(async (closed) => {
@@ -286,6 +340,7 @@ export async function runInTerminal(
     }
     disposable.dispose();
     extensionTerminals.delete(closed);
+    clearTrackedTerminalState(closed);
     removePersistedTerminalEntry(name);
 
     // Also clean up activeServeTerminals here so we don't rely solely on the

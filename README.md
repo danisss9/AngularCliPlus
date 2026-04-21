@@ -15,15 +15,16 @@ The extension detects the Angular CLI version in each workspace and automaticall
 | 14–16       | `--configuration=production` | `--standalone` (default false) | `dist/<project>/`         | N/A     |
 | 17+         | `--configuration=production` | default true                   | `dist/<project>/browser/` | `--ui`  |
 
-Detection runs via `ng version` (with a `node_modules/@angular/cli` fallback), is cached per workspace root, and refreshes automatically when `package.json` changes. When the version cannot be determined, the extension falls back to modern defaults.
+Detection runs via `ng version` (preferring the workspace-local CLI from `node_modules/.bin`, with a `node_modules/@angular/cli` package fallback), is cached per workspace root, and refreshes automatically when `package.json` changes. When the version cannot be determined, the extension falls back to modern defaults.
 
 ### Schematics generator
 
-- **Right-click context menu integration**: Generate Angular schematics by right-clicking any folder in the Explorer
+- **Explorer and Command Palette support**: Generate Angular schematics from a folder in the Explorer or directly from the Command Palette
 - **Organized submenu**: All generate commands in a single "Ng Generate" submenu
 - **Configurable defaults**: Set default options for all generate commands in VS Code settings
 - **Simple workflow**: Only prompts for the name; all other options use configured defaults
-- **Smart project detection**: Automatically detects the Angular project from `angular.json` based on the folder you right-clicked
+- **Smart target-folder detection**: Uses the selected Explorer folder, the active editor's folder, or a workspace-folder pick as the generation target
+- **Smart project detection**: Automatically detects the Angular project from `angular.json` based on the resolved target folder
 - **Supports all major Angular schematics**:
   - Component
   - Service
@@ -81,27 +82,38 @@ Every command that shows a project picker remembers the last selection per comma
 
 ### Generating schematics
 
-1. Right-click on any folder in the VS Code Explorer
-2. Select **Ng Generate** from the context menu
-3. Choose the type of schematic you want to generate (Component, Service, etc.)
-4. Enter the name for the item you want to generate
+1. Start from either of these entry points:
+
+- Right-click any folder in the VS Code Explorer and open **Ng Generate**
+- Run an **Angular CLI Plus** generate command from the Command Palette
+
+2. Choose the type of schematic you want to generate (Component, Service, etc.)
+3. Enter the name for the item you want to generate
+4. The extension resolves the target folder in this order:
+
+- The Explorer folder you clicked
+- The folder of the active editor
+- A workspace-folder pick if there is no active editor and multiple workspace folders are open
+
 5. The extension automatically detects the Angular project from `angular.json`:
-   - If one project matches the selected folder it is used automatically
-   - If multiple projects match you will be prompted to choose from a list
-   - If no projects match you can type the project name manually (leave empty for the default project)
-6. The extension runs the Angular CLI command with your configured default options in the selected folder
+
+- If one project matches the resolved folder it is used automatically
+- If multiple projects match you will be prompted to choose from a list
+- If no projects match you can type the project name manually (leave empty for the default project)
+
+6. The extension runs the Angular CLI command with your configured default options in the resolved target folder
 
 ### Running Angular CLI commands
 
-Use the keyboard shortcuts (`Ctrl+Shift+A` followed by a letter) or search for **Angular CLI Plus** commands in the Command Palette (`Ctrl+Shift+P`):
+Use the keyboard shortcuts (`Ctrl+Shift+A` followed by a letter) or search for **Angular CLI Plus** commands in the Command Palette (`Ctrl+Shift+P`). When `@angular/cli` is installed in the workspace, the extension uses that local CLI automatically instead of requiring a global `ng` on `PATH`:
 
 - **Serve** (`Ctrl+Shift+A S`): select a project and start `ng serve` in a terminal
 - **Debug** (`Ctrl+Shift+A D`): start `ng serve`, wait for the server, then attach a browser debugger; the terminal is stopped when the debug session ends
 - **Debug Storybook** (`Ctrl+Shift+A K`): detects Storybook via `angular.json` architect targets or a `storybook` npm script, starts it, waits for the port (default `6006`), then attaches a browser debugger; configurable port via `angularCliPlus.storybook.port`
-- **Debug Build Watch** (`Ctrl+Shift+A H`): runs `ng build --watch` and a static file server in parallel, waits for the server port, then attaches a browser debugger; both terminals are stopped when the session ends; configurable via `angularCliPlus.buildWatch.servePort` and `angularCliPlus.buildWatch.staticServerCommand`
+- **Debug Build Watch** (`Ctrl+Shift+A H`): runs `ng build --watch` and a static file server in parallel, waits for the server port, then attaches a browser debugger; both terminals are stopped when the session ends; fails fast when the configured serve port is already occupied; configurable via `angularCliPlus.buildWatch.servePort` and `angularCliPlus.buildWatch.staticServerCommand`
 - **Build** (`Ctrl+Shift+A B`): select a project and run `ng build` (configuration controlled by `angularCliPlus.build.configuration`)
 - **Build Watch** (`Ctrl+Shift+A W`): same as build but adds `--watch` (configuration controlled by `angularCliPlus.watch.configuration`)
-- **Test** (`Ctrl+Shift+A T`): select a project, all projects at once, or the `.spec.ts` file you have open
+- **Test** (`Ctrl+Shift+A T`): select a project, all projects at once, or the `.spec.ts` file you have open; when a spec file belongs to a detected Angular project, the owning project is passed explicitly to `ng test`
 - **Restart Serve** (`Ctrl+Shift+A R`): restart any active `ng serve`, `ng build --watch`, Storybook, or static server terminal; if a debug session is attached it is stopped first and re-attached after the restart
 - **Lint** (`Ctrl+Shift+A L`): select a project and run `ng lint`
 - **Update** (`Ctrl+Shift+A U`): checks for available package updates, shows a multi-select list, then runs `ng update`; offers `--force` on failure
@@ -140,6 +152,7 @@ Make sure the workspace contains an `angular.json` file. The extension activates
 - Verify the selected browser is installed. Brave, Opera, and Opera GX require installation at the standard path; set `angularCliPlus.debug.browserExecutablePath` for non-standard locations.
 - For Firefox, install the **Debugger for Firefox** VS Code extension.
 - For Safari, install the **Safari Debugger** VS Code extension and use macOS.
+- For **Debug Build Watch**, make sure `angularCliPlus.buildWatch.servePort` is free before starting the session. If another process is already listening on that port, the extension now stops immediately instead of attaching to the wrong server.
 
 ### Dependency check triggers too often / not at all
 
@@ -149,12 +162,16 @@ Make sure the workspace contains an `angular.json` file. The extension activates
 
 ### `ng` / `npm` command not found
 
-- Ensure Node.js and the Angular CLI are on your `PATH`. Restart VS Code after installing them.
+- Ensure Node.js and npm are on your `PATH`. For Angular commands, the extension prefers the workspace-local CLI from `node_modules/.bin` when available, so a global `ng` install is optional.
 - The **Angular CLI Plus: npm** output channel shows the full output of every npm operation.
 
 ### Custom install command is rejected
 
 Commands containing dangerous patterns (`; rm`, `&& rm`, `| del`, `$()`, backtick substitution, etc.) are blocked as a safety measure. Use a plain package-manager invocation (e.g. `pnpm install --frozen-lockfile`).
+
+### Custom static server command is rejected
+
+`angularCliPlus.buildWatch.staticServerCommand` is validated with the same safety rules as custom npm commands. Keep it to a plain server invocation such as `npx serve {outputPath} -l {port}` and avoid chained shell commands or shell substitution.
 
 ## Requirements
 

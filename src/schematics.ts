@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { AngularJson, GenerateOptions, SchematicType } from './types';
-import { runInTerminal } from './utils';
+import { buildAngularCliTerminalCommand, runInTerminal } from './utils';
 import { logDiagnostic } from './state';
 import {
   buildNgGenerateCommand as buildCommand,
@@ -12,8 +12,11 @@ import {
 import { detectCliVersion } from './version';
 import { supportsStandalone, isStandaloneDefault } from './version-adapter';
 
-export async function generatengSchematic(schematic: SchematicType, uri: vscode.Uri) {
-  const folderPath = uri.fsPath;
+export async function generatengSchematic(schematic: SchematicType, uri?: vscode.Uri) {
+  const folderPath = await resolveSchematicTargetFolder(uri);
+  if (!folderPath) {
+    return;
+  }
 
   const name = await vscode.window.showInputBox({
     prompt: `Enter the name for the ${schematic}`,
@@ -33,7 +36,7 @@ export async function generatengSchematic(schematic: SchematicType, uri: vscode.
     return; // User cancelled
   }
 
-  const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
+  const workspaceFolder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(folderPath));
   if (!workspaceFolder) {
     vscode.window.showErrorMessage('Could not determine workspace folder');
     return;
@@ -56,11 +59,46 @@ export async function generatengSchematic(schematic: SchematicType, uri: vscode.
   const cliVersion = await detectCliVersion(workspaceFolder.uri.fsPath);
   adaptStandaloneOption(options, schematic, cliVersion);
 
-  const finalCommand = `${buildCommand(schematic, options)} ${name}`;
+  const finalCommand = buildAngularCliTerminalCommand(
+    workspaceFolder.uri.fsPath,
+    `${buildCommand(schematic, options)} ${name}`,
+  );
 
-  runInTerminal(`Angular CLI Plus: ${schematic}`, finalCommand, workspaceFolder.uri.fsPath, {
+  runInTerminal(`Angular CLI Plus: ${schematic}`, finalCommand, folderPath, {
     successMessage: `${schematic} "${name}" generated successfully.`,
   });
+}
+
+async function resolveSchematicTargetFolder(uri?: vscode.Uri): Promise<string | null> {
+  if (uri) {
+    return fs.existsSync(uri.fsPath) && fs.statSync(uri.fsPath).isFile()
+      ? path.dirname(uri.fsPath)
+      : uri.fsPath;
+  }
+
+  const activePath = vscode.window.activeTextEditor?.document.uri.fsPath;
+  if (activePath) {
+    return path.dirname(activePath);
+  }
+
+  const workspaceFolders = vscode.workspace.workspaceFolders;
+  if (!workspaceFolders || workspaceFolders.length === 0) {
+    vscode.window.showErrorMessage('No workspace folder open');
+    return null;
+  }
+
+  if (workspaceFolders.length === 1) {
+    return workspaceFolders[0].uri.fsPath;
+  }
+
+  const picked = await vscode.window.showWorkspaceFolderPick({
+    placeHolder: 'Select the folder where the schematic should be generated',
+  });
+  if (!picked) {
+    return null;
+  }
+
+  return picked.uri.fsPath;
 }
 
 /**
