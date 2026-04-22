@@ -42,6 +42,7 @@ import {
   checkDependencies,
 } from './dependencies';
 import { pickWorkspaceFolder } from './utils';
+import { checkMemoryLeaks } from './memory-leak';
 
 export function activate(context: vscode.ExtensionContext) {
   setExtensionContext(context);
@@ -115,6 +116,7 @@ export function activate(context: vscode.ExtensionContext) {
       clearFinishedTerminals(),
     ),
     vscode.commands.registerCommand('angular-cli-plus.runNpmScript', () => runNpmScript()),
+    vscode.commands.registerCommand('angular-cli-plus.checkMemoryLeaks', () => checkMemoryLeaks()),
     vscode.commands.registerCommand('angular-cli-plus.npmInstall', () => runNpmInstall(false)),
     vscode.commands.registerCommand('angular-cli-plus.npmCleanInstall', () => runNpmInstall(true)),
     vscode.commands.registerCommand('angular-cli-plus.checkDependencies', async () => {

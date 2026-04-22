@@ -4,7 +4,7 @@
   "description": "Angular CLI commands, schematics generator, and project tools for VS Code",
   "repository": "https://github.com/danisss9/AngularCliPlus",
   "publisher": "danisss9",
-  "version": "1.4.2",
+  "version": "1.5.0",
   "icon": "icon.png",
   "engines": {
     "vscode": "^1.107.0"
@@ -144,6 +144,11 @@
         "command": "angular-cli-plus.runNpmScript",
         "title": "Angular: Run npm Script",
         "category": "Angular CLI Plus"
+      },
+      {
+        "command": "angular-cli-plus.checkMemoryLeaks",
+        "title": "Angular: Check Memory Leaks",
+        "category": "Angular CLI Plus"
       }
     ],
     "keybindings": [
@@ -198,6 +203,10 @@
       {
         "command": "angular-cli-plus.runNpmScript",
         "key": "ctrl+shift+a n"
+      },
+      {
+        "command": "angular-cli-plus.checkMemoryLeaks",
+        "key": "ctrl+shift+a m"
       }
     ],
     "submenus": [
@@ -547,10 +556,10 @@
     "esbuild": "^0.27.1",
     "eslint": "^9.39.1",
     "npm-run-all": "^4.1.5",
-    "typescript": "^5.9.3",
     "typescript-eslint": "^8.48.1"
   },
   "dependencies": {
-    "semver": "^7.7.4"
+    "semver": "^7.7.4",
+    "typescript": "^5.9.3"
   }
 }

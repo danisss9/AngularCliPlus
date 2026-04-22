@@ -4,6 +4,22 @@ All notable changes to the "angular-cli-plus" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.5.0]
+
+### Added
+
+- **Angular: Check Memory Leaks** (`Ctrl+Shift+A M`): analyses every `.component.ts`, `.service.ts`, `.directive.ts`, `.pipe.ts`, and `.guard.ts` file in the workspace using the TypeScript Compiler API and reports eight categories of potential Angular memory leaks in an interactive Webview panel:
+  - **Unguarded subscribe** — `subscribe()` calls not protected by `untilDestroyed()` or `takeUntilDestroyed()`
+  - **Nested subscribe** — `subscribe()` inside another `subscribe()` callback (inter-procedural, up to 10 call levels)
+  - **Uncleared interval** — `setInterval()` whose return value is not passed to `clearInterval()` in `ngOnDestroy`
+  - **Uncleared timeout** — `setTimeout()` whose return value is stored on `this` and not passed to `clearTimeout()` in `ngOnDestroy`
+  - **Unremoved event listener** — `addEventListener()` not matched by a `removeEventListener()` call reachable from `ngOnDestroy`
+  - **Unremoved Renderer listener** — `Renderer2.listen()` whose cleanup function is stored on `this` and not called in `ngOnDestroy`
+  - **Retained DOM reference** — `document.getElementById()` / `querySelector()` etc. result stored on `this` and not nulled in `ngOnDestroy`
+  - **Incomplete destroy subject** — a `Subject` used in `takeUntil()` that is never `.next()`-ed and `.complete()`-ed in `ngOnDestroy`
+- Results panel features: file-grouped leak list with clickable links that jump to the source location, colour-coded kind badges, an inline legend with per-kind pill filters to show/hide rows, a stats bar with per-kind counts, and a **Reload** button that re-runs the analysis and refreshes the same panel without opening a new one
+- Scope selection QuickPick on launch: analyse the whole workspace, a single workspace folder, or a manually entered glob pattern
+
 ## [1.4.2]
 
 ### Fixed
