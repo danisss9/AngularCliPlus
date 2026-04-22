@@ -55,7 +55,7 @@ Detection runs via `ng version` (preferring the workspace-local CLI from `node_m
 | Angular: Switch Component File | `Ctrl+Shift+A Tab` | Quickly switch between a component's `.ts`, `.html`, `.scss`/`.css`, and `.spec.ts` files via a QuickPick                                                                                    |
 | Angular: Run npm Script        | `Ctrl+Shift+A N`   | Shows a searchable list of all npm scripts from `package.json` and runs the selected one in a terminal                                                                                       |
 | Angular: Close Terminals       | `Ctrl+Shift+A C`   | Opens a searchable multi-select list of all extension terminals with their state (running / terminated / errored / killed) — finished terminals are pre-selected; select which ones to close |
-| Angular: Check Memory Leaks    | `Ctrl+Shift+A M`   | Scans Angular source files for potential memory leaks using the TypeScript Compiler API and shows results in an interactive Webview panel with per-kind filters and a Reload button            |
+| Angular: Check Memory Leaks    | `Ctrl+Shift+A M`   | Scans Angular source files for potential memory leaks using the TypeScript Compiler API and shows results in an interactive Webview panel with per-kind filters and a Reload button          |
 
 ### Angular: Check Memory Leaks (`Ctrl+Shift+A M`)
 
@@ -63,16 +63,16 @@ Analyses Angular source files in the workspace using the TypeScript Compiler API
 
 **Detected leak kinds:**
 
-| Kind | Description |
-| ---- | ----------- |
-| Unguarded subscribe | `subscribe()` not protected by `untilDestroyed()` or `takeUntilDestroyed()` |
-| Nested subscribe | `subscribe()` inside another `subscribe()` callback (inter-procedural, up to 10 levels) |
-| Uncleared interval | `setInterval()` return value not passed to `clearInterval()` from `ngOnDestroy` |
-| Uncleared timeout | `setTimeout()` return value stored on `this` and not passed to `clearTimeout()` from `ngOnDestroy` |
-| Unremoved event listener | `addEventListener()` with no matching `removeEventListener()` reachable from `ngOnDestroy` |
-| Unremoved Renderer listener | `Renderer2.listen()` cleanup function stored on `this` and not called in `ngOnDestroy` |
-| Retained DOM reference | `document.getElementById()` / `querySelector()` / etc. result stored on `this` and not nulled in `ngOnDestroy` |
-| Incomplete destroy subject | A `Subject` used in `takeUntil()` that is never `.next()`-ed and `.complete()`-ed in `ngOnDestroy` |
+| Kind                        | Description                                                                                                    |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Unguarded subscribe         | `subscribe()` not protected by `untilDestroyed()` or `takeUntilDestroyed()`                                    |
+| Nested subscribe            | `subscribe()` inside another `subscribe()` callback (inter-procedural, up to 10 levels)                        |
+| Uncleared interval          | `setInterval()` return value not passed to `clearInterval()` from `ngOnDestroy`                                |
+| Uncleared timeout           | `setTimeout()` return value stored on `this` and not passed to `clearTimeout()` from `ngOnDestroy`             |
+| Unremoved event listener    | `addEventListener()` with no matching `removeEventListener()` reachable from `ngOnDestroy`                     |
+| Unremoved Renderer listener | `Renderer2.listen()` cleanup function stored on `this` and not called in `ngOnDestroy`                         |
+| Retained DOM reference      | `document.getElementById()` / `querySelector()` / etc. result stored on `this` and not nulled in `ngOnDestroy` |
+| Incomplete destroy subject  | A `Subject` used in `takeUntil()` that is never `.next()`-ed and `.complete()`-ed in `ngOnDestroy`             |
 
 **Panel features:** file-grouped results with clickable source links, colour-coded kind badges, per-kind pill filters, a stats bar, and a **Reload** button that re-runs the analysis and refreshes the same panel without opening a new one.
 
