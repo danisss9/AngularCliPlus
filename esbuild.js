@@ -1,4 +1,6 @@
 const esbuild = require('esbuild');
+const fs = require('fs');
+const path = require('path');
 
 const production = process.argv.includes('--production');
 const watch = process.argv.includes('--watch');
@@ -20,6 +22,17 @@ const esbuildProblemMatcherPlugin = {
           console.error(`    ${location.file}:${location.line}:${location.column}:`);
         }
       });
+      // Copy mermaid bundle so the WebView can load it offline
+      const mermaidSrc = path.join(__dirname, 'node_modules', 'mermaid', 'dist', 'mermaid.min.js');
+      const mermaidDst = path.join(__dirname, 'dist', 'mermaid.min.js');
+      try {
+        if (!fs.existsSync(path.join(__dirname, 'dist'))) {
+          fs.mkdirSync(path.join(__dirname, 'dist'), { recursive: true });
+        }
+        fs.copyFileSync(mermaidSrc, mermaidDst);
+      } catch (e) {
+        console.error('Failed to copy mermaid.min.js:', e.message);
+      }
       console.log('[watch] build finished');
     });
   },

@@ -8,6 +8,11 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ### Added
 
+- **Angular: Show Signal Graph** (`Ctrl+Shift+A G`): analyses the currently open TypeScript file using the TypeScript Compiler API, discovers all Angular Signals (`signal()`, `input()`, `computed()`, `effect()`, `output()`), traces their dependencies up to 10 call levels deep, and renders an interactive dependency graph in a Webview panel powered by [Mermaid.js](https://mermaid.js.org/) (bundled locally — no network required):
+  - **Nodes** are colour-coded and shaped by kind — pill for `signal`, parallelogram for `input`, subroutine rectangle for `computed`, hexagon for `effect`, asymmetric flag for `output`
+  - **Edges** are drawn from every signal that is read inside a `computed()` or `effect()` factory (traced recursively up to 10 levels), and from `output()` signals to the method where `.emit()` is called
+  - **Click any node** to jump directly to that signal's declaration in the editor
+  - Mermaid bundle (`mermaid.min.js`) is copied to `dist/` at build time so the graph renders fully offline
 - **Angular: Check Memory Leaks** (`Ctrl+Shift+A M`): analyses every `.component.ts`, `.service.ts`, `.directive.ts`, `.pipe.ts`, and `.guard.ts` file in the workspace using the TypeScript Compiler API and reports eight categories of potential Angular memory leaks in an interactive Webview panel:
   - **Unguarded subscribe** — `subscribe()` calls not protected by `untilDestroyed()` or `takeUntilDestroyed()`
   - **Nested subscribe** — `subscribe()` inside another `subscribe()` callback (inter-procedural, up to 10 call levels)

@@ -56,6 +56,7 @@ Detection runs via `ng version` (preferring the workspace-local CLI from `node_m
 | Angular: Run npm Script        | `Ctrl+Shift+A N`   | Shows a searchable list of all npm scripts from `package.json` and runs the selected one in a terminal                                                                                       |
 | Angular: Close Terminals       | `Ctrl+Shift+A C`   | Opens a searchable multi-select list of all extension terminals with their state (running / terminated / errored / killed) — finished terminals are pre-selected; select which ones to close |
 | Angular: Check Memory Leaks    | `Ctrl+Shift+A M`   | Scans Angular source files for potential memory leaks using the TypeScript Compiler API and shows results in an interactive Webview panel with per-kind filters and a Reload button          |
+| Angular: Show Signal Graph     | `Ctrl+Shift+A G`   | Analyses the open TypeScript file for Angular Signals and renders an interactive Mermaid dependency graph in a Webview panel; click any node to jump to its declaration                      |
 
 ### Angular: Check Memory Leaks (`Ctrl+Shift+A M`)
 
@@ -77,6 +78,28 @@ Analyses Angular source files in the workspace using the TypeScript Compiler API
 **Panel features:** file-grouped results with clickable source links, colour-coded kind badges, per-kind pill filters, a stats bar, and a **Reload** button that re-runs the analysis and refreshes the same panel without opening a new one.
 
 On launch a QuickPick lets you choose the scope: the whole workspace, a single workspace folder, or a custom glob pattern.
+
+### Angular: Show Signal Graph (`Ctrl+Shift+A G`)
+
+Analyses the currently open TypeScript file and renders a live dependency graph of all Angular Signals inside its first class declaration.
+
+**Detected signal kinds:**
+
+| Kind       | Mermaid shape        | Colour | Description                              |
+| ---------- | -------------------- | ------ | ---------------------------------------- |
+| `signal`   | Pill / stadium       | Blue   | Writable signal created with `signal()`  |
+| `input`    | Parallelogram        | Green  | Component input created with `input()`   |
+| `computed` | Subroutine rectangle | Purple | Derived value created with `computed()`  |
+| `effect`   | Hexagon              | Orange | Side-effect created with `effect()`      |
+| `output`   | Asymmetric flag      | Red    | Component output created with `output()` |
+
+**How dependencies are traced:**
+
+- `computed()` and `effect()` factory callbacks are walked recursively up to **10 levels deep** to find all signals they read (`this.signalName()` or bare `signalName()`).
+- Inline `effect()` calls inside the constructor or class methods are discovered automatically.
+- `output()` signals get an edge labelled `emit` pointing to every method that calls `this.outputName.emit()`.
+
+**Interactivity:** Click any node in the rendered graph to jump to that signal's declaration line in the editor.
 
 ### Failure notifications and retry
 
@@ -143,6 +166,7 @@ Use the keyboard shortcuts (`Ctrl+Shift+A` followed by a letter) or search for *
 - **Run npm Script** (`Ctrl+Shift+A N`): shows a searchable list of all scripts from `package.json`; select one to run it in a dedicated terminal
 - **Close Terminals** (`Ctrl+Shift+A C`): opens a searchable multi-select QuickPick of all extension terminals; each entry shows the terminal name and state (`running`, `terminated`, `errored`, or `killed`); finished terminals are pre-selected and sorted to the top so pressing Enter clears them immediately; use the select-all checkbox or search to filter further
 - **Check Memory Leaks** (`Ctrl+Shift+A M`): prompts for scope (whole workspace, a single folder, or a custom glob), scans all matching Angular source files with the TypeScript Compiler API, and opens an interactive Webview panel showing eight categories of potential memory leaks — each finding is a clickable link that jumps to the source location; use the pill filters in the legend to show/hide specific kinds; click **Reload** to re-run the analysis and refresh the same panel in place
+- **Show Signal Graph** (`Ctrl+Shift+A G`): opens the current TypeScript file, extracts all Angular Signals (`signal`, `input`, `computed`, `effect`, `output`) and traces their dependencies up to 10 levels deep, then renders an interactive Mermaid flowchart in a side panel; click any node to navigate to that signal's declaration; Mermaid is bundled locally so the graph works fully offline
 
 ### Debugging
 

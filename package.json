@@ -149,6 +149,11 @@
         "command": "angular-cli-plus.checkMemoryLeaks",
         "title": "Angular: Check Memory Leaks",
         "category": "Angular CLI Plus"
+      },
+      {
+        "command": "angular-cli-plus.showSignalGraph",
+        "title": "Angular: Show Signal Graph",
+        "category": "Angular CLI Plus"
       }
     ],
     "keybindings": [
@@ -207,6 +212,10 @@
       {
         "command": "angular-cli-plus.checkMemoryLeaks",
         "key": "ctrl+shift+a m"
+      },
+      {
+        "command": "angular-cli-plus.showSignalGraph",
+        "key": "ctrl+shift+a g"
       }
     ],
     "submenus": [
@@ -559,6 +568,7 @@
     "typescript-eslint": "^8.48.1"
   },
   "dependencies": {
+    "mermaid": "^11.14.0",
     "semver": "^7.7.4",
     "typescript": "^5.9.3"
   }

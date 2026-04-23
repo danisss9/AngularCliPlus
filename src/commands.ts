@@ -4,6 +4,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { ngOutput, extensionTerminals } from './state';
 import { getTrackedTerminalState } from './state';
+import { analyzeSignalsInFile } from './signals-ast';
+import { showSignalGraphWebview } from './signals-webview';
 import {
   resolveWorkspaceAndAngularJson,
   runInTerminal,
@@ -590,4 +592,30 @@ export async function runNpmScript() {
 
   const terminalName = `npm: ${picked.label}`;
   await runInTerminal(terminalName, `npm run ${picked.label}`, workspaceRoot);
+}
+
+// ── Signal Graph ──────────────────────────────────────────────────────────────
+
+export async function showSignalGraph(): Promise<void> {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) {
+    vscode.window.showErrorMessage('Angular: Show Signal Graph — no active editor.');
+    return;
+  }
+
+  const filePath = editor.document.uri.fsPath;
+  if (!filePath.endsWith('.ts')) {
+    vscode.window.showErrorMessage('Angular: Show Signal Graph — please open a TypeScript file.');
+    return;
+  }
+
+  const data = analyzeSignalsInFile(filePath);
+  if (!data || data.nodes.length === 0) {
+    vscode.window.showInformationMessage(
+      'No Angular signals found in the current file. Make sure the file contains signal(), input(), computed(), effect(), or output() calls.',
+    );
+    return;
+  }
+
+  showSignalGraphWebview(data);
 }
