@@ -379,14 +379,32 @@ function buildWebviewHtml(leaks: MemoryLeakLocation[], workspaceRoot: string): s
 
     .legend-item {
       display: flex;
-      align-items: baseline;
+      align-items: center;
       gap: 8px;
       font-size: 0.8em;
       color: var(--vscode-descriptionForeground);
     }
 
     .legend-desc {
+    }
+
+    .legend-desc-group {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
       flex: 1;
+    }
+
+    .legend-fix {
+      font-size: 0.78em;
+      color: var(--vscode-foreground, #ccc);
+      opacity: 0.6;
+    }
+
+    .legend-sep {
+      border: none;
+      border-top: 1px solid var(--vscode-widget-border, rgba(128,128,128,0.18));
+      margin: 5px 0;
     }
 
     .hint {
@@ -648,35 +666,66 @@ function buildWebviewHtml(leaks: MemoryLeakLocation[], workspaceRoot: string): s
     <div class="legend">
       <span class="legend-item">
         <span class="kind-pill kind-unguarded-subscribe" data-kind="unguarded-subscribe">Unguarded</span>
-        <span class="legend-desc">Missing <code class="hint-code">untilDestroyed()</code> or <code class="hint-code">takeUntilDestroyed()</code> as the last operator in <code class="hint-code">.pipe()</code></span>
+        <span class="legend-desc-group">
+          <span class="legend-desc">Missing <code class="hint-code">untilDestroyed()</code> or <code class="hint-code">takeUntilDestroyed()</code> as the last operator in <code class="hint-code">.pipe()</code></span>
+          <span class="legend-fix"><strong>Fix:</strong> add <code class="hint-code">.pipe(takeUntilDestroyed())</code> (Angular 16+) or <code class="hint-code">.pipe(untilDestroyed(this))</code> before <code class="hint-code">.subscribe()</code></span>
+        </span>
       </span>
+      <hr class="legend-sep">
       <span class="legend-item">
         <span class="kind-pill kind-nested-subscribe" data-kind="nested-subscribe">Nested</span>
-        <span class="legend-desc"><code class="hint-code">.subscribe()</code> called inside another <code class="hint-code">.subscribe()</code> callback</span>
+        <span class="legend-desc-group">
+          <span class="legend-desc"><code class="hint-code">.subscribe()</code> called inside another <code class="hint-code">.subscribe()</code> callback</span>
+          <span class="legend-fix"><strong>Fix:</strong> flatten with <code class="hint-code">switchMap</code>, <code class="hint-code">mergeMap</code>, or <code class="hint-code">concatMap</code> instead of nesting subscriptions</span>
+        </span>
       </span>
+      <hr class="legend-sep">
       <span class="legend-item">
         <span class="kind-pill kind-uncleared-interval" data-kind="uncleared-interval">Interval</span>
-        <span class="legend-desc"><code class="hint-code">setInterval()</code> whose return value is never passed to <code class="hint-code">clearInterval()</code> in <code class="hint-code">ngOnDestroy()</code></span>
+        <span class="legend-desc-group">
+          <span class="legend-desc"><code class="hint-code">setInterval()</code> whose return value is never passed to <code class="hint-code">clearInterval()</code> in <code class="hint-code">ngOnDestroy()</code></span>
+          <span class="legend-fix"><strong>Fix:</strong> store the ID and call <code class="hint-code">clearInterval(this.intervalId)</code> inside <code class="hint-code">ngOnDestroy()</code></span>
+        </span>
       </span>
+      <hr class="legend-sep">
       <span class="legend-item">
         <span class="kind-pill kind-unremoved-event-listener" data-kind="unremoved-event-listener">Event Listener</span>
-        <span class="legend-desc"><code class="hint-code">addEventListener()</code> with no matching <code class="hint-code">removeEventListener()</code> in <code class="hint-code">ngOnDestroy()</code></span>
+        <span class="legend-desc-group">
+          <span class="legend-desc"><code class="hint-code">addEventListener()</code> with no matching <code class="hint-code">removeEventListener()</code> in <code class="hint-code">ngOnDestroy()</code></span>
+          <span class="legend-fix"><strong>Fix:</strong> call <code class="hint-code">removeEventListener()</code> with the same handler reference in <code class="hint-code">ngOnDestroy()</code>; prefer <code class="hint-code">@HostListener</code> or <code class="hint-code">Renderer2.listen()</code></span>
+        </span>
       </span>
+      <hr class="legend-sep">
       <span class="legend-item">
         <span class="kind-pill kind-retained-dom-reference" data-kind="retained-dom-reference">DOM Reference</span>
-        <span class="legend-desc"><code class="hint-code">document.querySelector()</code> / <code class="hint-code">getElementById()</code> result stored on <code class="hint-code">this</code> but never nulled out in <code class="hint-code">ngOnDestroy()</code></span>
+        <span class="legend-desc-group">
+          <span class="legend-desc"><code class="hint-code">document.querySelector()</code> / <code class="hint-code">getElementById()</code> result stored on <code class="hint-code">this</code> but never nulled out in <code class="hint-code">ngOnDestroy()</code></span>
+          <span class="legend-fix"><strong>Fix:</strong> set the property to <code class="hint-code">null</code> in <code class="hint-code">ngOnDestroy()</code>; prefer <code class="hint-code">@ViewChild</code> for template elements</span>
+        </span>
       </span>
+      <hr class="legend-sep">
       <span class="legend-item">
         <span class="kind-pill kind-uncleared-timeout" data-kind="uncleared-timeout">Timeout</span>
-        <span class="legend-desc"><code class="hint-code">setTimeout()</code> whose return value is stored but never passed to <code class="hint-code">clearTimeout()</code> in <code class="hint-code">ngOnDestroy()</code></span>
+        <span class="legend-desc-group">
+          <span class="legend-desc"><code class="hint-code">setTimeout()</code> whose return value is stored but never passed to <code class="hint-code">clearTimeout()</code> in <code class="hint-code">ngOnDestroy()</code></span>
+          <span class="legend-fix"><strong>Fix:</strong> call <code class="hint-code">clearTimeout(this.timeoutId)</code> inside <code class="hint-code">ngOnDestroy()</code></span>
+        </span>
       </span>
+      <hr class="legend-sep">
       <span class="legend-item">
         <span class="kind-pill kind-unremoved-renderer-listener" data-kind="unremoved-renderer-listener">Renderer Listener</span>
-        <span class="legend-desc"><code class="hint-code">renderer.listen()</code> return value stored on <code class="hint-code">this</code> but the cleanup function is never called in <code class="hint-code">ngOnDestroy()</code></span>
+        <span class="legend-desc-group">
+          <span class="legend-desc"><code class="hint-code">renderer.listen()</code> return value stored on <code class="hint-code">this</code> but the cleanup function is never called in <code class="hint-code">ngOnDestroy()</code></span>
+          <span class="legend-fix"><strong>Fix:</strong> call the stored cleanup function (e.g. <code class="hint-code">this.unlisten()</code>) inside <code class="hint-code">ngOnDestroy()</code></span>
+        </span>
       </span>
+      <hr class="legend-sep">
       <span class="legend-item">
         <span class="kind-pill kind-incomplete-destroy-subject" data-kind="incomplete-destroy-subject">Destroy Subject</span>
-        <span class="legend-desc"><code class="hint-code">Subject</code> used in <code class="hint-code">takeUntil()</code> but <code class="hint-code">.next()</code> / <code class="hint-code">.complete()</code> is never called in <code class="hint-code">ngOnDestroy()</code></span>
+        <span class="legend-desc-group">
+          <span class="legend-desc"><code class="hint-code">Subject</code> used in <code class="hint-code">takeUntil()</code> but <code class="hint-code">.next()</code> / <code class="hint-code">.complete()</code> is never called in <code class="hint-code">ngOnDestroy()</code></span>
+          <span class="legend-fix"><strong>Fix:</strong> add <code class="hint-code">this.destroy$.next(); this.destroy$.complete();</code> to <code class="hint-code">ngOnDestroy()</code>, or switch to <code class="hint-code">takeUntilDestroyed()</code></span>
+        </span>
       </span>
     </div>
   </div>
