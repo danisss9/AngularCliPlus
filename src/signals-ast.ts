@@ -46,11 +46,11 @@ function getCallFnName(node: ts.CallExpression): string | null {
  * MAX_DEPTH levels of nesting.
  */
 function collectSignalReads(root: ts.Node, knownSignals: Set<string>, depth: number): string[] {
-  if (depth <= 0) return [];
+  if (depth <= 0) {return [];}
   const reads: string[] = [];
 
   function walk(node: ts.Node, d: number): void {
-    if (d <= 0) return;
+    if (d <= 0) {return;}
     if (ts.isCallExpression(node)) {
       const expr = node.expression;
       // this.signalName()
@@ -125,7 +125,7 @@ function collectOutputEmits(
 // ── Main analyser ──────────────────────────────────────────────────────────────
 
 export function analyzeSignalsInFile(filePath: string): SignalGraphData | null {
-  if (!fs.existsSync(filePath)) return null;
+  if (!fs.existsSync(filePath)) {return null;}
 
   const sourceText = fs.readFileSync(filePath, 'utf8');
   const sourceFile = ts.createSourceFile(filePath, sourceText, ts.ScriptTarget.Latest, true);
@@ -139,12 +139,12 @@ export function analyzeSignalsInFile(filePath: string): SignalGraphData | null {
   for (const stmt of sourceFile.statements) {
     if (ts.isClassDeclaration(stmt)) {
       classDecl = stmt;
-      if (stmt.name) className = stmt.name.text;
+      if (stmt.name) {className = stmt.name.text;}
       break;
     }
   }
 
-  if (!classDecl) return { nodes: [], edges: [], file: filePath };
+  if (!classDecl) {return { nodes: [], edges: [], file: filePath };}
 
   const signalNames = new Set<string>();
   const outputNames = new Set<string>();
@@ -167,16 +167,16 @@ export function analyzeSignalsInFile(filePath: string): SignalGraphData | null {
 
     const propName = member.name.text;
     const fnName = getCallFnName(member.initializer);
-    if (!fnName) continue;
+    if (!fnName) {continue;}
 
     let kind: SignalKind | null = null;
-    if (fnName === 'signal') kind = 'signal';
-    else if (fnName === 'input') kind = 'input';
-    else if (fnName === 'computed') kind = 'computed';
-    else if (fnName === 'effect') kind = 'effect';
-    else if (fnName === 'output') kind = 'output';
+    if (fnName === 'signal') {kind = 'signal';}
+    else if (fnName === 'input') {kind = 'input';}
+    else if (fnName === 'computed') {kind = 'computed';}
+    else if (fnName === 'effect') {kind = 'effect';}
+    else if (fnName === 'output') {kind = 'output';}
 
-    if (!kind) continue;
+    if (!kind) {continue;}
 
     const pos = sourceFile.getLineAndCharacterOfPosition(member.getStart(sourceFile));
     nodes.push({
@@ -187,7 +187,7 @@ export function analyzeSignalsInFile(filePath: string): SignalGraphData | null {
       file: filePath,
     });
     signalNames.add(propName);
-    if (kind === 'output') outputNames.add(propName);
+    if (kind === 'output') {outputNames.add(propName);}
 
     // Store the callback for dep tracing (computed/effect need their factory args)
     if ((kind === 'computed' || kind === 'effect') && member.initializer.arguments.length > 0) {

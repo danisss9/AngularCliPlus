@@ -6,13 +6,13 @@ import {
   getLastProject,
   setLastProject,
 } from './utils';
-import { findMemoryLeaksInFile, MemoryLeakLocation, MemoryLeakKind } from './ast-utils';
+import { findOptimizationsInFile, OptimizationLocation, OptimizationKind } from './optimizations-ast';
 
-const COMMAND_KEY = 'checkMemoryLeaks';
+const COMMAND_KEY = 'checkOptimizations';
 
 // ── Entry point ────────────────────────────────────────────────────────────────
 
-export async function checkMemoryLeaks(): Promise<void> {
+export async function checkOptimizations(): Promise<void> {
   const resolved = await resolveWorkspaceAndAngularJson();
   if (!resolved) {
     return;
@@ -54,8 +54,8 @@ export async function checkMemoryLeaks(): Promise<void> {
   }
 
   const picked = await vscode.window.showQuickPick(choices, {
-    placeHolder: 'Select a file or project to check for memory leaks',
-    title: 'Angular: Check Memory Leaks',
+    placeHolder: 'Select a file or project to check for optimizations',
+    title: 'Angular: Check Optimizations',
   });
 
   if (!picked) {
@@ -103,11 +103,11 @@ export async function checkMemoryLeaks(): Promise<void> {
   const results = await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
-      title: 'Checking for memory leaks…',
+      title: 'Checking for optimizations…',
       cancellable: false,
     },
     async (progress) => {
-      const leaks: MemoryLeakLocation[] = [];
+      const issues: OptimizationLocation[] = [];
       const total = filesToCheck.length;
       for (let i = 0; i < total; i++) {
         const file = filesToCheck[i];
@@ -115,44 +115,44 @@ export async function checkMemoryLeaks(): Promise<void> {
           increment: (1 / total) * 100,
           message: path.basename(file),
         });
-        const fileLeaks = findMemoryLeaksInFile(file);
-        leaks.push(...fileLeaks);
+        const fileIssues = findOptimizationsInFile(file);
+        issues.push(...fileIssues);
       }
-      return leaks;
+      return issues;
     },
   );
 
   // ── Show results ──────────────────────────────────────────────────────────
 
   if (results.length === 0) {
-    vscode.window.showInformationMessage('No memory leaks detected. Great job!');
+    vscode.window.showInformationMessage('No optimization issues detected. Great job!');
     return;
   }
 
-  showMemoryLeaksWebview(results, workspaceRoot, filesToCheck);
+  showOptimizationsWebview(results, workspaceRoot, filesToCheck);
 }
 
 // ── Webview ────────────────────────────────────────────────────────────────────
 
 let activePanel: vscode.WebviewPanel | undefined;
 
-function showMemoryLeaksWebview(
-  leaks: MemoryLeakLocation[],
+function showOptimizationsWebview(
+  issues: OptimizationLocation[],
   workspaceRoot: string,
   filesToCheck: string[],
 ): void {
   if (activePanel) {
-    activePanel.title = `Memory Leaks (${leaks.length})`;
-    activePanel.webview.html = buildWebviewHtml(leaks, workspaceRoot);
+    activePanel.title = `Optimizations (${issues.length})`;
+    activePanel.webview.html = buildWebviewHtml(issues, workspaceRoot);
     activePanel.reveal(undefined, true);
   } else {
     activePanel = vscode.window.createWebviewPanel(
-      'angularMemoryLeaks',
-      `Memory Leaks (${leaks.length})`,
+      'angularOptimizations',
+      `Optimizations (${issues.length})`,
       vscode.ViewColumn.Beside,
       { enableScripts: true, retainContextWhenHidden: true },
     );
-    activePanel.webview.html = buildWebviewHtml(leaks, workspaceRoot);
+    activePanel.webview.html = buildWebviewHtml(issues, workspaceRoot);
     activePanel.onDidDispose(() => {
       activePanel = undefined;
     });
@@ -170,82 +170,73 @@ function showMemoryLeaksWebview(
           preview: false,
         });
       } else if (message.command === 'reload') {
-        const freshLeaks = await vscode.window.withProgress(
+        const freshIssues = await vscode.window.withProgress(
           {
             location: vscode.ProgressLocation.Notification,
-            title: 'Checking for memory leaks…',
+            title: 'Checking for optimizations…',
             cancellable: false,
           },
           async (progress) => {
-            const found: MemoryLeakLocation[] = [];
+            const found: OptimizationLocation[] = [];
             const total = filesToCheck.length;
             for (let i = 0; i < total; i++) {
               progress.report({
                 increment: (1 / total) * 100,
                 message: path.basename(filesToCheck[i]),
               });
-              found.push(...findMemoryLeaksInFile(filesToCheck[i]));
+              found.push(...findOptimizationsInFile(filesToCheck[i]));
             }
             return found;
           },
         );
         if (activePanel) {
-          activePanel.title = `Memory Leaks (${freshLeaks.length})`;
-          activePanel.webview.html = buildWebviewHtml(freshLeaks, workspaceRoot);
+          activePanel.title = `Optimizations (${freshIssues.length})`;
+          activePanel.webview.html = buildWebviewHtml(freshIssues, workspaceRoot);
         }
       }
     },
   );
 }
 
-function buildWebviewHtml(leaks: MemoryLeakLocation[], workspaceRoot: string): string {
-  // Group leaks by relative file path
-  const byFile = new Map<string, MemoryLeakLocation[]>();
-  for (const leak of leaks) {
-    const rel = path.relative(workspaceRoot, leak.file).replaceAll(path.sep, '/');
+function buildWebviewHtml(issues: OptimizationLocation[], workspaceRoot: string): string {
+  // Group issues by relative file path
+  const byFile = new Map<string, OptimizationLocation[]>();
+  for (const issue of issues) {
+    const rel = path.relative(workspaceRoot, issue.file).replaceAll(path.sep, '/');
     const group = byFile.get(rel) ?? [];
-    group.push(leak);
+    group.push(issue);
     byFile.set(rel, group);
   }
 
-  const kindLabel: Record<MemoryLeakKind, string> = {
-    'unguarded-subscribe': 'Unguarded',
-    'nested-subscribe': 'Nested',
-    'uncleared-interval': 'Interval',
-    'uncleared-timeout': 'Timeout',
-    'unremoved-event-listener': 'Event Listener',
-    'unremoved-renderer-listener': 'Renderer Listener',
-    'retained-dom-reference': 'DOM Reference',
-    'incomplete-destroy-subject': 'Destroy Subject',
+  const kindLabel: Record<OptimizationKind, string> = {
+    'missing-on-push': 'Missing OnPush',
+    'missing-track-by': 'Missing trackBy',
+    'function-in-template': 'Function in Template',
+    'unnecessary-zone-work': 'Unnecessary Zone.js Work',
+    'large-component': 'Large Component',
   };
 
   const fileGroups = Array.from(byFile.entries())
-    .map(([relPath, fileleaks]) => {
+    .map(([relPath, fileIssues]) => {
       const dir = relPath.includes('/') ? relPath.substring(0, relPath.lastIndexOf('/') + 1) : '';
       const filename = path.basename(relPath);
-      const absolutePath = escapeHtml(fileleaks[0].file);
-      const countLabel = fileleaks.length === 1 ? '1 leak' : `${fileleaks.length} leaks`;
+      const absolutePath = escapeHtml(fileIssues[0].file);
+      const countLabel = fileIssues.length === 1 ? '1 issue' : `${fileIssues.length} issues`;
 
-      const leakRows = fileleaks
-        .map((leak) => {
-          const highlightedSnippet = escapeHtml(leak.snippet)
-            .replace(/(\.\s*subscribe\s*\()/g, '<mark>$1</mark>')
-            .replace(/(setInterval\s*\()/g, '<mark>$1</mark>')
+      const issueRows = fileIssues
+        .map((issue) => {
+          const highlightedSnippet = escapeHtml(issue.snippet)
+            .replace(/(@Component)/g, '<mark>$1</mark>')
+            .replace(/(\*ngFor)/g, '<mark>$1</mark>')
+            .replace(/(\{\{.*?\}\})/g, '<mark>$1</mark>')
             .replace(/(setTimeout\s*\()/g, '<mark>$1</mark>')
-            .replace(/(addEventListener\s*\()/g, '<mark>$1</mark>')
-            .replace(/(\.listen\s*\()/g, '<mark>$1</mark>')
-            .replace(
-              /(getElementById|querySelector(?:All)?|getElementsByClassName|getElementsByTagName|getElementsByName)(\s*\()/g,
-              '<mark>$1$2</mark>',
-            )
-            .replace(
-              /(new\s+(?:Subject|BehaviorSubject|ReplaySubject|AsyncSubject)\s*[<(])/g,
-              '<mark>$1</mark>',
-            );
+            .replace(/(setInterval\s*\()/g, '<mark>$1</mark>')
+            .replace(/(requestAnimationFrame\s*\()/g, '<mark>$1</mark>');
+            
           return /* html */ `
-          <div class="leak-item" data-kind="${leak.kind}">
-            <a class="line-num" href="#" data-file="${absolutePath}" data-line="${leak.line}">Line ${leak.line}</a>
-            <span class="kind-pill kind-${leak.kind}">${kindLabel[leak.kind]}</span>
+          <div class="issue-item leak-item" data-kind="${issue.kind}">
+            <a class="line-num" href="#" data-file="${absolutePath}" data-line="${issue.line}">Line ${issue.line}</a>
+            <span class="kind-pill kind-${issue.kind}">${kindLabel[issue.kind]}</span>
             <code class="snippet">${highlightedSnippet}</code>
           </div>`;
         })
@@ -261,40 +252,25 @@ function buildWebviewHtml(leaks: MemoryLeakLocation[], workspaceRoot: string): s
           <span class="file-path"><span class="file-dir">${escapeHtml(dir)}</span><span class="file-name">${escapeHtml(filename)}</span></span>
           <span class="file-badge">${countLabel}</span>
         </div>
-        <div class="leak-list">${leakRows}</div>
+        <div class="issue-list leak-list">${issueRows}</div>
       </div>`;
     })
     .join('\n');
 
   const filesCount = byFile.size;
-  const unguardedCount = leaks.filter((l) => l.kind === 'unguarded-subscribe').length;
-  const nestedCount = leaks.filter((l) => l.kind === 'nested-subscribe').length;
-  const intervalCount = leaks.filter((l) => l.kind === 'uncleared-interval').length;
-  const listenerCount = leaks.filter((l) => l.kind === 'unremoved-event-listener').length;
-  const domRefCount = leaks.filter((l) => l.kind === 'retained-dom-reference').length;
-  const timeoutCount = leaks.filter((l) => l.kind === 'uncleared-timeout').length;
-  const rendererListenerCount = leaks.filter(
-    (l) => l.kind === 'unremoved-renderer-listener',
-  ).length;
-  const destroySubjectCount = leaks.filter((l) => l.kind === 'incomplete-destroy-subject').length;
+  const onPushCount = issues.filter((i) => i.kind === 'missing-on-push').length;
+  const trackByCount = issues.filter((i) => i.kind === 'missing-track-by').length;
+  const fnTemplateCount = issues.filter((i) => i.kind === 'function-in-template').length;
+  const zoneWorkCount = issues.filter((i) => i.kind === 'unnecessary-zone-work').length;
+  const largeCompCount = issues.filter((i) => i.kind === 'large-component').length;
 
   const statsParts: string[] = [`${filesCount} file${filesCount !== 1 ? 's' : ''} affected`];
-  if (unguardedCount > 0) {statsParts.push(`${unguardedCount} unguarded`);}
-  if (nestedCount > 0) {statsParts.push(`${nestedCount} nested`);}
-  if (intervalCount > 0)
-    {statsParts.push(`${intervalCount} interval${intervalCount !== 1 ? 's' : ''}`);}
-  if (timeoutCount > 0) {statsParts.push(`${timeoutCount} timeout${timeoutCount !== 1 ? 's' : ''}`);}
-  if (listenerCount > 0)
-    {statsParts.push(`${listenerCount} event listener${listenerCount !== 1 ? 's' : ''}`);}
-  if (rendererListenerCount > 0)
-    {statsParts.push(
-      `${rendererListenerCount} renderer listener${rendererListenerCount !== 1 ? 's' : ''}`,
-    );}
-  if (domRefCount > 0) {statsParts.push(`${domRefCount} DOM ref${domRefCount !== 1 ? 's' : ''}`);}
-  if (destroySubjectCount > 0)
-    {statsParts.push(
-      `${destroySubjectCount} destroy subject${destroySubjectCount !== 1 ? 's' : ''}`,
-    );}
+  if (onPushCount > 0) {statsParts.push(`${onPushCount} missing OnPush`);}
+  if (trackByCount > 0) {statsParts.push(`${trackByCount} missing trackBy`);}
+  if (fnTemplateCount > 0) {statsParts.push(`${fnTemplateCount} fn in template`);}
+  if (zoneWorkCount > 0) {statsParts.push(`${zoneWorkCount} zone.js work`);}
+  if (largeCompCount > 0) {statsParts.push(`${largeCompCount} large component`);}
+  
   const statsLabel = statsParts.join(' &middot; ');
 
   return /* html */ `<!DOCTYPE html>
@@ -303,7 +279,7 @@ function buildWebviewHtml(leaks: MemoryLeakLocation[], workspaceRoot: string): s
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
-  <title>Memory Leaks</title>
+  <title>Angular Optimizations</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -337,8 +313,8 @@ function buildWebviewHtml(leaks: MemoryLeakLocation[], workspaceRoot: string): s
       width: 24px;
       height: 24px;
       border-radius: 50%;
-      background: var(--vscode-inputValidation-warningBackground, #6b5000);
-      color: var(--vscode-inputValidation-warningForeground, #ffcc00);
+      background: var(--vscode-inputValidation-infoBackground, #006b6b);
+      color: var(--vscode-inputValidation-infoForeground, #00ccff);
       flex-shrink: 0;
       font-size: 13px;
       font-weight: 700;
@@ -383,9 +359,6 @@ function buildWebviewHtml(leaks: MemoryLeakLocation[], workspaceRoot: string): s
       gap: 8px;
       font-size: 0.8em;
       color: var(--vscode-descriptionForeground);
-    }
-
-    .legend-desc {
     }
 
     .legend-desc-group {
@@ -434,52 +407,34 @@ function buildWebviewHtml(leaks: MemoryLeakLocation[], workspaceRoot: string): s
       white-space: nowrap;
     }
 
-    .kind-unguarded-subscribe {
-      background: rgba(204, 167, 0, 0.18);
-      color: var(--vscode-problemsWarningIcon-foreground, #cca700);
-      border: 1px solid rgba(204, 167, 0, 0.35);
-    }
-
-    .kind-nested-subscribe {
+    .kind-missing-on-push {
       background: rgba(240, 100, 80, 0.15);
       color: var(--vscode-problemsErrorIcon-foreground, #f06450);
       border: 1px solid rgba(240, 100, 80, 0.3);
     }
 
-    .kind-uncleared-interval {
-      background: rgba(100, 160, 240, 0.15);
-      color: var(--vscode-terminal-ansiBrightBlue, #6aa0f0);
-      border: 1px solid rgba(100, 160, 240, 0.3);
+    .kind-missing-track-by {
+      background: rgba(204, 167, 0, 0.18);
+      color: var(--vscode-problemsWarningIcon-foreground, #cca700);
+      border: 1px solid rgba(204, 167, 0, 0.35);
     }
 
-    .kind-unremoved-event-listener {
+    .kind-function-in-template {
       background: rgba(180, 100, 240, 0.15);
       color: var(--vscode-terminal-ansiBrightMagenta, #b464f0);
       border: 1px solid rgba(180, 100, 240, 0.3);
     }
 
-    .kind-retained-dom-reference {
-      background: rgba(60, 180, 140, 0.15);
-      color: var(--vscode-terminal-ansiBrightGreen, #3cb48c);
-      border: 1px solid rgba(60, 180, 140, 0.3);
+    .kind-unnecessary-zone-work {
+      background: rgba(100, 160, 240, 0.15);
+      color: var(--vscode-terminal-ansiBrightBlue, #6aa0f0);
+      border: 1px solid rgba(100, 160, 240, 0.3);
     }
 
-    .kind-uncleared-timeout {
-      background: rgba(100, 160, 240, 0.12);
-      color: var(--vscode-terminal-ansiBrightCyan, #5bb8d4);
-      border: 1px solid rgba(100, 160, 240, 0.28);
-    }
-
-    .kind-unremoved-renderer-listener {
+    .kind-large-component {
       background: rgba(240, 140, 60, 0.15);
       color: var(--vscode-terminal-ansiBrightYellow, #e8a020);
       border: 1px solid rgba(240, 140, 60, 0.3);
-    }
-
-    .kind-incomplete-destroy-subject {
-      background: rgba(220, 80, 160, 0.15);
-      color: var(--vscode-terminal-ansiBrightMagenta, #dc50a0);
-      border: 1px solid rgba(220, 80, 160, 0.3);
     }
 
     /* ── File groups ── */
@@ -539,13 +494,13 @@ function buildWebviewHtml(leaks: MemoryLeakLocation[], workspaceRoot: string): s
       color: var(--vscode-badge-foreground);
     }
 
-    /* ── Leak items ── */
-    .leak-list {
+    /* ── Issue items ── */
+    .issue-list {
       display: flex;
       flex-direction: column;
     }
 
-    .leak-item {
+    .issue-item {
       display: flex;
       align-items: baseline;
       gap: 10px;
@@ -554,11 +509,11 @@ function buildWebviewHtml(leaks: MemoryLeakLocation[], workspaceRoot: string): s
       transition: background 0.1s;
     }
 
-    .leak-item:last-child {
+    .issue-item:last-child {
       border-bottom: none;
     }
 
-    .leak-item:hover {
+    .issue-item:hover {
       background: var(--vscode-list-hoverBackground);
     }
 
@@ -652,9 +607,9 @@ function buildWebviewHtml(leaks: MemoryLeakLocation[], workspaceRoot: string): s
 <body>
   <div class="header">
     <div class="header-title">
-      <span class="warn-icon">!</span>
-      <h1>Angular Memory Leaks</h1>
-      <span class="badge">${leaks.length}</span>
+      <span class="warn-icon">i</span>
+      <h1>Angular Optimizations</h1>
+      <span class="badge">${issues.length}</span>
       <button class="reload-btn" id="reloadBtn" title="Re-run analysis">
         <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" width="13" height="13">
           <path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c1.8 0 3.4.87 4.4 2.2L11 6h3.5V2.5L13 4a7 7 0 1 0 .5 4H13.5z" fill="currentColor"/>
@@ -665,66 +620,42 @@ function buildWebviewHtml(leaks: MemoryLeakLocation[], workspaceRoot: string): s
     <p class="stats">${statsLabel}</p>
     <div class="legend">
       <span class="legend-item">
-        <span class="kind-pill kind-unguarded-subscribe" data-kind="unguarded-subscribe">Unguarded</span>
+        <span class="kind-pill kind-missing-on-push" data-kind="missing-on-push">Missing OnPush</span>
         <span class="legend-desc-group">
-          <span class="legend-desc">Missing <code class="hint-code">untilDestroyed()</code> or <code class="hint-code">takeUntilDestroyed()</code> as the last operator in <code class="hint-code">.pipe()</code></span>
-          <span class="legend-fix"><strong>Fix:</strong> add <code class="hint-code">.pipe(takeUntilDestroyed())</code> (Angular 16+) or <code class="hint-code">.pipe(untilDestroyed(this))</code> before <code class="hint-code">.subscribe()</code></span>
+          <span class="legend-desc">Component does not use <code class="hint-code">ChangeDetectionStrategy.OnPush</code></span>
+          <span class="legend-fix"><strong>Fix:</strong> Add <code class="hint-code">changeDetection: ChangeDetectionStrategy.OnPush</code> to the @Component decorator.</span>
         </span>
       </span>
       <hr class="legend-sep">
       <span class="legend-item">
-        <span class="kind-pill kind-nested-subscribe" data-kind="nested-subscribe">Nested</span>
+        <span class="kind-pill kind-missing-track-by" data-kind="missing-track-by">Missing trackBy</span>
         <span class="legend-desc-group">
-          <span class="legend-desc"><code class="hint-code">.subscribe()</code> called inside another <code class="hint-code">.subscribe()</code> callback</span>
-          <span class="legend-fix"><strong>Fix:</strong> flatten with <code class="hint-code">switchMap</code>, <code class="hint-code">mergeMap</code>, or <code class="hint-code">concatMap</code> instead of nesting subscriptions</span>
+          <span class="legend-desc"><code class="hint-code">*ngFor</code> loop used without a <code class="hint-code">trackBy</code> function</span>
+          <span class="legend-fix"><strong>Fix:</strong> Add <code class="hint-code">trackBy: trackByFn</code> to improve rendering performance.</span>
         </span>
       </span>
       <hr class="legend-sep">
       <span class="legend-item">
-        <span class="kind-pill kind-uncleared-interval" data-kind="uncleared-interval">Interval</span>
+        <span class="kind-pill kind-function-in-template" data-kind="function-in-template">Function in Template</span>
         <span class="legend-desc-group">
-          <span class="legend-desc"><code class="hint-code">setInterval()</code> whose return value is never passed to <code class="hint-code">clearInterval()</code> in <code class="hint-code">ngOnDestroy()</code></span>
-          <span class="legend-fix"><strong>Fix:</strong> store the ID and call <code class="hint-code">clearInterval(this.intervalId)</code> inside <code class="hint-code">ngOnDestroy()</code></span>
+          <span class="legend-desc">Function call found in template interpolation or binding</span>
+          <span class="legend-fix"><strong>Fix:</strong> Use a pure pipe or a signal instead to avoid evaluating the function on every change detection cycle.</span>
         </span>
       </span>
       <hr class="legend-sep">
       <span class="legend-item">
-        <span class="kind-pill kind-unremoved-event-listener" data-kind="unremoved-event-listener">Event Listener</span>
+        <span class="kind-pill kind-unnecessary-zone-work" data-kind="unnecessary-zone-work">Unnecessary Zone.js Work</span>
         <span class="legend-desc-group">
-          <span class="legend-desc"><code class="hint-code">addEventListener()</code> with no matching <code class="hint-code">removeEventListener()</code> in <code class="hint-code">ngOnDestroy()</code></span>
-          <span class="legend-fix"><strong>Fix:</strong> call <code class="hint-code">removeEventListener()</code> with the same handler reference in <code class="hint-code">ngOnDestroy()</code>; prefer <code class="hint-code">@HostListener</code> or <code class="hint-code">Renderer2.listen()</code></span>
+          <span class="legend-desc">Asynchronous task like <code class="hint-code">setTimeout</code> triggered inside the Angular zone</span>
+          <span class="legend-fix"><strong>Fix:</strong> Wrap it inside <code class="hint-code">this.ngZone.runOutsideAngular(() => ...)</code> if it doesn't need to trigger change detection.</span>
         </span>
       </span>
       <hr class="legend-sep">
       <span class="legend-item">
-        <span class="kind-pill kind-retained-dom-reference" data-kind="retained-dom-reference">DOM Reference</span>
+        <span class="kind-pill kind-large-component" data-kind="large-component">Large Component</span>
         <span class="legend-desc-group">
-          <span class="legend-desc"><code class="hint-code">document.querySelector()</code> / <code class="hint-code">getElementById()</code> result stored on <code class="hint-code">this</code> but never nulled out in <code class="hint-code">ngOnDestroy()</code></span>
-          <span class="legend-fix"><strong>Fix:</strong> set the property to <code class="hint-code">null</code> in <code class="hint-code">ngOnDestroy()</code>; prefer <code class="hint-code">@ViewChild</code> for template elements</span>
-        </span>
-      </span>
-      <hr class="legend-sep">
-      <span class="legend-item">
-        <span class="kind-pill kind-uncleared-timeout" data-kind="uncleared-timeout">Timeout</span>
-        <span class="legend-desc-group">
-          <span class="legend-desc"><code class="hint-code">setTimeout()</code> whose return value is stored but never passed to <code class="hint-code">clearTimeout()</code> in <code class="hint-code">ngOnDestroy()</code></span>
-          <span class="legend-fix"><strong>Fix:</strong> call <code class="hint-code">clearTimeout(this.timeoutId)</code> inside <code class="hint-code">ngOnDestroy()</code></span>
-        </span>
-      </span>
-      <hr class="legend-sep">
-      <span class="legend-item">
-        <span class="kind-pill kind-unremoved-renderer-listener" data-kind="unremoved-renderer-listener">Renderer Listener</span>
-        <span class="legend-desc-group">
-          <span class="legend-desc"><code class="hint-code">renderer.listen()</code> return value stored on <code class="hint-code">this</code> but the cleanup function is never called in <code class="hint-code">ngOnDestroy()</code></span>
-          <span class="legend-fix"><strong>Fix:</strong> call the stored cleanup function (e.g. <code class="hint-code">this.unlisten()</code>) inside <code class="hint-code">ngOnDestroy()</code></span>
-        </span>
-      </span>
-      <hr class="legend-sep">
-      <span class="legend-item">
-        <span class="kind-pill kind-incomplete-destroy-subject" data-kind="incomplete-destroy-subject">Destroy Subject</span>
-        <span class="legend-desc-group">
-          <span class="legend-desc"><code class="hint-code">Subject</code> used in <code class="hint-code">takeUntil()</code> but <code class="hint-code">.next()</code> / <code class="hint-code">.complete()</code> is never called in <code class="hint-code">ngOnDestroy()</code></span>
-          <span class="legend-fix"><strong>Fix:</strong> add <code class="hint-code">this.destroy$.next(); this.destroy$.complete();</code> to <code class="hint-code">ngOnDestroy()</code>, or switch to <code class="hint-code">takeUntilDestroyed()</code></span>
+          <span class="legend-desc">Combined size of Component TS and HTML exceeds the threshold</span>
+          <span class="legend-fix"><strong>Fix:</strong> Consider splitting the component into smaller, more manageable sub-components.</span>
         </span>
       </span>
     </div>
@@ -773,13 +704,13 @@ function buildWebviewHtml(leaks: MemoryLeakLocation[], workspaceRoot: string): s
         var isOff = pill.classList.toggle('pill-off');
 
         // Show/hide all leak items of this kind
-        document.querySelectorAll('.leak-item[data-kind="' + kind + '"]').forEach(function(item) {
+        document.querySelectorAll('.issue-item[data-kind="' + kind + '"]').forEach(function(item) {
           item.style.display = isOff ? 'none' : '';
         });
 
         // Hide file groups where every leak item is hidden
         document.querySelectorAll('.file-group').forEach(function(group) {
-          var items = group.querySelectorAll('.leak-item');
+          var items = group.querySelectorAll('.issue-item');
           var allHidden = Array.prototype.every.call(items, function(item) {
             return item.style.display === 'none';
           });
@@ -798,5 +729,5 @@ function escapeHtml(str: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+    .replace(/'/g, '&#039;');
 }

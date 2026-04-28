@@ -245,7 +245,7 @@ function collectClearedIntervalKeys(
   bodyMap: Map<string, ts.Node>,
 ): Set<string> {
   const keys = new Set<string>();
-  if (!ngOnDestroyBody) return keys;
+  if (!ngOnDestroyBody) {return keys;}
   walkReachableNodes(
     ngOnDestroyBody,
     bodyMap,
@@ -257,7 +257,7 @@ function collectClearedIntervalKeys(
         n.arguments.length > 0
       ) {
         const key = expressionToKey(n.arguments[0] as ts.Expression);
-        if (key) keys.add(key);
+        if (key) {keys.add(key);}
       }
     },
     MAX_TRAVERSE_DEPTH,
@@ -274,7 +274,7 @@ function collectRemovedListenerKeys(
   bodyMap: Map<string, ts.Node>,
 ): Set<string> {
   const keys = new Set<string>();
-  if (!ngOnDestroyBody) return keys;
+  if (!ngOnDestroyBody) {return keys;}
   walkReachableNodes(
     ngOnDestroyBody,
     bodyMap,
@@ -286,7 +286,7 @@ function collectRemovedListenerKeys(
         n.arguments.length >= 2
       ) {
         const key = listenerKey(n.arguments[0] as ts.Expression, n.arguments[1] as ts.Expression);
-        if (key) keys.add(key);
+        if (key) {keys.add(key);}
       }
     },
     MAX_TRAVERSE_DEPTH,
@@ -300,7 +300,7 @@ function collectClearedTimeoutKeys(
   bodyMap: Map<string, ts.Node>,
 ): Set<string> {
   const keys = new Set<string>();
-  if (!ngOnDestroyBody) return keys;
+  if (!ngOnDestroyBody) {return keys;}
   walkReachableNodes(
     ngOnDestroyBody,
     bodyMap,
@@ -312,7 +312,7 @@ function collectClearedTimeoutKeys(
         n.arguments.length > 0
       ) {
         const key = expressionToKey(n.arguments[0] as ts.Expression);
-        if (key) keys.add(key);
+        if (key) {keys.add(key);}
       }
     },
     MAX_TRAVERSE_DEPTH,
@@ -329,7 +329,7 @@ function collectCalledThisPropertyKeys(
   bodyMap: Map<string, ts.Node>,
 ): Set<string> {
   const keys = new Set<string>();
-  if (!ngOnDestroyBody) return keys;
+  if (!ngOnDestroyBody) {return keys;}
   walkReachableNodes(
     ngOnDestroyBody,
     bodyMap,
@@ -356,7 +356,7 @@ function collectCompletedSubjectKeys(
   bodyMap: Map<string, ts.Node>,
 ): Set<string> {
   const keys = new Set<string>();
-  if (!ngOnDestroyBody) return keys;
+  if (!ngOnDestroyBody) {return keys;}
   walkReachableNodes(
     ngOnDestroyBody,
     bodyMap,
@@ -365,7 +365,7 @@ function collectCompletedSubjectKeys(
         const methodName = n.expression.name.text;
         if (methodName === 'next' || methodName === 'complete') {
           const key = expressionToKey(n.expression.expression as ts.Expression);
-          if (key) keys.add(key);
+          if (key) {keys.add(key);}
         }
       }
     },
@@ -600,7 +600,7 @@ function collectNulledDomKeys(
   bodyMap: Map<string, ts.Node>,
 ): Set<string> {
   const keys = new Set<string>();
-  if (!ngOnDestroyBody) return keys;
+  if (!ngOnDestroyBody) {return keys;}
   walkReachableNodes(
     ngOnDestroyBody,
     bodyMap,
@@ -612,7 +612,7 @@ function collectNulledDomKeys(
         n.right.kind === ts.SyntaxKind.NullKeyword
       ) {
         const key = expressionToKey(n.left as ts.Expression);
-        if (key) keys.add(key);
+        if (key) {keys.add(key);}
       }
     },
     MAX_TRAVERSE_DEPTH,
@@ -863,7 +863,7 @@ function findSubjectsUsedInTakeUntil(sourceFile: ts.SourceFile): Set<string> {
       n.arguments.length === 1
     ) {
       const key = expressionToKey(n.arguments[0] as ts.Expression);
-      if (key) keys.add(key);
+      if (key) {keys.add(key);}
     }
     ts.forEachChild(n, visit);
   }
@@ -881,7 +881,7 @@ function findIncompleteDestroySubjects(
   completedSubjectKeys: Set<string>,
 ): MemoryLeakLocation[] {
   const takeUntilKeys = findSubjectsUsedInTakeUntil(sourceFile);
-  if (takeUntilKeys.size === 0) return [];
+  if (takeUntilKeys.size === 0) {return [];}
 
   const results: MemoryLeakLocation[] = [];
 

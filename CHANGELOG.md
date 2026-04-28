@@ -9,6 +9,12 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 ### Added
 
 - **Angular: Setup .npmrc Auth Tokens** (`Ctrl+Shift+A A`): automatically extracts registry URLs from your workspace's `.npmrc` file, prompts for Personal Access Tokens (PATs) for missing registries, and securely configures your global `~/.npmrc` file.
+- **Angular: Check Optimizations** (`Ctrl+Shift+A O`): analyses Angular source files in the workspace to detect common performance pitfalls and presents them in an interactive Webview panel:
+  - **Missing OnPush** — Components without `ChangeDetectionStrategy.OnPush`
+  - **Missing trackBy** — `*ngFor` loops lacking a `trackBy` function
+  - **Function in Template** — Function calls inside template interpolations or bindings (intelligently excludes Angular Signals: `signal`, `computed`, `input`, `model`)
+  - **Unnecessary Zone.js Work** — Asynchronous tasks (`setTimeout`, `setInterval`, `requestAnimationFrame`) not wrapped in `runOutsideAngular`
+  - **Large Component** — Components whose combined TS and HTML line count exceeds 300 lines
 
 ## [1.5.0]
 

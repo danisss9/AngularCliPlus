@@ -58,6 +58,23 @@ Detection runs via `ng version` (preferring the workspace-local CLI from `node_m
 | Angular: Check Memory Leaks    | `Ctrl+Shift+A M`   | Scans Angular source files for potential memory leaks using the TypeScript Compiler API and shows results in an interactive Webview panel with per-kind filters and a Reload button          |
 | Angular: Show Signal Graph     | `Ctrl+Shift+A G`   | Analyses the open TypeScript file for Angular Signals and renders an interactive Mermaid dependency graph in a Webview panel; click any node to jump to its declaration                      |
 | Angular: Setup .npmrc Auth Tokens | `Ctrl+Shift+A A` | Detects registries in the workspace `.npmrc` file and configures authentication tokens in your global `~/.npmrc`                                                                          |
+| Angular: Check Optimizations   | `Ctrl+Shift+A O`   | Scans Angular source files for common performance pitfalls and shows results in an interactive Webview panel                                                                                 |
+
+### Angular: Check Optimizations (`Ctrl+Shift+A O`)
+
+Analyses Angular source files in the workspace to detect common performance pitfalls and presents them in an interactive Webview panel.
+
+**Detected optimization issues:**
+
+| Kind                       | Description                                                                                                      |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Missing OnPush             | Components without `ChangeDetectionStrategy.OnPush`                                                              |
+| Missing trackBy            | `*ngFor` loops lacking a `trackBy` function                                                                      |
+| Function in Template       | Function calls inside template interpolations or bindings (intelligently excludes `signal`, `computed`, etc.)    |
+| Unnecessary Zone.js Work   | `setTimeout`, `setInterval`, or `requestAnimationFrame` not wrapped in `runOutsideAngular`                       |
+| Large Component            | Components whose combined TS and HTML line count exceeds 300 lines                                               |
+
+Like the Memory Leaks checker, the panel features file-grouped results with clickable source links, per-kind pill filters, a stats bar, and a **Reload** button to re-run the analysis.
 
 ### Angular: Check Memory Leaks (`Ctrl+Shift+A M`)
 

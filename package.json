@@ -159,6 +159,11 @@
         "command": "angular-cli-plus.setupNpmrc",
         "title": "Angular: Setup .npmrc Auth Tokens",
         "category": "Angular CLI Plus"
+      },
+      {
+        "command": "angular-cli-plus.checkOptimizations",
+        "title": "Angular: Check Optimizations",
+        "category": "Angular CLI Plus"
       }
     ],
     "keybindings": [
@@ -225,6 +230,10 @@
       {
         "command": "angular-cli-plus.setupNpmrc",
         "key": "ctrl+shift+a a"
+      },
+      {
+        "command": "angular-cli-plus.checkOptimizations",
+        "key": "ctrl+shift+a o"
       }
     ],
     "submenus": [
@@ -578,6 +587,7 @@
   },
   "dependencies": {
     "mermaid": "^11.14.0",
+    "node-html-parser": "^7.1.0",
     "semver": "^7.7.4",
     "typescript": "^5.9.3"
   }

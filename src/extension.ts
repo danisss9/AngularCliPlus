@@ -45,6 +45,7 @@ import {
 import { pickWorkspaceFolder } from './utils';
 import { checkMemoryLeaks } from './memory-leak';
 import { setupNpmrcCommand } from './npmrc';
+import { checkOptimizations } from './optimizations';
 
 export function activate(context: vscode.ExtensionContext) {
   setExtensionContext(context);
@@ -121,6 +122,7 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('angular-cli-plus.checkMemoryLeaks', () => checkMemoryLeaks()),
     vscode.commands.registerCommand('angular-cli-plus.showSignalGraph', () => showSignalGraph()),
     vscode.commands.registerCommand('angular-cli-plus.setupNpmrc', () => setupNpmrcCommand()),
+    vscode.commands.registerCommand('angular-cli-plus.checkOptimizations', () => checkOptimizations()),
     vscode.commands.registerCommand('angular-cli-plus.npmInstall', () => runNpmInstall(false)),
     vscode.commands.registerCommand('angular-cli-plus.npmCleanInstall', () => runNpmInstall(true)),
     vscode.commands.registerCommand('angular-cli-plus.checkDependencies', async () => {
