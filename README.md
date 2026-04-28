@@ -73,6 +73,12 @@ Analyses Angular source files in the workspace to detect common performance pitf
 | Function in Template       | Function calls inside template interpolations or bindings (intelligently excludes `signal`, `computed`, etc.)    |
 | Unnecessary Zone.js Work   | `setTimeout`, `setInterval`, or `requestAnimationFrame` not wrapped in `runOutsideAngular`                       |
 | Large Component            | Components whose combined TS and HTML line count exceeds 300 lines                                               |
+| Getter in Template         | Class getters called from template bindings                                                                      |
+| Heavy Lifecycle Hook       | Loops or heavy array operations inside high-frequency lifecycle hooks                                            |
+| Index as trackBy           | Loop index used directly as the `trackBy` identifier (also supports `@for ... track $index`)                     |
+| Unshared Async Pipe        | Multiple `async` pipes subscribing to the same unshared Observable                                               |
+| High Frequency Event       | High-frequency DOM events (`scroll`, `mousemove`, etc.) bound directly in the template                           |
+| Complex Template           | Templates exceeding a high number of bindings and directives                                                     |
 
 Like the Memory Leaks checker, the panel features file-grouped results with clickable source links, per-kind pill filters, a stats bar, and a **Reload** button to re-run the analysis.
 

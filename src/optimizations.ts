@@ -214,6 +214,12 @@ function buildWebviewHtml(issues: OptimizationLocation[], workspaceRoot: string)
     'function-in-template': 'Function in Template',
     'unnecessary-zone-work': 'Unnecessary Zone.js Work',
     'large-component': 'Large Component',
+    'getter-in-template': 'Getter in Template',
+    'heavy-lifecycle-hook': 'Heavy Lifecycle Hook',
+    'index-as-trackby': 'Index as trackBy',
+    'unshared-async-pipe': 'Unshared Async Pipe',
+    'high-frequency-event': 'High Frequency Event',
+    'complex-template': 'Complex Template',
   };
 
   const fileGroups = Array.from(byFile.entries())
@@ -231,7 +237,11 @@ function buildWebviewHtml(issues: OptimizationLocation[], workspaceRoot: string)
             .replace(/(\{\{.*?\}\})/g, '<mark>$1</mark>')
             .replace(/(setTimeout\s*\()/g, '<mark>$1</mark>')
             .replace(/(setInterval\s*\()/g, '<mark>$1</mark>')
-            .replace(/(requestAnimationFrame\s*\()/g, '<mark>$1</mark>');
+            .replace(/(requestAnimationFrame\s*\()/g, '<mark>$1</mark>')
+            .replace(/(@for)/g, '<mark>$1</mark>')
+            .replace(/(\|\s*async)/g, '<mark>$1</mark>')
+            .replace(/(get\s+)/g, '<mark>$1</mark>')
+            .replace(/(scroll|mousemove|wheel|drag|dragover)/g, '<mark>$1</mark>');
             
           return /* html */ `
           <div class="issue-item leak-item" data-kind="${issue.kind}">
@@ -263,6 +273,12 @@ function buildWebviewHtml(issues: OptimizationLocation[], workspaceRoot: string)
   const fnTemplateCount = issues.filter((i) => i.kind === 'function-in-template').length;
   const zoneWorkCount = issues.filter((i) => i.kind === 'unnecessary-zone-work').length;
   const largeCompCount = issues.filter((i) => i.kind === 'large-component').length;
+  const getterCount = issues.filter((i) => i.kind === 'getter-in-template').length;
+  const heavyHookCount = issues.filter((i) => i.kind === 'heavy-lifecycle-hook').length;
+  const indexTrackByCount = issues.filter((i) => i.kind === 'index-as-trackby').length;
+  const unsharedAsyncCount = issues.filter((i) => i.kind === 'unshared-async-pipe').length;
+  const highFreqEventCount = issues.filter((i) => i.kind === 'high-frequency-event').length;
+  const complexTemplateCount = issues.filter((i) => i.kind === 'complex-template').length;
 
   const statsParts: string[] = [`${filesCount} file${filesCount !== 1 ? 's' : ''} affected`];
   if (onPushCount > 0) {statsParts.push(`${onPushCount} missing OnPush`);}
@@ -270,6 +286,12 @@ function buildWebviewHtml(issues: OptimizationLocation[], workspaceRoot: string)
   if (fnTemplateCount > 0) {statsParts.push(`${fnTemplateCount} fn in template`);}
   if (zoneWorkCount > 0) {statsParts.push(`${zoneWorkCount} zone.js work`);}
   if (largeCompCount > 0) {statsParts.push(`${largeCompCount} large component`);}
+  if (getterCount > 0) {statsParts.push(`${getterCount} getter in template`);}
+  if (heavyHookCount > 0) {statsParts.push(`${heavyHookCount} heavy hook`);}
+  if (indexTrackByCount > 0) {statsParts.push(`${indexTrackByCount} index as trackBy`);}
+  if (unsharedAsyncCount > 0) {statsParts.push(`${unsharedAsyncCount} unshared async`);}
+  if (highFreqEventCount > 0) {statsParts.push(`${highFreqEventCount} high freq event`);}
+  if (complexTemplateCount > 0) {statsParts.push(`${complexTemplateCount} complex template`);}
   
   const statsLabel = statsParts.join(' &middot; ');
 
@@ -435,6 +457,42 @@ function buildWebviewHtml(issues: OptimizationLocation[], workspaceRoot: string)
       background: rgba(240, 140, 60, 0.15);
       color: var(--vscode-terminal-ansiBrightYellow, #e8a020);
       border: 1px solid rgba(240, 140, 60, 0.3);
+    }
+
+    .kind-getter-in-template {
+      background: rgba(180, 100, 240, 0.15);
+      color: var(--vscode-terminal-ansiBrightMagenta, #b464f0);
+      border: 1px solid rgba(180, 100, 240, 0.3);
+    }
+
+    .kind-heavy-lifecycle-hook {
+      background: rgba(240, 100, 80, 0.15);
+      color: var(--vscode-problemsErrorIcon-foreground, #f06450);
+      border: 1px solid rgba(240, 100, 80, 0.3);
+    }
+
+    .kind-index-as-trackby {
+      background: rgba(204, 167, 0, 0.18);
+      color: var(--vscode-problemsWarningIcon-foreground, #cca700);
+      border: 1px solid rgba(204, 167, 0, 0.35);
+    }
+
+    .kind-unshared-async-pipe {
+      background: rgba(100, 160, 240, 0.15);
+      color: var(--vscode-terminal-ansiBrightBlue, #6aa0f0);
+      border: 1px solid rgba(100, 160, 240, 0.3);
+    }
+
+    .kind-high-frequency-event {
+      background: rgba(240, 140, 60, 0.15);
+      color: var(--vscode-terminal-ansiBrightYellow, #e8a020);
+      border: 1px solid rgba(240, 140, 60, 0.3);
+    }
+
+    .kind-complex-template {
+      background: rgba(240, 100, 80, 0.15);
+      color: var(--vscode-problemsErrorIcon-foreground, #f06450);
+      border: 1px solid rgba(240, 100, 80, 0.3);
     }
 
     /* ── File groups ── */
@@ -656,6 +714,54 @@ function buildWebviewHtml(issues: OptimizationLocation[], workspaceRoot: string)
         <span class="legend-desc-group">
           <span class="legend-desc">Combined size of Component TS and HTML exceeds the threshold</span>
           <span class="legend-fix"><strong>Fix:</strong> Consider splitting the component into smaller, more manageable sub-components.</span>
+        </span>
+      </span>
+      <hr class="legend-sep">
+      <span class="legend-item">
+        <span class="kind-pill kind-getter-in-template" data-kind="getter-in-template">Getter in Template</span>
+        <span class="legend-desc-group">
+          <span class="legend-desc">Class getter called from template bindings</span>
+          <span class="legend-fix"><strong>Fix:</strong> Use a pure pipe or signal, as getters evaluate on every change detection cycle.</span>
+        </span>
+      </span>
+      <hr class="legend-sep">
+      <span class="legend-item">
+        <span class="kind-pill kind-heavy-lifecycle-hook" data-kind="heavy-lifecycle-hook">Heavy Lifecycle Hook</span>
+        <span class="legend-desc-group">
+          <span class="legend-desc">Loops or heavy array operations inside high-frequency lifecycle hooks</span>
+          <span class="legend-fix"><strong>Fix:</strong> Move heavy logic out of ngDoCheck, ngAfterContentChecked, and ngAfterViewChecked.</span>
+        </span>
+      </span>
+      <hr class="legend-sep">
+      <span class="legend-item">
+        <span class="kind-pill kind-index-as-trackby" data-kind="index-as-trackby">Index as trackBy</span>
+        <span class="legend-desc-group">
+          <span class="legend-desc">Loop index used as the trackBy identifier</span>
+          <span class="legend-fix"><strong>Fix:</strong> Track by a unique identifier (e.g., item.id) instead of the index.</span>
+        </span>
+      </span>
+      <hr class="legend-sep">
+      <span class="legend-item">
+        <span class="kind-pill kind-unshared-async-pipe" data-kind="unshared-async-pipe">Unshared Async Pipe</span>
+        <span class="legend-desc-group">
+          <span class="legend-desc">Multiple async pipes subscribing to the same unshared Observable</span>
+          <span class="legend-fix"><strong>Fix:</strong> Add <code>shareReplay(1)</code> to the Observable to prevent redundant executions.</span>
+        </span>
+      </span>
+      <hr class="legend-sep">
+      <span class="legend-item">
+        <span class="kind-pill kind-high-frequency-event" data-kind="high-frequency-event">High Frequency Event</span>
+        <span class="legend-desc-group">
+          <span class="legend-desc">High-frequency DOM events bound directly in the template</span>
+          <span class="legend-fix"><strong>Fix:</strong> Use <code>fromEvent</code> outside the Angular zone for events like scroll or mousemove.</span>
+        </span>
+      </span>
+      <hr class="legend-sep">
+      <span class="legend-item">
+        <span class="kind-pill kind-complex-template" data-kind="complex-template">Complex Template</span>
+        <span class="legend-desc-group">
+          <span class="legend-desc">Template has too many bindings or directives</span>
+          <span class="legend-fix"><strong>Fix:</strong> Extract parts of the template into smaller, targeted components.</span>
         </span>
       </span>
     </div>
