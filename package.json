@@ -4,7 +4,7 @@
   "description": "Angular CLI commands, schematics generator, and project tools for VS Code",
   "repository": "https://github.com/danisss9/AngularCliPlus",
   "publisher": "danisss9",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "icon": "icon.png",
   "engines": {
     "vscode": "^1.107.0"
@@ -154,6 +154,11 @@
         "command": "angular-cli-plus.showSignalGraph",
         "title": "Angular: Show Signal Graph",
         "category": "Angular CLI Plus"
+      },
+      {
+        "command": "angular-cli-plus.setupNpmrc",
+        "title": "Angular: Setup .npmrc Auth Tokens",
+        "category": "Angular CLI Plus"
       }
     ],
     "keybindings": [
@@ -216,6 +221,10 @@
       {
         "command": "angular-cli-plus.showSignalGraph",
         "key": "ctrl+shift+a g"
+      },
+      {
+        "command": "angular-cli-plus.setupNpmrc",
+        "key": "ctrl+shift+a a"
       }
     ],
     "submenus": [

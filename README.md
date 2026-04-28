@@ -57,6 +57,7 @@ Detection runs via `ng version` (preferring the workspace-local CLI from `node_m
 | Angular: Close Terminals       | `Ctrl+Shift+A C`   | Opens a searchable multi-select list of all extension terminals with their state (running / terminated / errored / killed) — finished terminals are pre-selected; select which ones to close |
 | Angular: Check Memory Leaks    | `Ctrl+Shift+A M`   | Scans Angular source files for potential memory leaks using the TypeScript Compiler API and shows results in an interactive Webview panel with per-kind filters and a Reload button          |
 | Angular: Show Signal Graph     | `Ctrl+Shift+A G`   | Analyses the open TypeScript file for Angular Signals and renders an interactive Mermaid dependency graph in a Webview panel; click any node to jump to its declaration                      |
+| Angular: Setup .npmrc Auth Tokens | `Ctrl+Shift+A A` | Detects registries in the workspace `.npmrc` file and configures authentication tokens in your global `~/.npmrc`                                                                          |
 
 ### Angular: Check Memory Leaks (`Ctrl+Shift+A M`)
 
@@ -167,6 +168,7 @@ Use the keyboard shortcuts (`Ctrl+Shift+A` followed by a letter) or search for *
 - **Close Terminals** (`Ctrl+Shift+A C`): opens a searchable multi-select QuickPick of all extension terminals; each entry shows the terminal name and state (`running`, `terminated`, `errored`, or `killed`); finished terminals are pre-selected and sorted to the top so pressing Enter clears them immediately; use the select-all checkbox or search to filter further
 - **Check Memory Leaks** (`Ctrl+Shift+A M`): prompts for scope (whole workspace, a single folder, or a custom glob), scans all matching Angular source files with the TypeScript Compiler API, and opens an interactive Webview panel showing eight categories of potential memory leaks — each finding is a clickable link that jumps to the source location; use the pill filters in the legend to show/hide specific kinds; click **Reload** to re-run the analysis and refresh the same panel in place
 - **Show Signal Graph** (`Ctrl+Shift+A G`): opens the current TypeScript file, extracts all Angular Signals (`signal`, `input`, `computed`, `effect`, `output`) and traces their dependencies up to 10 levels deep, then renders an interactive Mermaid flowchart in a side panel; click any node to navigate to that signal's declaration; Mermaid is bundled locally so the graph works fully offline
+- **Setup .npmrc Auth Tokens** (`Ctrl+Shift+A A`): detects registries in the workspace `.npmrc` file and prompts for a Personal Access Token for each one, saving them to your global user `~/.npmrc`
 
 ### Debugging
 

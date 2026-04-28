@@ -4,6 +4,12 @@ All notable changes to the "angular-cli-plus" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.5.1]
+
+### Added
+
+- **Angular: Setup .npmrc Auth Tokens** (`Ctrl+Shift+A A`): automatically extracts registry URLs from your workspace's `.npmrc` file, prompts for Personal Access Tokens (PATs) for missing registries, and securely configures your global `~/.npmrc` file.
+
 ## [1.5.0]
 
 ### Added
