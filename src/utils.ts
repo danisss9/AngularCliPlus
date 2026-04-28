@@ -299,7 +299,6 @@ export async function runInTerminal(
           existing.show();
           existing.sendText('\x03');
           await new Promise<void>((r) => setTimeout(r, RESTART_CTRL_C_DELAY_MS));
-          setTrackedTerminalRunning(existing);
           existing.sendText(command);
           return existing;
         } else if (action === 'Show') {
@@ -309,16 +308,33 @@ export async function runInTerminal(
           return existing;
         }
       } else {
-        // Non-serve terminal already running — just show it
-        existing.show();
-        return existing;
+        // Non-serve terminal already running — offer restart
+        const action = await vscode.window.showInformationMessage(
+          `"${name}" is already running. Restart it?`,
+          'Restart',
+          'Show',
+        );
+        if (getTrackedTerminalState(existing) !== 'running') {
+          // It finished while we were waiting for the prompt. Reuse it!
+          existing.show();
+          existing.sendText(command);
+          return existing;
+        } else if (action === 'Restart') {
+          existing.show();
+          existing.sendText('\x03');
+          await new Promise<void>((r) => setTimeout(r, RESTART_CTRL_C_DELAY_MS));
+          existing.sendText(command);
+          return existing;
+        } else {
+          existing.show();
+          return existing;
+        }
       }
     } else {
-      // Terminated or errored — clean up before creating fresh
-      existing.dispose();
-      extensionTerminals.delete(existing);
-      clearTrackedTerminalState(existing);
-      removePersistedTerminalEntry(name);
+      // Terminated or errored — reuse the existing terminal
+      existing.show();
+      existing.sendText(command);
+      return existing;
     }
   }
 
@@ -331,7 +347,6 @@ export async function runInTerminal(
     activeServeTerminals.set(name, { terminal, command, cwd });
   }
   terminal.show();
-  setTrackedTerminalRunning(terminal);
   terminal.sendText(command);
 
   const disposable = vscode.window.onDidCloseTerminal(async (closed) => {
