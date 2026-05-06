@@ -4,6 +4,16 @@ All notable changes to the "angular-cli-plus" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.5.2]
+
+### Added
+
+- **Angular: Check Build Errors** (`Ctrl+Shift+A E`): runs an Angular build in the background, parses the output for TypeScript and Angular CLI errors, and presents them in an interactive Webview panel. Features clickable source links that navigate straight to the error location, direct links to the official Angular Dev error reference for NG error codes, and a collapsible UI for large error stack traces. Automatically adapts parsing logic based on the detected Angular builder (Webpack vs ESBuild) and handles formatting nuances like ANSI colors and Unicode symbols. If the build has no errors, displays a random success message.
+
+### Fixed
+
+- **Webview Event Listener Leak** — resolved a critical bug where reloading a Webview (e.g., clicking "Build Again" or "Reload") would indiscriminately attach a new `onDidReceiveMessage` listener without clearing the old one. This caused exponential execution of commands on subsequent clicks across all Webviews (Build Errors, Optimizations, Memory Leaks, and Signal Graph).
+
 ## [1.5.1]
 
 ### Added

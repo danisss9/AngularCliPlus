@@ -33,22 +33,22 @@ export function showSignalGraphWebview(data: SignalGraphData): void {
     activePanel.onDidDispose(() => {
       activePanel = undefined;
     });
-  }
 
-  activePanel.webview.onDidReceiveMessage(
-    async (message: { command: string; file: string; line: number }) => {
-      if (message.command === 'openFile') {
-        const uri = vscode.Uri.file(message.file);
-        await vscode.window.showTextDocument(uri, {
-          selection: new vscode.Range(
-            new vscode.Position(message.line - 1, 0),
-            new vscode.Position(message.line - 1, 0),
-          ),
-          preview: false,
-        });
-      }
-    },
-  );
+    activePanel.webview.onDidReceiveMessage(
+      async (message: { command: string; file: string; line: number }) => {
+        if (message.command === 'openFile') {
+          const uri = vscode.Uri.file(message.file);
+          await vscode.window.showTextDocument(uri, {
+            selection: new vscode.Range(
+              new vscode.Position(message.line - 1, 0),
+              new vscode.Position(message.line - 1, 0),
+            ),
+            preview: false,
+          });
+        }
+      },
+    );
+  }
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────

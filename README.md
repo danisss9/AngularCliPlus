@@ -59,6 +59,7 @@ Detection runs via `ng version` (preferring the workspace-local CLI from `node_m
 | Angular: Show Signal Graph     | `Ctrl+Shift+A G`   | Analyses the open TypeScript file for Angular Signals and renders an interactive Mermaid dependency graph in a Webview panel; click any node to jump to its declaration                      |
 | Angular: Setup .npmrc Auth Tokens | `Ctrl+Shift+A A` | Detects registries in the workspace `.npmrc` file and configures authentication tokens in your global `~/.npmrc`                                                                          |
 | Angular: Check Optimizations   | `Ctrl+Shift+A O`   | Scans Angular source files for common performance pitfalls and shows results in an interactive Webview panel                                                                                 |
+| Angular: Check Build Errors    | `Ctrl+Shift+A E`   | Runs an Angular build in the background, auto-detects the builder (Webpack/esbuild), parses output for errors, and presents them in an interactive, collapsible Webview panel                |
 
 ### Angular: Check Optimizations (`Ctrl+Shift+A O`)
 

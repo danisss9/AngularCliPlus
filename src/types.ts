@@ -37,6 +37,7 @@ export interface AngularProject {
       };
     };
     build?: {
+      builder?: string;
       options?: {
         outputPath?: string | { base?: string; browser?: string };
       };

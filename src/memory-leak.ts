@@ -156,46 +156,46 @@ function showMemoryLeaksWebview(
     activePanel.onDidDispose(() => {
       activePanel = undefined;
     });
-  }
 
-  activePanel.webview.onDidReceiveMessage(
-    async (message: { command: string; file: string; line: number }) => {
-      if (message.command === 'openFile') {
-        const uri = vscode.Uri.file(message.file);
-        void vscode.window.showTextDocument(uri, {
-          selection: new vscode.Range(
-            new vscode.Position(message.line - 1, 0),
-            new vscode.Position(message.line - 1, 0),
-          ),
-          preview: false,
-        });
-      } else if (message.command === 'reload') {
-        const freshLeaks = await vscode.window.withProgress(
-          {
-            location: vscode.ProgressLocation.Notification,
-            title: 'Checking for memory leaks…',
-            cancellable: false,
-          },
-          async (progress) => {
-            const found: MemoryLeakLocation[] = [];
-            const total = filesToCheck.length;
-            for (let i = 0; i < total; i++) {
-              progress.report({
-                increment: (1 / total) * 100,
-                message: path.basename(filesToCheck[i]),
-              });
-              found.push(...findMemoryLeaksInFile(filesToCheck[i]));
-            }
-            return found;
-          },
-        );
-        if (activePanel) {
-          activePanel.title = `Memory Leaks (${freshLeaks.length})`;
-          activePanel.webview.html = buildWebviewHtml(freshLeaks, workspaceRoot);
+    activePanel.webview.onDidReceiveMessage(
+      async (message: { command: string; file: string; line: number }) => {
+        if (message.command === 'openFile') {
+          const uri = vscode.Uri.file(message.file);
+          void vscode.window.showTextDocument(uri, {
+            selection: new vscode.Range(
+              new vscode.Position(message.line - 1, 0),
+              new vscode.Position(message.line - 1, 0),
+            ),
+            preview: false,
+          });
+        } else if (message.command === 'reload') {
+          const freshLeaks = await vscode.window.withProgress(
+            {
+              location: vscode.ProgressLocation.Notification,
+              title: 'Checking for memory leaks…',
+              cancellable: false,
+            },
+            async (progress) => {
+              const found: MemoryLeakLocation[] = [];
+              const total = filesToCheck.length;
+              for (let i = 0; i < total; i++) {
+                progress.report({
+                  increment: (1 / total) * 100,
+                  message: path.basename(filesToCheck[i]),
+                });
+                found.push(...findMemoryLeaksInFile(filesToCheck[i]));
+              }
+              return found;
+            },
+          );
+          if (activePanel) {
+            activePanel.title = `Memory Leaks (${freshLeaks.length})`;
+            activePanel.webview.html = buildWebviewHtml(freshLeaks, workspaceRoot);
+          }
         }
-      }
-    },
-  );
+      },
+    );
+  }
 }
 
 function buildWebviewHtml(leaks: MemoryLeakLocation[], workspaceRoot: string): string {

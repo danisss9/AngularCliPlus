@@ -4,7 +4,7 @@
   "description": "Angular CLI commands, schematics generator, and project tools for VS Code",
   "repository": "https://github.com/danisss9/AngularCliPlus",
   "publisher": "danisss9",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "icon": "icon.png",
   "engines": {
     "vscode": "^1.107.0"
@@ -164,6 +164,11 @@
         "command": "angular-cli-plus.checkOptimizations",
         "title": "Angular: Check Optimizations",
         "category": "Angular CLI Plus"
+      },
+      {
+        "command": "angular-cli-plus.checkBuildErrors",
+        "title": "Angular: Check Build Errors",
+        "category": "Angular CLI Plus"
       }
     ],
     "keybindings": [
@@ -234,6 +239,10 @@
       {
         "command": "angular-cli-plus.checkOptimizations",
         "key": "ctrl+shift+a o"
+      },
+      {
+        "command": "angular-cli-plus.checkBuildErrors",
+        "key": "ctrl+shift+a e"
       }
     ],
     "submenus": [
