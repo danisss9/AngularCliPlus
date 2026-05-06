@@ -136,13 +136,12 @@ Runs a full Angular build in the background and parses the output for TypeScript
 - **Collapsible UI**: Large error messages and stack traces are collapsed by default to keep the view clean. Expand individual errors or use the "Expand All" toggle in the file header.
 - **Background execution**: The build runs in a separate process, so you can continue working while the check completes.
 
-### GitHub Copilot Integration (\u2728)
+### GitHub Copilot Integration (✨)
 
 The `Memory Leaks`, `Optimizations`, and `Check Build Errors` panels feature deep integration with **GitHub Copilot** to help you fix issues with one click.
 
-- **Auto Fix**: Click the sparkle icon (\u2728) next to any diagnostic to open Copilot Chat with a pre-filled, context-aware prompt. The prompt includes the code snippet, the error description, and a concrete fix hint.
+- **Auto Fix**: Click the sparkle icon (✨) next to any diagnostic to open Copilot Chat with a pre-filled, context-aware prompt. The prompt includes the code snippet, the error description, and a concrete fix hint.
 - **Bulk Fix (Fix All)**: Every file group in the diagnostic panels includes a **Fix all** button. This sends all issues identified in that file to Copilot in a single batch, allowing the AI to refactor the entire file at once.
-- **Smart Model Selection**: The extension automatically attempts to select your preferred language model (default: `gpt-4o`) in the Copilot Chat UI before presenting the prompt.
 
 *Note: Requires the **GitHub Copilot** and **GitHub Copilot Chat** extensions to be installed and active.*
 
@@ -373,4 +372,3 @@ This extension contributes the following settings:
 ### Copilot Options
 
 - `angularCliPlus.copilot.autoFixEnabled`: Show "Auto Fix with Copilot" buttons in diagnostic webviews (default: `true`)
-- `angularCliPlus.copilot.preferredModel`: The language model ID that the extension should attempt to select in the Copilot Chat UI (e.g. `gpt-4o`, `claude-3.5-sonnet`) (default: `gpt-4o`)

@@ -33,31 +33,9 @@ export interface CopilotFixFileOptions {
   issueType: string;
 }
 
-/**
- * Attempts to select the preferred model in VS Code's language model API.
- * Uses vscode.lm.selectChatModels to find a model matching the configured ID.
- * Falls back silently if the model is unavailable.
- */
-async function selectPreferredModel(): Promise<void> {
-  const config = vscode.workspace.getConfiguration('angularCliPlus');
-  const preferredModelId = config.get<string>('copilot.preferredModel', 'gpt-4o');
-
-  try {
-    const models = await vscode.lm.selectChatModels({ id: preferredModelId });
-    if (models.length > 0) {
-      // The model exists — use the chat.setLanguageModel command to select it in the UI
-      await vscode.commands.executeCommand('workbench.action.chat.setLanguageModel', {
-        identifier: models[0].id,
-      });
-    }
-  } catch {
-    // Model selection is best-effort — don't block the flow if it fails
-  }
-}
 
 /**
  * Opens Copilot Chat with a fix prompt for a single issue.
- * The preferred model is selected in the chat UI before the prompt is sent.
  */
 export async function sendCopilotAutoFix(opts: CopilotFixOptions): Promise<void> {
   const prompt = buildSinglePrompt(opts);
@@ -73,8 +51,6 @@ export async function sendCopilotAutoFixForFile(opts: CopilotFixFileOptions): Pr
 }
 
 async function openChatWithPrompt(prompt: string): Promise<void> {
-  // First try to select the preferred model in the chat UI
-  await selectPreferredModel();
 
   try {
     await vscode.commands.executeCommand('workbench.action.chat.open', {
@@ -91,8 +67,6 @@ async function openChatWithPrompt(prompt: string): Promise<void> {
 
 function buildSinglePrompt(opts: CopilotFixOptions): string {
   return [
-    `@workspace #editor`,
-    ``,
     `**[Angular CLI Plus] Auto Fix — ${opts.kindLabel}**`,
     ``,
     `**File:** \`${opts.file}\` (Line ${opts.line})`,
@@ -131,8 +105,6 @@ function buildFilePrompt(opts: CopilotFixFileOptions): string {
     .join('\n\n');
 
   return [
-    `@workspace`,
-    ``,
     `**[Angular CLI Plus] Auto Fix All — ${issueCount} ${opts.issueType}${issueCount !== 1 ? 's' : ''} in \`${opts.file}\`**`,
     ``,
     issueLines,

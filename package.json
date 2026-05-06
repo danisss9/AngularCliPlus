@@ -569,11 +569,6 @@
           "type": "boolean",
           "default": true,
           "description": "Show 'Auto Fix with Copilot' buttons in the Memory Leaks, Optimizations, and Build Errors webviews. Requires GitHub Copilot to be installed."
-        },
-        "angularCliPlus.copilot.preferredModel": {
-          "type": "string",
-          "default": "gpt-4o",
-          "description": "The language model ID that the extension should attempt to select in the Copilot Chat UI when using 'Auto Fix with Copilot'. Examples: gpt-4o, claude-3.5-sonnet, gemini-2.0-flash."
         }
       }
     }
