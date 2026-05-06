@@ -11,6 +11,7 @@ import type { AngularProject } from './types';
 import { spawnCapture } from './dependencies';
 import { detectCliVersion } from './version';
 import { getBuildConfigFlag } from './version-adapter';
+import { sendCopilotAutoFix, sendCopilotAutoFixForFile } from './copilot-fix';
 
 const COMMAND_KEY = 'checkBuildErrors';
 
@@ -234,9 +235,12 @@ function showBuildErrorsWebview(
   workspaceRoot: string,
   projectName: string,
 ): void {
+  const config = vscode.workspace.getConfiguration('angularCliPlus');
+  const autoFixEnabled = config.get<boolean>('copilot.autoFixEnabled', true);
+
   if (activePanel) {
     activePanel.title = `Build Errors (${errors.length})`;
-    activePanel.webview.html = buildWebviewHtml(errors, workspaceRoot, projectName);
+    activePanel.webview.html = buildWebviewHtml(errors, workspaceRoot, projectName, autoFixEnabled);
     activePanel.reveal(undefined, true);
   } else {
     activePanel = vscode.window.createWebviewPanel(
@@ -245,13 +249,23 @@ function showBuildErrorsWebview(
       vscode.ViewColumn.Beside,
       { enableScripts: true, retainContextWhenHidden: true },
     );
-    activePanel.webview.html = buildWebviewHtml(errors, workspaceRoot, projectName);
+    activePanel.webview.html = buildWebviewHtml(errors, workspaceRoot, projectName, autoFixEnabled);
     activePanel.onDidDispose(() => {
       activePanel = undefined;
     });
 
     activePanel.webview.onDidReceiveMessage(
-      async (message: { command: string; file: string; line: number }) => {
+      async (message: {
+        command: string;
+        file: string;
+        line: number;
+        kind?: string;
+        kindLabel?: string;
+        snippet?: string;
+        description?: string;
+        fixHint?: string;
+        issues?: Array<{ line: number; kind: string; kindLabel: string; snippet: string; description: string; fixHint: string }>;
+      }) => {
         if (message.command === 'openFile') {
           const uri = vscode.Uri.file(path.join(workspaceRoot, message.file));
           try {
@@ -274,6 +288,22 @@ function showBuildErrorsWebview(
               resolved.projects[projectName],
             );
           }
+        } else if (message.command === 'copilotFix') {
+          await sendCopilotAutoFix({
+            file: message.file,
+            line: message.line,
+            kind: message.kind ?? '',
+            kindLabel: message.kindLabel ?? message.kind ?? '',
+            snippet: message.snippet ?? '',
+            description: message.description ?? '',
+            fixHint: message.fixHint ?? '',
+          });
+        } else if (message.command === 'copilotFixFile') {
+          await sendCopilotAutoFixForFile({
+            file: message.file,
+            issues: message.issues ?? [],
+            issueType: 'Build Error',
+          });
         }
       },
     );
@@ -293,6 +323,7 @@ function buildWebviewHtml(
   errors: BuildError[],
   workspaceRoot: string,
   projectName: string,
+  autoFixEnabled: boolean,
 ): string {
   if (errors.length === 0) {
     const funnyMessages = [
@@ -390,12 +421,32 @@ function buildWebviewHtml(
           const safeMessage = escapeHtml(err.message);
           const firstLine = escapeHtml(err.message.split(/\r?\n/)[0]);
 
+          const isAngularError = err.code.startsWith('NG');
+          const errorKind = isAngularError ? `Angular ${err.code}` : `TypeScript ${err.code}`;
+          const description = `Build error ${err.code}: ${err.message.split(/\r?\n/)[0]}`;
+          const fixHint = isAngularError
+            ? `Fix the Angular compiler error ${err.code}. Check https://angular.dev/errors/${err.code} for details.`
+            : `Fix the TypeScript error ${err.code} at line ${err.line}, column ${err.col}.`;
+
+          const copilotBtn = autoFixEnabled
+            ? /* html */ `<button class="copilot-fix-btn" title="Auto Fix with Copilot"
+                data-file="${escapeHtml(err.file)}"
+                data-line="${err.line}"
+                data-kind="${escapeHtml(err.code)}"
+                data-kind-label="${escapeHtml(errorKind)}"
+                data-snippet="${escapeHtml(err.message.split(/\r?\n/)[0])}"
+                data-description="${escapeHtml(description)}"
+                data-fix-hint="${escapeHtml(fixHint)}"
+              ><svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M8 1L9.5 5.5L14 7L9.5 8.5L8 13L6.5 8.5L2 7L6.5 5.5L8 1Z" fill="currentColor"/><path d="M13 1L13.75 3.25L16 4L13.75 4.75L13 7L12.25 4.75L10 4L12.25 3.25L13 1Z" fill="currentColor" opacity="0.7"/><path d="M3 10L3.5 11.5L5 12L3.5 12.5L3 14L2.5 12.5L1 12L2.5 11.5L3 10Z" fill="currentColor" opacity="0.7"/></svg></button>`
+            : '';
+
           return /* html */ `
       <div class="issue-item">
         <div class="issue-header" title="Click to expand/collapse&#10;&#10;${safeMessage}">
           <a class="line-num" href="#" data-file="${escapeHtml(err.file)}" data-line="${err.line}">Line ${err.line}</a>
           ${codeLink}
           <div class="issue-summary">${firstLine}</div>
+          ${copilotBtn}
           <button class="toggle-btn" title="Expand/Collapse">
             <svg class="chevron" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M5.5 3L10.5 8L5.5 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -407,6 +458,22 @@ function buildWebviewHtml(
         })
         .join('');
 
+      const fileFixAllBtn = autoFixEnabled
+        ? /* html */ `<button class="copilot-fix-file-btn" title="Auto Fix all ${fileErrors.length} error${fileErrors.length !== 1 ? 's' : ''} in this file with Copilot"
+          data-file="${escapeHtml(file)}"
+          data-issues="${escapeHtml(JSON.stringify(fileErrors.map((e) => ({
+            line: e.line,
+            kind: e.code,
+            kindLabel: e.code.startsWith('NG') ? `Angular ${e.code}` : `TypeScript ${e.code}`,
+            snippet: e.message.split(/\r?\n/)[0],
+            description: `Build error ${e.code}: ${e.message.split(/\r?\n/)[0]}`,
+            fixHint: e.code.startsWith('NG')
+              ? `Fix Angular compiler error ${e.code}. See https://angular.dev/errors/${e.code}`
+              : `Fix TypeScript error ${e.code} at line ${e.line}, column ${e.col}.`,
+          }))))}"
+        ><svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M8 1L9.5 5.5L14 7L9.5 8.5L8 13L6.5 8.5L2 7L6.5 5.5L8 1Z" fill="currentColor"/><path d="M13 1L13.75 3.25L16 4L13.75 4.75L13 7L12.25 4.75L10 4L12.25 3.25L13 1Z" fill="currentColor" opacity="0.7"/><path d="M3 10L3.5 11.5L5 12L3.5 12.5L3 14L2.5 12.5L1 12L2.5 11.5L3 10Z" fill="currentColor" opacity="0.7"/></svg><span>Fix all</span></button>`
+        : '';
+
       return /* html */ `
     <div class="file-group">
       <div class="file-header">
@@ -416,6 +483,7 @@ function buildWebviewHtml(
         </svg>
         <span class="file-path"><span class="file-dir">${escapeHtml(dir)}</span><span class="file-name">${escapeHtml(filename)}</span></span>
         <span class="file-badge">${countLabel}</span>
+        ${fileFixAllBtn}
         <button class="toggle-all-btn" title="Expand/Collapse All in file">
           <svg class="chevron" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M5.5 3L10.5 8L5.5 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -656,6 +724,59 @@ function buildWebviewHtml(
       .issue-item.expanded .chevron, .toggle-all-btn.expanded .chevron {
         transform: rotate(90deg);
       }
+      /* ── Copilot fix button ── */
+      .copilot-fix-btn {
+        flex-shrink: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 20px;
+        height: 20px;
+        padding: 3px;
+        border: none;
+        border-radius: 4px;
+        background: transparent;
+        color: var(--vscode-terminal-ansiBrightMagenta, #b464f0);
+        cursor: pointer;
+        opacity: 0;
+        transition: opacity 0.15s, background 0.15s, color 0.15s;
+      }
+      .issue-header:hover .copilot-fix-btn {
+        opacity: 0.7;
+      }
+      .copilot-fix-btn:hover {
+        opacity: 1 !important;
+        background: rgba(180, 100, 240, 0.15);
+        color: #c084fc;
+      }
+      .copilot-fix-btn:active {
+        background: rgba(180, 100, 240, 0.28);
+      }
+      /* \u2500\u2500 Per-file Fix all button \u2500\u2500 */
+      .copilot-fix-file-btn {
+        flex-shrink: 0;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 8px;
+        border: 1px solid rgba(180, 100, 240, 0.35);
+        border-radius: 4px;
+        background: rgba(180, 100, 240, 0.08);
+        color: var(--vscode-terminal-ansiBrightMagenta, #b464f0);
+        cursor: pointer;
+        font-size: 0.75em;
+        font-family: var(--vscode-font-family);
+        white-space: nowrap;
+        transition: background 0.15s, color 0.15s, border-color 0.15s;
+      }
+      .copilot-fix-file-btn:hover {
+        background: rgba(180, 100, 240, 0.18);
+        border-color: rgba(180, 100, 240, 0.6);
+        color: #c084fc;
+      }
+      .copilot-fix-file-btn:active {
+        background: rgba(180, 100, 240, 0.28);
+      }
     </style>
   </head>
   <body>
@@ -690,6 +811,33 @@ function buildWebviewHtml(
       });
       document.getElementById('reloadBtn').addEventListener('click', function() {
         vscode.postMessage({ command: 'reload' });
+      });
+      document.querySelectorAll('.copilot-fix-btn').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+          e.preventDefault();
+          e.stopPropagation();
+          vscode.postMessage({
+            command: 'copilotFix',
+            file: btn.getAttribute('data-file'),
+            line: parseInt(btn.getAttribute('data-line'), 10),
+            kind: btn.getAttribute('data-kind'),
+            kindLabel: btn.getAttribute('data-kind-label'),
+            snippet: btn.getAttribute('data-snippet'),
+            description: btn.getAttribute('data-description'),
+            fixHint: btn.getAttribute('data-fix-hint')
+          });
+        });
+      });
+      document.querySelectorAll('.copilot-fix-file-btn').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+          e.preventDefault();
+          e.stopPropagation();
+          vscode.postMessage({
+            command: 'copilotFixFile',
+            file: btn.getAttribute('data-file'),
+            issues: JSON.parse(btn.getAttribute('data-issues') || '[]')
+          });
+        });
       });
       document.querySelectorAll('.issue-header').forEach(function(header) {
         header.addEventListener('click', function(e) {

@@ -4,7 +4,7 @@
   "description": "Angular CLI commands, schematics generator, and project tools for VS Code",
   "repository": "https://github.com/danisss9/AngularCliPlus",
   "publisher": "danisss9",
-  "version": "1.5.2",
+  "version": "1.6.0",
   "icon": "icon.png",
   "engines": {
     "vscode": "^1.107.0"
@@ -564,6 +564,16 @@
           "type": "string",
           "default": "",
           "description": "Custom command to run for npm: Clean Install (e.g. 'yarn install --frozen-lockfile'). Leave empty to use the default behaviour (remove node_modules + package-lock.json, then run npm install)."
+        },
+        "angularCliPlus.copilot.autoFixEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show 'Auto Fix with Copilot' buttons in the Memory Leaks, Optimizations, and Build Errors webviews. Requires GitHub Copilot to be installed."
+        },
+        "angularCliPlus.copilot.preferredModel": {
+          "type": "string",
+          "default": "gpt-4o",
+          "description": "The language model ID that the extension should attempt to select in the Copilot Chat UI when using 'Auto Fix with Copilot'. Examples: gpt-4o, claude-3.5-sonnet, gemini-2.0-flash."
         }
       }
     }

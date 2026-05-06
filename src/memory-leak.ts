@@ -7,6 +7,7 @@ import {
   setLastProject,
 } from './utils';
 import { findMemoryLeaksInFile, MemoryLeakLocation, MemoryLeakKind } from './ast-utils';
+import { sendCopilotAutoFix, sendCopilotAutoFixForFile } from './copilot-fix';
 
 const COMMAND_KEY = 'checkMemoryLeaks';
 
@@ -141,9 +142,12 @@ function showMemoryLeaksWebview(
   workspaceRoot: string,
   filesToCheck: string[],
 ): void {
+  const config = vscode.workspace.getConfiguration('angularCliPlus');
+  const autoFixEnabled = config.get<boolean>('copilot.autoFixEnabled', true);
+
   if (activePanel) {
     activePanel.title = `Memory Leaks (${leaks.length})`;
-    activePanel.webview.html = buildWebviewHtml(leaks, workspaceRoot);
+    activePanel.webview.html = buildWebviewHtml(leaks, workspaceRoot, autoFixEnabled);
     activePanel.reveal(undefined, true);
   } else {
     activePanel = vscode.window.createWebviewPanel(
@@ -152,13 +156,24 @@ function showMemoryLeaksWebview(
       vscode.ViewColumn.Beside,
       { enableScripts: true, retainContextWhenHidden: true },
     );
-    activePanel.webview.html = buildWebviewHtml(leaks, workspaceRoot);
+    activePanel.webview.html = buildWebviewHtml(leaks, workspaceRoot, autoFixEnabled);
     activePanel.onDidDispose(() => {
       activePanel = undefined;
     });
 
     activePanel.webview.onDidReceiveMessage(
-      async (message: { command: string; file: string; line: number }) => {
+      async (message: {
+        command: string;
+        file: string;
+        line: number;
+        kind?: string;
+        kindLabel?: string;
+        snippet?: string;
+        description?: string;
+        fixHint?: string;
+        // copilotFixFile payload
+        issues?: Array<{ line: number; kind: string; kindLabel: string; snippet: string; description: string; fixHint: string }>;
+      }) => {
         if (message.command === 'openFile') {
           const uri = vscode.Uri.file(message.file);
           void vscode.window.showTextDocument(uri, {
@@ -190,15 +205,31 @@ function showMemoryLeaksWebview(
           );
           if (activePanel) {
             activePanel.title = `Memory Leaks (${freshLeaks.length})`;
-            activePanel.webview.html = buildWebviewHtml(freshLeaks, workspaceRoot);
+            activePanel.webview.html = buildWebviewHtml(freshLeaks, workspaceRoot, autoFixEnabled);
           }
+        } else if (message.command === 'copilotFix') {
+          await sendCopilotAutoFix({
+            file: message.file,
+            line: message.line,
+            kind: message.kind ?? '',
+            kindLabel: message.kindLabel ?? message.kind ?? '',
+            snippet: message.snippet ?? '',
+            description: message.description ?? '',
+            fixHint: message.fixHint ?? '',
+          });
+        } else if (message.command === 'copilotFixFile') {
+          await sendCopilotAutoFixForFile({
+            file: message.file,
+            issues: message.issues ?? [],
+            issueType: 'Memory Leak',
+          });
         }
       },
     );
   }
 }
 
-function buildWebviewHtml(leaks: MemoryLeakLocation[], workspaceRoot: string): string {
+function buildWebviewHtml(leaks: MemoryLeakLocation[], workspaceRoot: string, autoFixEnabled: boolean): string {
   // Group leaks by relative file path
   const byFile = new Map<string, MemoryLeakLocation[]>();
   for (const leak of leaks) {
@@ -209,15 +240,43 @@ function buildWebviewHtml(leaks: MemoryLeakLocation[], workspaceRoot: string): s
   }
 
   const kindLabel: Record<MemoryLeakKind, string> = {
-    'unguarded-subscribe': 'Unguarded',
-    'nested-subscribe': 'Nested',
-    'uncleared-interval': 'Interval',
-    'uncleared-timeout': 'Timeout',
-    'unremoved-event-listener': 'Event Listener',
-    'unremoved-renderer-listener': 'Renderer Listener',
-    'retained-dom-reference': 'DOM Reference',
-    'incomplete-destroy-subject': 'Destroy Subject',
+    'unguarded-subscribe': 'Unguarded Subscribe',
+    'nested-subscribe': 'Nested Subscribe',
+    'uncleared-interval': 'Uncleared Interval',
+    'uncleared-timeout': 'Uncleared Timeout',
+    'unremoved-event-listener': 'Unremoved Event Listener',
+    'unremoved-renderer-listener': 'Unremoved Renderer Listener',
+    'retained-dom-reference': 'Retained DOM Reference',
+    'incomplete-destroy-subject': 'Incomplete Destroy Subject',
   };
+
+  const kindDescription: Record<MemoryLeakKind, string> = {
+    'unguarded-subscribe': 'Missing untilDestroyed() or takeUntilDestroyed() as the last operator in .pipe()',
+    'nested-subscribe': '.subscribe() called inside another .subscribe() callback',
+    'uncleared-interval': 'setInterval() whose return value is never passed to clearInterval() in ngOnDestroy()',
+    'uncleared-timeout': 'setTimeout() whose return value is stored but never passed to clearTimeout() in ngOnDestroy()',
+    'unremoved-event-listener': 'addEventListener() with no matching removeEventListener() in ngOnDestroy()',
+    'unremoved-renderer-listener': 'renderer.listen() return value stored on this but cleanup function never called in ngOnDestroy()',
+    'retained-dom-reference': 'document.querySelector()/getElementById() result stored on this but never nulled in ngOnDestroy()',
+    'incomplete-destroy-subject': 'Subject used in takeUntil() but .next()/.complete() never called in ngOnDestroy()',
+  };
+
+  const kindFixHint: Record<MemoryLeakKind, string> = {
+    'unguarded-subscribe': 'Add .pipe(takeUntilDestroyed()) (Angular 16+) or .pipe(untilDestroyed(this)) before .subscribe()',
+    'nested-subscribe': 'Flatten with switchMap, mergeMap, or concatMap instead of nesting subscriptions',
+    'uncleared-interval': 'Store the ID and call clearInterval(this.intervalId) inside ngOnDestroy()',
+    'uncleared-timeout': 'Call clearTimeout(this.timeoutId) inside ngOnDestroy()',
+    'unremoved-event-listener': 'Call removeEventListener() with the same handler reference in ngOnDestroy(); prefer @HostListener or Renderer2.listen()',
+    'unremoved-renderer-listener': 'Call the stored cleanup function (e.g. this.unlisten()) inside ngOnDestroy()',
+    'retained-dom-reference': 'Set the property to null in ngOnDestroy(); prefer @ViewChild for template elements',
+    'incomplete-destroy-subject': 'Add this.destroy$.next(); this.destroy$.complete(); to ngOnDestroy(), or switch to takeUntilDestroyed()',
+  };
+
+  const copilotIconSvg = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M8 1L9.5 5.5L14 7L9.5 8.5L8 13L6.5 8.5L2 7L6.5 5.5L8 1Z" fill="currentColor"/>
+    <path d="M13 1L13.75 3.25L16 4L13.75 4.75L13 7L12.25 4.75L10 4L12.25 3.25L13 1Z" fill="currentColor" opacity="0.7"/>
+    <path d="M3 10L3.5 11.5L5 12L3.5 12.5L3 14L2.5 12.5L1 12L2.5 11.5L3 10Z" fill="currentColor" opacity="0.7"/>
+  </svg>`;
 
   const fileGroups = Array.from(byFile.entries())
     .map(([relPath, fileleaks]) => {
@@ -242,14 +301,40 @@ function buildWebviewHtml(leaks: MemoryLeakLocation[], workspaceRoot: string): s
               /(new\s+(?:Subject|BehaviorSubject|ReplaySubject|AsyncSubject)\s*[<(])/g,
               '<mark>$1</mark>',
             );
+          const copilotBtn = autoFixEnabled
+            ? /* html */ `<button class="copilot-fix-btn" title="Auto Fix with Copilot"
+                data-file="${absolutePath}"
+                data-line="${leak.line}"
+                data-kind="${escapeHtml(leak.kind)}"
+                data-kind-label="${escapeHtml(kindLabel[leak.kind])}"
+                data-snippet="${escapeHtml(leak.snippet)}"
+                data-description="${escapeHtml(kindDescription[leak.kind])}"
+                data-fix-hint="${escapeHtml(kindFixHint[leak.kind])}"
+              >${copilotIconSvg}</button>`
+            : '';
           return /* html */ `
           <div class="leak-item" data-kind="${leak.kind}">
             <a class="line-num" href="#" data-file="${absolutePath}" data-line="${leak.line}">Line ${leak.line}</a>
             <span class="kind-pill kind-${leak.kind}">${kindLabel[leak.kind]}</span>
             <code class="snippet">${highlightedSnippet}</code>
+            ${copilotBtn}
           </div>`;
         })
         .join('');
+
+      const fileFixAllBtn = autoFixEnabled
+        ? /* html */ `<button class="copilot-fix-file-btn" title="Auto Fix all ${fileleaks.length} leak${fileleaks.length !== 1 ? 's' : ''} in this file with Copilot"
+            data-file="${absolutePath}"
+            data-issues="${escapeHtml(JSON.stringify(fileleaks.map((l) => ({
+              line: l.line,
+              kind: l.kind,
+              kindLabel: kindLabel[l.kind],
+              snippet: l.snippet,
+              description: kindDescription[l.kind],
+              fixHint: kindFixHint[l.kind],
+            }))))}"
+          >${copilotIconSvg}<span>Fix all</span></button>`
+        : '';
 
       return /* html */ `
       <div class="file-group">
@@ -260,6 +345,7 @@ function buildWebviewHtml(leaks: MemoryLeakLocation[], workspaceRoot: string): s
           </svg>
           <span class="file-path"><span class="file-dir">${escapeHtml(dir)}</span><span class="file-name">${escapeHtml(filename)}</span></span>
           <span class="file-badge">${countLabel}</span>
+          ${fileFixAllBtn}
         </div>
         <div class="leak-list">${leakRows}</div>
       </div>`;
@@ -628,6 +714,66 @@ function buildWebviewHtml(leaks: MemoryLeakLocation[], workspaceRoot: string): s
       to   { transform: rotate(360deg); }
     }
 
+    /* ── Copilot fix button ── */
+    .copilot-fix-btn {
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      padding: 3px;
+      border: none;
+      border-radius: 4px;
+      background: transparent;
+      color: var(--vscode-terminal-ansiBrightMagenta, #b464f0);
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.15s, background 0.15s, color 0.15s;
+      margin-left: 4px;
+    }
+
+    .leak-item:hover .copilot-fix-btn {
+      opacity: 0.7;
+    }
+
+    .copilot-fix-btn:hover {
+      opacity: 1 !important;
+      background: rgba(180, 100, 240, 0.15);
+      color: #c084fc;
+    }
+
+    .copilot-fix-btn:active {
+      background: rgba(180, 100, 240, 0.28);
+    }
+
+    /* ── Per-file Fix all button ── */
+    .copilot-fix-file-btn {
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border: 1px solid rgba(180, 100, 240, 0.35);
+      border-radius: 4px;
+      background: rgba(180, 100, 240, 0.08);
+      color: var(--vscode-terminal-ansiBrightMagenta, #b464f0);
+      cursor: pointer;
+      font-size: 0.75em;
+      font-family: var(--vscode-font-family);
+      white-space: nowrap;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+      margin-left: auto;
+    }
+    .copilot-fix-file-btn:hover {
+      background: rgba(180, 100, 240, 0.18);
+      border-color: rgba(180, 100, 240, 0.6);
+      color: #c084fc;
+    }
+    .copilot-fix-file-btn:active {
+      background: rgba(180, 100, 240, 0.28);
+    }
+
     /* ── Filter toggle pills ── */
     .legend-item .kind-pill {
       cursor: pointer;
@@ -764,6 +910,37 @@ function buildWebviewHtml(leaks: MemoryLeakLocation[], workspaceRoot: string): s
       reloadBtn.classList.add('spinning');
       reloadBtn.disabled = true;
       vscode.postMessage({ command: 'reload' });
+    });
+
+    // ── Copilot fix buttons (per-issue) ───────────────────────────────────────
+    document.querySelectorAll('.copilot-fix-btn').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        vscode.postMessage({
+          command: 'copilotFix',
+          file: btn.getAttribute('data-file'),
+          line: parseInt(btn.getAttribute('data-line'), 10),
+          kind: btn.getAttribute('data-kind'),
+          kindLabel: btn.getAttribute('data-kind-label'),
+          snippet: btn.getAttribute('data-snippet'),
+          description: btn.getAttribute('data-description'),
+          fixHint: btn.getAttribute('data-fix-hint')
+        });
+      });
+    });
+
+    // ── Copilot fix all buttons (per-file) ────────────────────────────────────
+    document.querySelectorAll('.copilot-fix-file-btn').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        vscode.postMessage({
+          command: 'copilotFixFile',
+          file: btn.getAttribute('data-file'),
+          issues: JSON.parse(btn.getAttribute('data-issues') || '[]')
+        });
+      });
     });
 
     // ── Kind filter toggles ──────────────────────────────────────────────────

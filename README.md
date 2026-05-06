@@ -126,6 +126,27 @@ Analyses the currently open TypeScript file and renders a live dependency graph 
 
 **Interactivity:** Click any node in the rendered graph to jump to that signal's declaration line in the editor.
 
+### Angular: Check Build Errors (`Ctrl+Shift+A E`)
+
+Runs a full Angular build in the background and parses the output for TypeScript and Angular CLI errors. Results are presented in an interactive Webview panel.
+
+**Key features:**
+- **Builder Detection**: Automatically detects whether the project uses the new `esbuild`-based application builder or the classic `webpack`-based browser builder and adjusts parsing logic.
+- **Deep Links**: Click any error to jump directly to the source file and line. Angular-specific error codes (e.g., `NG8001`) are clickable links to the official Angular documentation.
+- **Collapsible UI**: Large error messages and stack traces are collapsed by default to keep the view clean. Expand individual errors or use the "Expand All" toggle in the file header.
+- **Background execution**: The build runs in a separate process, so you can continue working while the check completes.
+
+### GitHub Copilot Integration (\u2728)
+
+The `Memory Leaks`, `Optimizations`, and `Check Build Errors` panels feature deep integration with **GitHub Copilot** to help you fix issues with one click.
+
+- **Auto Fix**: Click the sparkle icon (\u2728) next to any diagnostic to open Copilot Chat with a pre-filled, context-aware prompt. The prompt includes the code snippet, the error description, and a concrete fix hint.
+- **Bulk Fix (Fix All)**: Every file group in the diagnostic panels includes a **Fix all** button. This sends all issues identified in that file to Copilot in a single batch, allowing the AI to refactor the entire file at once.
+- **Smart Model Selection**: The extension automatically attempts to select your preferred language model (default: `gpt-4o`) in the Copilot Chat UI before presenting the prompt.
+
+*Note: Requires the **GitHub Copilot** and **GitHub Copilot Chat** extensions to be installed and active.*
+
+
 ### Failure notifications and retry
 
 All terminal-based commands detect the exit code when the terminal closes:
@@ -348,3 +369,8 @@ This extension contributes the following settings:
 
 - `angularCliPlus.npm.installCommand`: Custom command used by **npm: Install** (e.g. `yarn install`, `pnpm install`). Leave empty to use the default `npm install` with automatic clean/force fallbacks (default: `""`)
 - `angularCliPlus.npm.cleanInstallCommand`: Custom command used by **npm: Clean Install** (e.g. `yarn install --frozen-lockfile`). Leave empty to use the default behaviour — removes `node_modules` and `package-lock.json` then runs `npm install` (default: `""`)
+
+### Copilot Options
+
+- `angularCliPlus.copilot.autoFixEnabled`: Show "Auto Fix with Copilot" buttons in diagnostic webviews (default: `true`)
+- `angularCliPlus.copilot.preferredModel`: The language model ID that the extension should attempt to select in the Copilot Chat UI (e.g. `gpt-4o`, `claude-3.5-sonnet`) (default: `gpt-4o`)

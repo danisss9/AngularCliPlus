@@ -7,6 +7,7 @@ import {
   setLastProject,
 } from './utils';
 import { findOptimizationsInFile, OptimizationLocation, OptimizationKind } from './optimizations-ast';
+import { sendCopilotAutoFix, sendCopilotAutoFixForFile } from './copilot-fix';
 
 const COMMAND_KEY = 'checkOptimizations';
 
@@ -141,9 +142,12 @@ function showOptimizationsWebview(
   workspaceRoot: string,
   filesToCheck: string[],
 ): void {
+  const config = vscode.workspace.getConfiguration('angularCliPlus');
+  const autoFixEnabled = config.get<boolean>('copilot.autoFixEnabled', true);
+
   if (activePanel) {
     activePanel.title = `Optimizations (${issues.length})`;
-    activePanel.webview.html = buildWebviewHtml(issues, workspaceRoot);
+    activePanel.webview.html = buildWebviewHtml(issues, workspaceRoot, autoFixEnabled);
     activePanel.reveal(undefined, true);
   } else {
     activePanel = vscode.window.createWebviewPanel(
@@ -152,13 +156,23 @@ function showOptimizationsWebview(
       vscode.ViewColumn.Beside,
       { enableScripts: true, retainContextWhenHidden: true },
     );
-    activePanel.webview.html = buildWebviewHtml(issues, workspaceRoot);
+    activePanel.webview.html = buildWebviewHtml(issues, workspaceRoot, autoFixEnabled);
     activePanel.onDidDispose(() => {
       activePanel = undefined;
     });
 
     activePanel.webview.onDidReceiveMessage(
-      async (message: { command: string; file: string; line: number }) => {
+      async (message: {
+        command: string;
+        file: string;
+        line: number;
+        kind?: string;
+        kindLabel?: string;
+        snippet?: string;
+        description?: string;
+        fixHint?: string;
+        issues?: Array<{ line: number; kind: string; kindLabel: string; snippet: string; description: string; fixHint: string }>;
+      }) => {
         if (message.command === 'openFile') {
           const uri = vscode.Uri.file(message.file);
           void vscode.window.showTextDocument(uri, {
@@ -190,15 +204,31 @@ function showOptimizationsWebview(
           );
           if (activePanel) {
             activePanel.title = `Optimizations (${freshIssues.length})`;
-            activePanel.webview.html = buildWebviewHtml(freshIssues, workspaceRoot);
+            activePanel.webview.html = buildWebviewHtml(freshIssues, workspaceRoot, autoFixEnabled);
           }
+        } else if (message.command === 'copilotFix') {
+          await sendCopilotAutoFix({
+            file: message.file,
+            line: message.line,
+            kind: message.kind ?? '',
+            kindLabel: message.kindLabel ?? message.kind ?? '',
+            snippet: message.snippet ?? '',
+            description: message.description ?? '',
+            fixHint: message.fixHint ?? '',
+          });
+        } else if (message.command === 'copilotFixFile') {
+          await sendCopilotAutoFixForFile({
+            file: message.file,
+            issues: message.issues ?? [],
+            issueType: 'Optimization',
+          });
         }
       },
     );
   }
 }
 
-function buildWebviewHtml(issues: OptimizationLocation[], workspaceRoot: string): string {
+function buildWebviewHtml(issues: OptimizationLocation[], workspaceRoot: string, autoFixEnabled: boolean): string {
   // Group issues by relative file path
   const byFile = new Map<string, OptimizationLocation[]>();
   for (const issue of issues) {
@@ -222,6 +252,40 @@ function buildWebviewHtml(issues: OptimizationLocation[], workspaceRoot: string)
     'complex-template': 'Complex Template',
   };
 
+  const kindDescription: Record<OptimizationKind, string> = {
+    'missing-on-push': 'Component does not use ChangeDetectionStrategy.OnPush',
+    'missing-track-by': '*ngFor loop used without a trackBy function',
+    'function-in-template': 'Function call found in template interpolation or binding',
+    'unnecessary-zone-work': 'Asynchronous task like setTimeout triggered inside the Angular zone',
+    'large-component': 'Combined size of Component TS and HTML exceeds the threshold',
+    'getter-in-template': 'Class getter called from template bindings',
+    'heavy-lifecycle-hook': 'Loops or heavy array operations inside high-frequency lifecycle hooks',
+    'index-as-trackby': 'Loop index used as the trackBy identifier',
+    'unshared-async-pipe': 'Multiple async pipes subscribing to the same unshared Observable',
+    'high-frequency-event': 'High-frequency DOM events bound directly in the template',
+    'complex-template': 'Template has too many bindings or directives',
+  };
+
+  const kindFixHint: Record<OptimizationKind, string> = {
+    'missing-on-push': 'Add changeDetection: ChangeDetectionStrategy.OnPush to the @Component decorator.',
+    'missing-track-by': 'Add trackBy: trackByFn to improve rendering performance.',
+    'function-in-template': 'Use a pure pipe or a signal instead to avoid evaluating the function on every change detection cycle.',
+    'unnecessary-zone-work': 'Wrap it inside this.ngZone.runOutsideAngular(() => ...) if it does not need to trigger change detection.',
+    'large-component': 'Consider splitting the component into smaller, more manageable sub-components.',
+    'getter-in-template': 'Use a pure pipe or signal, as getters evaluate on every change detection cycle.',
+    'heavy-lifecycle-hook': 'Move heavy logic out of ngDoCheck, ngAfterContentChecked, and ngAfterViewChecked.',
+    'index-as-trackby': 'Track by a unique identifier (e.g., item.id) instead of the index.',
+    'unshared-async-pipe': 'Add shareReplay(1) to the Observable to prevent redundant executions.',
+    'high-frequency-event': 'Use fromEvent outside the Angular zone for events like scroll or mousemove.',
+    'complex-template': 'Extract parts of the template into smaller, targeted components.',
+  };
+
+  const copilotIconSvg = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M8 1L9.5 5.5L14 7L9.5 8.5L8 13L6.5 8.5L2 7L6.5 5.5L8 1Z" fill="currentColor"/>
+    <path d="M13 1L13.75 3.25L16 4L13.75 4.75L13 7L12.25 4.75L10 4L12.25 3.25L13 1Z" fill="currentColor" opacity="0.7"/>
+    <path d="M3 10L3.5 11.5L5 12L3.5 12.5L3 14L2.5 12.5L1 12L2.5 11.5L3 10Z" fill="currentColor" opacity="0.7"/>
+  </svg>`;
+
   const fileGroups = Array.from(byFile.entries())
     .map(([relPath, fileIssues]) => {
       const dir = relPath.includes('/') ? relPath.substring(0, relPath.lastIndexOf('/') + 1) : '';
@@ -242,15 +306,42 @@ function buildWebviewHtml(issues: OptimizationLocation[], workspaceRoot: string)
             .replace(/(\|\s*async)/g, '<mark>$1</mark>')
             .replace(/(get\s+)/g, '<mark>$1</mark>')
             .replace(/(scroll|mousemove|wheel|drag|dragover)/g, '<mark>$1</mark>');
-            
+
+          const copilotBtn = autoFixEnabled
+            ? /* html */ `<button class="copilot-fix-btn" title="Auto Fix with Copilot"
+                data-file="${absolutePath}"
+                data-line="${issue.line}"
+                data-kind="${escapeHtml(issue.kind)}"
+                data-kind-label="${escapeHtml(kindLabel[issue.kind])}"
+                data-snippet="${escapeHtml(issue.snippet)}"
+                data-description="${escapeHtml(kindDescription[issue.kind])}"
+                data-fix-hint="${escapeHtml(kindFixHint[issue.kind])}"
+              >${copilotIconSvg}</button>`
+            : '';
+
           return /* html */ `
           <div class="issue-item leak-item" data-kind="${issue.kind}">
             <a class="line-num" href="#" data-file="${absolutePath}" data-line="${issue.line}">Line ${issue.line}</a>
             <span class="kind-pill kind-${issue.kind}">${kindLabel[issue.kind]}</span>
             <code class="snippet">${highlightedSnippet}</code>
+            ${copilotBtn}
           </div>`;
         })
         .join('');
+
+      const fileFixAllBtn = autoFixEnabled
+        ? /* html */ `<button class="copilot-fix-file-btn" title="Auto Fix all ${fileIssues.length} issue${fileIssues.length !== 1 ? 's' : ''} in this file with Copilot"
+            data-file="${absolutePath}"
+            data-issues="${escapeHtml(JSON.stringify(fileIssues.map((i) => ({
+              line: i.line,
+              kind: i.kind,
+              kindLabel: kindLabel[i.kind],
+              snippet: i.snippet,
+              description: kindDescription[i.kind],
+              fixHint: kindFixHint[i.kind],
+            }))))}"
+          >${copilotIconSvg}<span>Fix all</span></button>`
+        : '';
 
       return /* html */ `
       <div class="file-group">
@@ -261,6 +352,7 @@ function buildWebviewHtml(issues: OptimizationLocation[], workspaceRoot: string)
           </svg>
           <span class="file-path"><span class="file-dir">${escapeHtml(dir)}</span><span class="file-name">${escapeHtml(filename)}</span></span>
           <span class="file-badge">${countLabel}</span>
+          ${fileFixAllBtn}
         </div>
         <div class="issue-list leak-list">${issueRows}</div>
       </div>`;
@@ -641,6 +733,66 @@ function buildWebviewHtml(issues: OptimizationLocation[], workspaceRoot: string)
       to   { transform: rotate(360deg); }
     }
 
+    /* ── Copilot fix button ── */
+    .copilot-fix-btn {
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      padding: 3px;
+      border: none;
+      border-radius: 4px;
+      background: transparent;
+      color: var(--vscode-terminal-ansiBrightMagenta, #b464f0);
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.15s, background 0.15s, color 0.15s;
+      margin-left: 4px;
+    }
+
+    .issue-item:hover .copilot-fix-btn {
+      opacity: 0.7;
+    }
+
+    .copilot-fix-btn:hover {
+      opacity: 1 !important;
+      background: rgba(180, 100, 240, 0.15);
+      color: #c084fc;
+    }
+
+    .copilot-fix-btn:active {
+      background: rgba(180, 100, 240, 0.28);
+    }
+
+    /* ── Per-file Fix all button ── */
+    .copilot-fix-file-btn {
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border: 1px solid rgba(180, 100, 240, 0.35);
+      border-radius: 4px;
+      background: rgba(180, 100, 240, 0.08);
+      color: var(--vscode-terminal-ansiBrightMagenta, #b464f0);
+      cursor: pointer;
+      font-size: 0.75em;
+      font-family: var(--vscode-font-family);
+      white-space: nowrap;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+      margin-left: auto;
+    }
+    .copilot-fix-file-btn:hover {
+      background: rgba(180, 100, 240, 0.18);
+      border-color: rgba(180, 100, 240, 0.6);
+      color: #c084fc;
+    }
+    .copilot-fix-file-btn:active {
+      background: rgba(180, 100, 240, 0.28);
+    }
+
     /* ── Filter toggle pills ── */
     .legend-item .kind-pill {
       cursor: pointer;
@@ -801,6 +953,37 @@ function buildWebviewHtml(issues: OptimizationLocation[], workspaceRoot: string)
       reloadBtn.classList.add('spinning');
       reloadBtn.disabled = true;
       vscode.postMessage({ command: 'reload' });
+    });
+
+    // ── Copilot fix buttons (per-issue) ───────────────────────────────────────
+    document.querySelectorAll('.copilot-fix-btn').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        vscode.postMessage({
+          command: 'copilotFix',
+          file: btn.getAttribute('data-file'),
+          line: parseInt(btn.getAttribute('data-line'), 10),
+          kind: btn.getAttribute('data-kind'),
+          kindLabel: btn.getAttribute('data-kind-label'),
+          snippet: btn.getAttribute('data-snippet'),
+          description: btn.getAttribute('data-description'),
+          fixHint: btn.getAttribute('data-fix-hint')
+        });
+      });
+    });
+
+    // ── Copilot fix all buttons (per-file) ────────────────────────────────────
+    document.querySelectorAll('.copilot-fix-file-btn').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        vscode.postMessage({
+          command: 'copilotFixFile',
+          file: btn.getAttribute('data-file'),
+          issues: JSON.parse(btn.getAttribute('data-issues') || '[]')
+        });
+      });
     });
 
     // ── Kind filter toggles ──────────────────────────────────────────────────

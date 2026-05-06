@@ -4,10 +4,13 @@ All notable changes to the "angular-cli-plus" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
-## [1.5.2]
+## [1.6.0]
 
 ### Added
 
+- **Auto Fix with Copilot** (\u2728): Integrated GitHub Copilot into the `Memory Leaks`, `Optimizations`, and `Build Errors` webviews. Each diagnostic row now includes a sparkle icon to trigger an AI-powered fix suggestion tailored to the specific code snippet and error type.
+- **Bulk Fix Support**: Added "Fix all" buttons to file headers in diagnostic webviews, allowing Copilot to process all issues within a single file simultaneously for faster refactoring.
+- **Dynamic Model Selection**: The extension now automatically attempts to select your preferred language model (defaulting to `gpt-4o`) in the Copilot Chat UI before sending the fix prompt.
 - **Angular: Check Build Errors** (`Ctrl+Shift+A E`): runs an Angular build in the background, parses the output for TypeScript and Angular CLI errors, and presents them in an interactive Webview panel. Features clickable source links that navigate straight to the error location, direct links to the official Angular Dev error reference for NG error codes, and a collapsible UI for large error stack traces. Automatically adapts parsing logic based on the detected Angular builder (Webpack vs ESBuild) and handles formatting nuances like ANSI colors and Unicode symbols. If the build has no errors, displays a random success message.
 
 ### Fixed
