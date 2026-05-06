@@ -14,6 +14,10 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 - **Webview Event Listener Leak** — resolved a critical bug where reloading a Webview (e.g., clicking "Build Again" or "Reload") would indiscriminately attach a new `onDidReceiveMessage` listener without clearing the old one. This caused exponential execution of commands on subsequent clicks across all Webviews (Build Errors, Optimizations, Memory Leaks, and Signal Graph).
 
+### Changed
+
+- **Angular: Show Signal Graph** — added a fallback that attempts to load Mermaid from the workspace's `node_modules` if the bundled version is missing, and displays an improved error message with a one-click "Install Mermaid" button to automatically install the missing dependency in the workspace when it fails to load.
+
 ## [1.5.1]
 
 ### Added

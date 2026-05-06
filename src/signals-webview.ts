@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs';
 import { getExtensionContext } from './state';
 import type { SignalGraphData, SignalKind } from './signals-ast';
 
@@ -24,7 +25,10 @@ export function showSignalGraphWebview(data: SignalGraphData): void {
       {
         enableScripts: true,
         retainContextWhenHidden: true,
-        localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'dist')],
+        localResourceRoots: [
+          vscode.Uri.joinPath(context.extensionUri, 'dist'),
+          ...(vscode.workspace.workspaceFolders ? vscode.workspace.workspaceFolders.map(f => f.uri) : []),
+        ],
       },
     );
 
@@ -45,6 +49,15 @@ export function showSignalGraphWebview(data: SignalGraphData): void {
             ),
             preview: false,
           });
+        } else if (message.command === 'installMermaid') {
+          const workspaceFolder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(data.file));
+          if (workspaceFolder) {
+            const terminal = vscode.window.createTerminal('Install Mermaid');
+            terminal.show();
+            terminal.sendText('npm install mermaid -D');
+          } else {
+            vscode.window.showErrorMessage('Could not determine workspace folder to install Mermaid.');
+          }
         }
       },
     );
@@ -153,9 +166,17 @@ function buildWebviewHtml(
   webview: vscode.Webview,
   extensionUri: vscode.Uri,
 ): string {
-  const mermaidUri = webview.asWebviewUri(
-    vscode.Uri.joinPath(extensionUri, 'dist', 'mermaid.min.js'),
-  );
+  let mermaidDiskPath = vscode.Uri.joinPath(extensionUri, 'dist', 'mermaid.min.js');
+  const workspaceFolder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(data.file));
+  
+  if (!fs.existsSync(mermaidDiskPath.fsPath) && workspaceFolder) {
+    const wsMermaid = vscode.Uri.joinPath(workspaceFolder.uri, 'node_modules', 'mermaid', 'dist', 'mermaid.min.js');
+    if (fs.existsSync(wsMermaid.fsPath)) {
+      mermaidDiskPath = wsMermaid;
+    }
+  }
+
+  const mermaidUri = webview.asWebviewUri(mermaidDiskPath);
 
   const { mermaidGraph, nodeDataMap } = buildMermaidGraph(data);
   const nodeDataJson = JSON.stringify(nodeDataMap);
@@ -268,6 +289,24 @@ function buildWebviewHtml(
     (function () {
       const vscode = acquireVsCodeApi();
       const nodeData = ${nodeDataJson};
+
+      if (typeof mermaid === 'undefined') {
+        const container = document.querySelector('.graph-container');
+        if (container) {
+          container.innerHTML = \`
+            <div class="empty-state" style="margin-top: 40px;">
+              <h2 style="margin-bottom: 12px; color: var(--vscode-errorForeground);">Mermaid is not available</h2>
+              <p style="margin-bottom: 8px;">The Signal Graph requires the <strong>mermaid</strong> package to render.</p>
+              <p style="font-size: 0.9em; opacity: 0.8; margin-bottom: 20px;">Please install it in your workspace to enable this feature.</p>
+              <button id="install-btn" style="padding: 8px 16px; background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; cursor: pointer; border-radius: 2px; font-weight: 500;">Install Mermaid</button>
+            </div>
+          \`;
+          document.getElementById('install-btn').addEventListener('click', function() {
+            vscode.postMessage({ command: 'installMermaid' });
+          });
+        }
+        return;
+      }
 
       window.__signalNodeClick = function (nodeId) {
         const data = nodeData[nodeId];
