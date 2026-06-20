@@ -109,11 +109,17 @@ suite('semverSatisfies', () => {
   test('|| range — neither alternative fails', () =>
     assert.strictEqual(semverSatisfies('3.0.0', '^1.0.0 || ^2.0.0'), false));
 
-  // Pre-release versions (broken in the old custom parser)
-  test('pre-release installed coerces to release for range check', () =>
-    assert.strictEqual(semverSatisfies('1.0.0-beta', '^1.0.0'), true));
-  test('pre-release installed fails lower range after coercion', () =>
+  // Pre-release versions — metadata is preserved (matches npm resolution)
+  test('pre-release installed against non-pre-release range fails', () =>
+    assert.strictEqual(semverSatisfies('1.0.0-beta', '^1.0.0'), false));
+  test('pre-release installed below range fails', () =>
     assert.strictEqual(semverSatisfies('0.9.0-rc1', '^1.0.0'), false));
+  test('pre-release installed satisfying matching pre-release range passes', () =>
+    assert.strictEqual(semverSatisfies('18.1.0-rc.0', '^18.1.0-rc.0'), true));
+  test('pre-release installed satisfying same major pre-release range passes', () =>
+    assert.strictEqual(semverSatisfies('18.1.0-rc.2', '^18.1.0-rc.0'), true));
+  test('placeholder version against release range fails', () =>
+    assert.strictEqual(semverSatisfies('0.0.0-replace-foo', '^1.0.0'), false));
 
   // v-prefix
   test('v-prefixed version satisfies range', () =>

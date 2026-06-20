@@ -49,6 +49,13 @@ export function buildNgGenerateCommand(schematic: SchematicType, options: Genera
 /**
  * Returns true if `installed` satisfies the `required` semver range.
  * Non-semver specifiers (git, file, workspace, URLs) always return true.
+ *
+ * The installed version is compared with its prerelease/build metadata intact
+ * (via `semver.valid`), so a prerelease install such as `18.1.0-rc.0` correctly
+ * satisfies a matching prerelease range like `^18.1.0-rc.0`. `semver.coerce` is
+ * only used as a fallback for loosely-formatted versions (e.g. `v14.21.0`,
+ * `1.2`) that `semver.valid` rejects — coercion there drops prerelease tags,
+ * which is acceptable because such inputs are not strict semver to begin with.
  */
 export function semverSatisfies(installed: string, required: string): boolean {
   const req = required.trim();
@@ -60,11 +67,12 @@ export function semverSatisfies(installed: string, required: string): boolean {
   }
 
   try {
-    const coerced = semver.coerce(installed);
-    if (!coerced) {
+    // Prefer the exact version so prerelease/build metadata is preserved.
+    const parsed = semver.valid(installed) ?? semver.coerce(installed);
+    if (!parsed) {
       return true;
     } // unparseable installed version: safe default
-    return semver.satisfies(coerced, req);
+    return semver.satisfies(parsed, req);
   } catch {
     return true;
   }

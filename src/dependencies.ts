@@ -265,9 +265,13 @@ export async function checkDependencies(workspaceRoot: string) {
         };
         if (!semverSatisfies(version, required)) {
           outdated.push(name);
+          logDiagnostic(
+            `Dependency check: "${name}" flagged as outdated (installed="${version}", required="${required}")`,
+          );
         }
       } catch {
         missing.push(name);
+        logDiagnostic(`Dependency check: "${name}" flagged as missing (required="${required}")`);
       }
     }),
   );
