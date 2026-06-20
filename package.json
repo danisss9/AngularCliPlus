@@ -169,6 +169,11 @@
         "command": "angular-cli-plus.checkBuildErrors",
         "title": "Angular: Check Build Errors",
         "category": "Angular CLI Plus"
+      },
+      {
+        "command": "angular-cli-plus.manageJsonConfig",
+        "title": "Angular: Manage JSON Configs",
+        "category": "Angular CLI Plus"
       }
     ],
     "keybindings": [
@@ -243,6 +248,10 @@
       {
         "command": "angular-cli-plus.checkBuildErrors",
         "key": "ctrl+shift+a e"
+      },
+      {
+        "command": "angular-cli-plus.manageJsonConfig",
+        "key": "ctrl+shift+a j"
       }
     ],
     "submenus": [
@@ -600,6 +609,7 @@
     "typescript-eslint": "^8.48.1"
   },
   "dependencies": {
+    "jsonc-parser": "^3.3.1",
     "mermaid": "^11.14.0",
     "node-html-parser": "^7.1.0",
     "semver": "^7.7.4",

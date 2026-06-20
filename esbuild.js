@@ -49,6 +49,12 @@ async function main() {
     platform: 'node',
     outfile: 'dist/extension.js',
     external: ['vscode'],
+    // jsonc-parser's default (main) entry is a UMD bundle whose internal
+    // `require("./impl/*")` calls esbuild can't follow; point at its ESM build
+    // so the submodules are bundled via static imports.
+    alias: {
+      'jsonc-parser': path.join(__dirname, 'node_modules', 'jsonc-parser', 'lib', 'esm', 'main.js'),
+    },
     logLevel: 'silent',
     plugins: [
       /* add to the end of plugins array */

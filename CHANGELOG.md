@@ -6,6 +6,13 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ## [1.7.0]
 
+### Added
+
+- **Angular: Manage JSON Configs** (`Ctrl+Shift+A J`): pick a config file in the workspace and edit it in a dedicated Webview. The picker only lists files that actually exist and dispatches to a tailored editor for each. All edits are written back with [jsonc-parser](https://www.npmjs.com/package/jsonc-parser), so comments, key order, and formatting are preserved.
+  - **ESLint** (`eslint.config.json` / `.eslintrc.json`) — lists rules grouped by package (`eslint` core, `@typescript-eslint`, `@angular-eslint`, …). The full rule catalog is discovered by loading the installed plugins from the workspace `node_modules`, and current severities come from `eslint --print-config`; a per-rule **off / warn / error** dropdown writes the change back (preserving any existing rule options). Includes a live filter box and degrades gracefully to configured-only rules when a plugin can't be loaded.
+  - **TypeScript** (`tsconfig.json`, `tsconfig.app.json`, `tsconfig.spec.json`) — curated `compilerOptions` and `angularCompilerOptions` shown as typed controls (toggles, dropdowns, text/number inputs) with presence toggles to add/remove a key, any extra keys already in the file, and an **Add option** row for arbitrary keys.
+  - **angular.json** — split by **project**, **architect target**, and **scope** (options or a named configuration). The shown option catalog adapts to the detected Angular version and builder (e.g. the `application` vs `browser` builder, `buildTarget` vs `browserTarget`), and any uncovered keys are still rendered so nothing is hidden.
+
 ### Changed
 
 - **Angular: Lint Project** (`Ctrl+Shift+A L`) now opens an interactive Webview panel instead of just running `ng lint` in a terminal. It runs `ng lint --format json`, parses the results, and presents every problem in a rich UI:

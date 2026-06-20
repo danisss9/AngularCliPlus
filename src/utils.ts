@@ -212,7 +212,7 @@ function getLocalAngularCliPath(workspaceRoot: string): string | null {
   return fs.existsSync(cliPath) ? cliPath : null;
 }
 
-function quoteShellPath(filePath: string): string {
+export function quoteShellPath(filePath: string): string {
   return /\s/.test(filePath) ? `"${filePath.replace(/"/g, '\\"')}"` : filePath;
 }
 
