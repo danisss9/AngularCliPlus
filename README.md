@@ -50,8 +50,8 @@ Detection runs via `ng version` (preferring the workspace-local CLI from `node_m
 | Angular: Build Project (Watch) | `Ctrl+Shift+A W`   | Runs `ng build --watch` with the configured watch configuration                                                                                                                              |
 | Angular: Test Project          | `Ctrl+Shift+A T`   | Runs `ng test` for a project, all projects, or the currently open spec file                                                                                                                  |
 | Angular: Restart Serve         | `Ctrl+Shift+A R`   | Restarts any active serve/build-watch terminal; re-attaches the debugger if a debug session was running                                                                                      |
-| Angular: Lint Project          | `Ctrl+Shift+A L`   | Runs `ng lint` for a selected project                                                                                                                                                        |
-| Angular: Update Packages       | `Ctrl+Shift+A U`   | Shows available package updates and runs `ng update` for selected packages                                                                                                                   |
+| Angular: Lint Project          | `Ctrl+Shift+A L`   | Runs `ng lint --format json` for a selected project and shows the results in an interactive Webview panel with sort-by-file/sort-by-rule grouping and native `eslint --fix` + Copilot auto-fix buttons |
+| Angular: Update Packages       | `Ctrl+Shift+A U`   | Checks for updates with `ng update` and `npm-check-updates` and shows them in an interactive Webview panel with separate tables for Angular and other packages, each with selective update buttons |
 | Angular: Switch Component File | `Ctrl+Shift+A Tab` | Quickly switch between a component's `.ts`, `.html`, `.scss`/`.css`, and `.spec.ts` files via a QuickPick                                                                                    |
 | Angular: Run npm Script        | `Ctrl+Shift+A N`   | Shows a searchable list of all npm scripts from `package.json` and runs the selected one in a terminal                                                                                       |
 | Angular: Close Terminals       | `Ctrl+Shift+A C`   | Opens a searchable multi-select list of all extension terminals with their state (running / terminated / errored / killed) — finished terminals are pre-selected; select which ones to close |
@@ -136,9 +136,33 @@ Runs a full Angular build in the background and parses the output for TypeScript
 - **Collapsible UI**: Large error messages and stack traces are collapsed by default to keep the view clean. Expand individual errors or use the "Expand All" toggle in the file header.
 - **Background execution**: The build runs in a separate process, so you can continue working while the check completes.
 
+### Angular: Lint Project (`Ctrl+Shift+A L`)
+
+Runs `ng lint --format json` for a selected project, parses the ESLint results, and presents every problem in an interactive Webview panel.
+
+**Key features:**
+- **Sort by file or by problem type**: toggle the header between **Group by file** and **Group by rule**. Switching re-renders the panel instantly from the cached results — no re-lint required.
+- **Hybrid auto-fix**: ESLint reports which problems are auto-fixable, so the panel adapts:
+  - Auto-fixable problems show a native **Fix** button that runs `eslint --fix`. Fix a single issue, a whole file ("Fix file" / per-rule "Fix"), or the entire project with **Fix all auto-fixable** (`ng lint --fix`). After every fix the panel re-lints automatically so resolved problems disappear.
+  - Problems that can't be auto-fixed show an **Auto Fix with Copilot** (✨) button that opens Copilot Chat with a context-aware prompt.
+- **Deep links & details**: each row shows its severity (error/warning) and rule id, with a clickable link that jumps straight to the source location. A **Reload** button re-runs the lint in place.
+- **Guided setup**: if the selected project has no lint target, the panel offers a one-click **Add angular-eslint** button that runs `ng add angular-eslint`.
+
+### Angular: Update Packages (`Ctrl+Shift+A U`)
+
+Checks for outdated dependencies and presents them in an interactive Webview panel with two separate tables.
+
+**Key features:**
+- **Angular packages**: detected with `ng update`, which understands the Angular ecosystem and its migration schematics.
+- **Other packages**: detected with [npm-check-updates](https://www.npmjs.com/package/npm-check-updates) (run via `npx`), excluding any packages already listed in the Angular table. Each row shows the current → latest version.
+- **Selective updates**: every row has a checkbox (with a select-all header checkbox). Pick what you want and click **Update**:
+  - Angular packages run `ng update <packages>` (honours `angularCliPlus.update.allowDirty` and offers `--force` on failure).
+  - Other packages run `npm-check-updates -u` for the selected packages to bump `package.json`, then `npm install`.
+- **Reload**: re-runs both checks and refreshes the panel in place. When nothing is outdated, an "all up to date" message is shown.
+
 ### GitHub Copilot Integration (✨)
 
-The `Memory Leaks`, `Optimizations`, and `Check Build Errors` panels feature deep integration with **GitHub Copilot** to help you fix issues with one click.
+The `Memory Leaks`, `Optimizations`, `Build Errors`, and `Lint` panels feature deep integration with **GitHub Copilot** to help you fix issues with one click.
 
 - **Auto Fix**: Click the sparkle icon (✨) next to any diagnostic to open Copilot Chat with a pre-filled, context-aware prompt. The prompt includes the code snippet, the error description, and a concrete fix hint.
 - **Bulk Fix (Fix All)**: Every file group in the diagnostic panels includes a **Fix all** button. This sends all issues identified in that file to Copilot in a single batch, allowing the AI to refactor the entire file at once.
@@ -151,7 +175,7 @@ The `Memory Leaks`, `Optimizations`, and `Check Build Errors` panels feature dee
 All terminal-based commands detect the exit code when the terminal closes:
 
 - **Success** (exit code 0): brief info notification
-- **Failure** (non-zero exit code): warning notification with a **Retry** button for build, lint, and test commands; Retry re-runs the exact same command without re-prompting
+- **Failure** (non-zero exit code): warning notification with a **Retry** button for build and test commands; Retry re-runs the exact same command without re-prompting
 
 ### Last used project memory
 
@@ -205,8 +229,8 @@ Use the keyboard shortcuts (`Ctrl+Shift+A` followed by a letter) or search for *
 - **Build Watch** (`Ctrl+Shift+A W`): same as build but adds `--watch` (configuration controlled by `angularCliPlus.watch.configuration`)
 - **Test** (`Ctrl+Shift+A T`): select a project, all projects at once, or the `.spec.ts` file you have open; when a spec file belongs to a detected Angular project, the owning project is passed explicitly to `ng test`
 - **Restart Serve** (`Ctrl+Shift+A R`): restart any active `ng serve`, `ng build --watch`, Storybook, or static server terminal; if a debug session is attached it is stopped first and re-attached after the restart
-- **Lint** (`Ctrl+Shift+A L`): select a project and run `ng lint`
-- **Update** (`Ctrl+Shift+A U`): checks for available package updates, shows a multi-select list, then runs `ng update`; offers `--force` on failure
+- **Lint** (`Ctrl+Shift+A L`): select a project, run `ng lint --format json`, and review the results in an interactive Webview panel — group issues by file or by ESLint rule, jump to any problem, and fix them with native `eslint --fix` or Copilot (see [Angular: Lint Project](#angular-lint-project-ctrlshifta-l) below)
+- **Update** (`Ctrl+Shift+A U`): checks for updates with `ng update` (Angular packages) and `npm-check-updates` (everything else) and shows both in an interactive Webview panel with separate tables; tick the packages you want and update them in place (see [Angular: Update Packages](#angular-update-packages-ctrlshifta-u) below)
 - **Switch Component File** (`Ctrl+Shift+A Tab`): switch between a component's related files (`.ts`, `.html`, `.scss`/`.css`/`.sass`/`.less`, `.spec.ts`) — shows a QuickPick with icons for each file type; the current file is pre-selected
 - **Run npm Script** (`Ctrl+Shift+A N`): shows a searchable list of all scripts from `package.json`; select one to run it in a dedicated terminal
 - **Close Terminals** (`Ctrl+Shift+A C`): opens a searchable multi-select QuickPick of all extension terminals; each entry shows the terminal name and state (`running`, `terminated`, `errored`, or `killed`); finished terminals are pre-selected and sorted to the top so pressing Enter clears them immediately; use the select-all checkbox or search to filter further

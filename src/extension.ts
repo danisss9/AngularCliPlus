@@ -26,11 +26,9 @@ import {
 import {
   serveAngularProject,
   testAngularProject,
-  lintAngularProject,
   buildAngularProject,
   buildAngularProjectWatch,
   clearFinishedTerminals,
-  updateAngularPackages,
   switchComponentFile,
   runNpmScript,
   showSignalGraph,
@@ -47,6 +45,8 @@ import { checkMemoryLeaks } from './memory-leak';
 import { setupNpmrcCommand } from './npmrc';
 import { checkOptimizations } from './optimizations';
 import { checkBuildErrors } from './build-errors';
+import { checkLint } from './lint-issues';
+import { showPackageUpdates } from './package-updates';
 
 export function activate(context: vscode.ExtensionContext) {
   setExtensionContext(context);
@@ -109,10 +109,8 @@ export function activate(context: vscode.ExtensionContext) {
       restartAngularServe(context),
     ),
     vscode.commands.registerCommand('angular-cli-plus.testAngular', () => testAngularProject()),
-    vscode.commands.registerCommand('angular-cli-plus.lintAngular', () => lintAngularProject()),
-    vscode.commands.registerCommand('angular-cli-plus.updateAngular', () =>
-      updateAngularPackages(),
-    ),
+    vscode.commands.registerCommand('angular-cli-plus.lintAngular', () => checkLint()),
+    vscode.commands.registerCommand('angular-cli-plus.updateAngular', () => showPackageUpdates()),
     vscode.commands.registerCommand('angular-cli-plus.switchComponentFile', () =>
       switchComponentFile(),
     ),

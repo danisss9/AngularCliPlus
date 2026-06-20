@@ -17,14 +17,9 @@ import {
   buildAngularCliTerminalCommand,
   resolveAngularCliSpawn,
 } from './utils';
-import { spawnCapture } from './dependencies';
 import { detectCliVersion } from './version';
 import { getBuildConfigFlag, supportsTestUiFlag } from './version-adapter';
-import {
-  parseNgUpdateOutput,
-  parseComponentFilePath,
-  getComponentSiblingPaths,
-} from './pure-utils';
+import { parseComponentFilePath, getComponentSiblingPaths } from './pure-utils';
 
 // ── Component file switching ──────────────────────────────────────────────────
 
@@ -240,38 +235,6 @@ export async function testAngularProject() {
   });
 }
 
-// ── Lint ──────────────────────────────────────────────────────────────────────
-
-export async function lintAngularProject() {
-  const resolved = await resolveWorkspaceAndAngularJson();
-  if (!resolved) {
-    return;
-  }
-  const { workspaceRoot, projects } = resolved;
-
-  const allProjects = Object.keys(projects);
-  const projectName = await pickProjectWithCurrentFile(
-    workspaceRoot,
-    projects,
-    allProjects,
-    'Angular Lint: Select Project',
-    'lint',
-  );
-  if (!projectName) {
-    return;
-  }
-
-  const terminalName = `ng lint (${projectName})`;
-  const lintCommand = buildAngularCliTerminalCommand(
-    workspaceRoot,
-    `ng lint --project "${projectName}"`,
-  );
-  runInTerminal(terminalName, lintCommand, workspaceRoot, {
-    successMessage: `ng lint (${projectName}) completed successfully.`,
-    retryLabel: 'Retry',
-  });
-}
-
 // ── Build ─────────────────────────────────────────────────────────────────────
 
 export async function buildAngularProject() {
@@ -442,72 +405,6 @@ export function spawnNg(args: string[], cwd: string): Promise<number> {
     });
     proc.on('close', (code) => resolve(code ?? 1));
   });
-}
-
-export async function updateAngularPackages() {
-  const resolved = await resolveWorkspaceAndAngularJson();
-  if (!resolved) {
-    return;
-  }
-  const { workspaceRoot } = resolved;
-
-  let capturedOutput = '';
-  let checkExitCode = 0;
-  await vscode.window.withProgress(
-    {
-      location: vscode.ProgressLocation.Notification,
-      title: 'Checking for Angular package updates…',
-      cancellable: false,
-    },
-    async () => {
-      const ngCommand = resolveAngularCliSpawn(workspaceRoot, ['update']);
-      const result = await spawnCapture(
-        ngCommand.command,
-        ngCommand.args,
-        workspaceRoot,
-        ngCommand.shell,
-      );
-      capturedOutput = result.stdout;
-      checkExitCode = result.exitCode;
-    },
-  );
-
-  if (checkExitCode !== 0) {
-    ngOutput.clear();
-    ngOutput.appendLine(capturedOutput);
-    ngOutput.show(true);
-    vscode.window.showErrorMessage(
-      "Failed to check for Angular updates. See 'Angular CLI Plus: ng' output for details.",
-    );
-    return;
-  }
-
-  const packages = parseNgUpdateOutput(capturedOutput);
-  if (packages.length === 0) {
-    vscode.window.showInformationMessage('All Angular packages are up to date.');
-    return;
-  }
-
-  const items = packages.map((p) => ({ label: p.name, description: p.versions, picked: false }));
-  const selected = await vscode.window.showQuickPick(items, {
-    canPickMany: true,
-    placeHolder: 'Select packages to update',
-    title: 'Angular Update: Select Packages',
-  });
-
-  if (!selected || selected.length === 0) {
-    return;
-  }
-
-  const config = vscode.workspace.getConfiguration('angularCliPlus');
-  const allowDirty = config.get<boolean>('update.allowDirty', false);
-
-  await runNgUpdate(
-    selected.map((s) => s.label),
-    allowDirty,
-    false,
-    workspaceRoot,
-  );
 }
 
 export async function runNgUpdate(

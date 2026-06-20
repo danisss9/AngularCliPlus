@@ -4,6 +4,20 @@ All notable changes to the "angular-cli-plus" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.7.0]
+
+### Changed
+
+- **Angular: Lint Project** (`Ctrl+Shift+A L`) now opens an interactive Webview panel instead of just running `ng lint` in a terminal. It runs `ng lint --format json`, parses the results, and presents every problem in a rich UI:
+  - **Sort by file or by problem type** — toggle between grouping issues by source file or by ESLint rule; switching re-renders instantly from cached results without re-linting.
+  - **Hybrid auto-fix buttons** — auto-fixable problems get a native **Fix** button that runs `eslint --fix` (per issue, per file, or a project-wide **Fix all auto-fixable**), and after each fix the panel automatically re-lints to refresh. Problems that can't be auto-fixed get an **Auto Fix with Copilot** (✨) button, matching the `Optimizations` and `Build Errors` panels.
+  - **Per-issue details** — severity (error/warning) and rule pills, the rule message, clickable line links that jump to the source, and a **Reload** button to re-run the lint.
+  - When a project has no lint target configured, the panel offers a one-click **Add angular-eslint** button that runs `ng add angular-eslint`.
+- **Angular: Update Packages** (`Ctrl+Shift+A U`) now opens an interactive Webview panel instead of a multi-select QuickPick, and additionally checks **non-Angular dependencies** via [npm-check-updates](https://www.npmjs.com/package/npm-check-updates):
+  - **Two separate tables** — **Angular packages** (detected with `ng update`) and **Other packages** (detected with `npm-check-updates`, excluding the Angular ones already listed). Each row shows the package name and its current → latest version.
+  - **Selective updates** — tick the packages you want in either table (with a select-all header checkbox) and click **Update**. Angular packages are upgraded with `ng update` (offering `--force` on failure, honouring `angularCliPlus.update.allowDirty`); other packages are upgraded by running `npm-check-updates -u` for the selected packages followed by `npm install`.
+  - **Reload** re-runs both checks and refreshes the panel in place; a friendly "all up to date" state is shown when there's nothing to upgrade.
+
 ## [1.6.0]
 
 ### Added

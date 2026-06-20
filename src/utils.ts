@@ -251,6 +251,38 @@ export function resolveAngularCliSpawn(
   };
 }
 
+function getLocalEslintPath(workspaceRoot: string): string | null {
+  const executable = process.platform === 'win32' ? 'eslint.cmd' : 'eslint';
+  const cliPath = path.join(workspaceRoot, 'node_modules', '.bin', executable);
+  return fs.existsSync(cliPath) ? cliPath : null;
+}
+
+/**
+ * Resolves how to spawn ESLint directly (used for `--fix`). Prefers the locally
+ * installed binary in node_modules/.bin, falling back to `npx eslint`.
+ */
+export function resolveEslintSpawn(
+  workspaceRoot: string,
+  args: string[],
+): { command: string; args: string[]; shell: boolean; displayCommand: string } {
+  const localEslint = getLocalEslintPath(workspaceRoot);
+  if (localEslint) {
+    return {
+      command: localEslint,
+      args,
+      shell: process.platform === 'win32',
+      displayCommand: `${quoteShellPath(localEslint)} ${args.join(' ')}`,
+    };
+  }
+
+  return {
+    command: 'npx',
+    args: ['eslint', ...args],
+    shell: true,
+    displayCommand: `npx eslint ${args.join(' ')}`,
+  };
+}
+
 // ── Terminal helpers ───────────────────────────────────────────────────────────
 
 const RESTART_CTRL_C_DELAY_MS = 500;
