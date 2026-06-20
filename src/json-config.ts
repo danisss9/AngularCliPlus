@@ -18,7 +18,19 @@ interface ConfigPickItem extends vscode.QuickPickItem {
   filePath: string;
 }
 
-const ESLINT_CANDIDATES = ['eslint.config.json', '.eslintrc.json'];
+const ESLINT_CANDIDATES = [
+  // Flat config (preferred order).
+  'eslint.config.js',
+  'eslint.config.mjs',
+  'eslint.config.cjs',
+  'eslint.config.ts',
+  'eslint.config.mts',
+  'eslint.config.cts',
+  // Legacy config.
+  '.eslintrc.json',
+  '.eslintrc.js',
+  '.eslintrc.cjs',
+];
 const TSCONFIG_CANDIDATES = ['tsconfig.json', 'tsconfig.app.json', 'tsconfig.spec.json'];
 
 export async function manageJsonConfig(): Promise<void> {
@@ -62,7 +74,7 @@ export async function manageJsonConfig(): Promise<void> {
 function collectExistingConfigs(workspaceRoot: string): ConfigPickItem[] {
   const items: ConfigPickItem[] = [];
 
-  // ESLint — first existing JSON variant only.
+  // ESLint — first existing config variant (JSON, JS, or TS).
   const eslintFile = ESLINT_CANDIDATES.map((f) => path.join(workspaceRoot, f)).find(fs.existsSync);
   if (eslintFile) {
     items.push({

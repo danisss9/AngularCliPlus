@@ -3,7 +3,9 @@
  * installed ESLint plugins (best-effort, via dynamic import of the workspace
  * modules) and the currently-applied severities (via `eslint --print-config`),
  * then lets the user toggle each rule off/warn/error. Edits are written back to
- * the JSON config with comments preserved.
+ * the config with comments preserved — JSON configs via the JSONC editor, and
+ * JS/TS configs (`eslint.config.js/.mjs/.cjs/.ts`, `.eslintrc.js/.cjs`) via a
+ * surgical AST splice that preserves formatting and rule options.
  */
 import * as vscode from 'vscode';
 import * as fs from 'fs';
@@ -15,6 +17,7 @@ import { resolveEslintSpawn, quoteShellPath } from './utils';
 import { readJsonc, setKey } from './jsonc-io';
 import { logDiagnostic } from './state';
 import { escapeHtml, baseStyles } from './webview-utils';
+import { isJsEslintConfig, readFlatConfigRules, setFlatConfigRuleSeverity } from './eslint-js-edit';
 
 type Severity = 'off' | 'warn' | 'error';
 
@@ -58,7 +61,7 @@ async function discoverRules(workspaceRoot: string, filePath: string): Promise<R
     },
     async (progress) => {
       progress.report({ message: 'resolving configured rules…' });
-      severities = await readConfiguredSeverities(workspaceRoot);
+      severities = await readConfiguredSeverities(workspaceRoot, filePath);
 
       progress.report({ message: 'reading plugin rule catalogs…' });
       const plugins = detectPluginPackages(workspaceRoot);
@@ -88,30 +91,39 @@ async function discoverRules(workspaceRoot: string, filePath: string): Promise<R
 }
 
 /** Runs `eslint --print-config` against a representative file to read severities. */
-async function readConfiguredSeverities(workspaceRoot: string): Promise<Map<string, Severity>> {
+async function readConfiguredSeverities(
+  workspaceRoot: string,
+  filePath: string,
+): Promise<Map<string, Severity>> {
   const map = new Map<string, Severity>();
   const repFile = await findRepresentativeFile(workspaceRoot);
-  if (!repFile) {
-    return map;
+  if (repFile) {
+    const cmd = resolveEslintSpawn(workspaceRoot, ['--print-config', quoteShellPath(repFile)]);
+    const result = await spawnCapture(cmd.command, cmd.args, workspaceRoot, cmd.shell);
+    const json = extractJsonObject(result.stdout);
+    if (json !== null) {
+      try {
+        const config = JSON.parse(json) as { rules?: Record<string, unknown> };
+        for (const [name, value] of Object.entries(config.rules ?? {})) {
+          map.set(name, normalizeSeverity(value));
+        }
+        if (map.size > 0) {
+          return map;
+        }
+      } catch {
+        // fall through to AST read below
+      }
+    }
   }
 
-  const cmd = resolveEslintSpawn(workspaceRoot, ['--print-config', quoteShellPath(repFile)]);
-  const result = await spawnCapture(cmd.command, cmd.args, workspaceRoot, cmd.shell);
-  const json = extractJsonObject(result.stdout);
-  if (json === null) {
-    logDiagnostic('eslint --print-config produced no parseable JSON');
-    return map;
-  }
-
-  let config: { rules?: Record<string, unknown> };
-  try {
-    config = JSON.parse(json) as typeof config;
-  } catch {
-    return map;
-  }
-
-  for (const [name, value] of Object.entries(config.rules ?? {})) {
-    map.set(name, normalizeSeverity(value));
+  // Fallback: statically read severities from a JS/TS config file. This covers
+  // offline/no-ESLint-runnable scenarios and entries that --print-config missed.
+  if (isJsEslintConfig(filePath)) {
+    for (const [name, severity] of readFlatConfigRules(filePath)) {
+      if (!map.has(name)) {
+        map.set(name, severity);
+      }
+    }
   }
   return map;
 }
@@ -130,7 +142,12 @@ function normalizeSeverity(value: unknown): Severity {
 /** Picks a `.ts` file ESLint can resolve a config for. */
 async function findRepresentativeFile(workspaceRoot: string): Promise<string | null> {
   const active = vscode.window.activeTextEditor?.document.uri.fsPath;
-  if (active && active.endsWith('.ts') && active.startsWith(workspaceRoot) && fs.existsSync(active)) {
+  if (
+    active &&
+    active.endsWith('.ts') &&
+    active.startsWith(workspaceRoot) &&
+    fs.existsSync(active)
+  ) {
     return active;
   }
   for (const candidate of ['src/main.ts', 'src/index.ts', 'main.ts']) {
@@ -199,7 +216,10 @@ function pluginPrefix(pkg: string): string | null {
 }
 
 /** Best-effort load of a plugin's rule names, prefixed for matching. */
-async function loadPluginRuleNames(workspaceRoot: string, plugin: PluginPackage): Promise<string[]> {
+async function loadPluginRuleNames(
+  workspaceRoot: string,
+  plugin: PluginPackage,
+): Promise<string[]> {
   try {
     const requireFromWorkspace = createRequire(path.join(workspaceRoot, 'noop.js'));
 
@@ -232,8 +252,11 @@ function extractRulesObject(mod: Record<string, unknown>): Record<string, unknow
     mod.rules,
     (mod.default as Record<string, unknown> | undefined)?.rules,
     (mod.plugin as Record<string, unknown> | undefined)?.rules,
-    ((mod.default as Record<string, unknown> | undefined)?.plugin as Record<string, unknown> | undefined)
-      ?.rules,
+    (
+      (mod.default as Record<string, unknown> | undefined)?.plugin as
+        | Record<string, unknown>
+        | undefined
+    )?.rules,
   ];
   for (const candidate of candidates) {
     if (candidate && typeof candidate === 'object') {
@@ -333,8 +356,17 @@ function extractJsonObject(text: string): string | null {
 /**
  * Writes a rule's severity into the config. Preserves any existing options by
  * only replacing the severity slot when the current value is an array.
+ * Dispatches to the AST editor for JS/TS configs and the JSONC editor for JSON.
  */
 function writeRuleSeverity(filePath: string, ruleName: string, severity: Severity): boolean {
+  if (isJsEslintConfig(filePath)) {
+    const result = setFlatConfigRuleSeverity(filePath, ruleName, severity);
+    if (!result.ok && result.reason) {
+      vscode.window.showErrorMessage(result.reason);
+    }
+    return result.ok;
+  }
+
   const parsed = readJsonc<unknown>(filePath);
   const rulesPath = resolveRulesPath(parsed);
   const current = getAtPath(parsed, [...rulesPath, ruleName]);
@@ -387,10 +419,15 @@ function showWebview(filePath: string, workspaceRoot: string, groups: RuleGroup[
     activePanel.webview.html = html;
     activePanel.reveal(undefined, true);
   } else {
-    activePanel = vscode.window.createWebviewPanel('angularEslintConfig', title, vscode.ViewColumn.Beside, {
-      enableScripts: true,
-      retainContextWhenHidden: true,
-    });
+    activePanel = vscode.window.createWebviewPanel(
+      'angularEslintConfig',
+      title,
+      vscode.ViewColumn.Beside,
+      {
+        enableScripts: true,
+        retainContextWhenHidden: true,
+      },
+    );
     activePanel.webview.html = html;
     activePanel.onDidDispose(() => {
       activePanel = undefined;
