@@ -16,6 +16,25 @@ import { sendCopilotAutoFix, sendCopilotAutoFixForFile } from './copilot-fix';
 
 const COMMAND_KEY = 'lint';
 
+/** Sentinel `projectName` meaning "lint every project" (runs `ng lint` with no `--project`). */
+const ALL_PROJECTS_KEY = '__all__';
+
+function isAllProjects(projectName: string): boolean {
+  return projectName === ALL_PROJECTS_KEY;
+}
+
+/** Human-readable name for progress titles, the webview, and error messages. */
+function projectDisplayName(projectName: string): string {
+  return isAllProjects(projectName) ? 'All Projects' : projectName;
+}
+
+/** Builds `ng lint` args, omitting `--project` when linting all projects. */
+function lintArgs(projectName: string, extra: string[]): string[] {
+  return isAllProjects(projectName)
+    ? ['lint', ...extra]
+    : ['lint', '--project', projectName, ...extra];
+}
+
 type LintSeverity = 'error' | 'warning';
 type SortMode = 'file' | 'rule';
 type LineGetter = (file: string, line: number) => string;
@@ -68,9 +87,13 @@ export async function checkLint(): Promise<void> {
   const lastInList = last && projectNames.includes(last) && last !== currentInList ? last : null;
   const LAST_LABEL = lastInList ? `$(history)  Last used (${lastInList})` : null;
 
+  // Only worth offering when there is more than one project to lint together.
+  const ALL_PROJECTS_LABEL = projectNames.length > 1 ? '$(list-tree)  All projects' : null;
+
   const choices = [
     ...(CURRENT_PROJECT_LABEL ? [CURRENT_PROJECT_LABEL] : []),
     ...(LAST_LABEL ? [LAST_LABEL] : []),
+    ...(ALL_PROJECTS_LABEL ? [ALL_PROJECTS_LABEL] : []),
     ...projectNames,
   ];
 
@@ -92,27 +115,41 @@ export async function checkLint(): Promise<void> {
     projectName = currentInList!;
   } else if (LAST_LABEL && picked === LAST_LABEL) {
     projectName = lastInList!;
+  } else if (ALL_PROJECTS_LABEL && picked === ALL_PROJECTS_LABEL) {
+    projectName = ALL_PROJECTS_KEY;
   } else {
     projectName = picked;
   }
-  setLastProject(COMMAND_KEY, projectName);
+  if (!isAllProjects(projectName)) {
+    setLastProject(COMMAND_KEY, projectName);
+  }
 
-  await runAndCheckLint(workspaceRoot, projectName);
+  const issues = await runAndCheckLint(workspaceRoot, projectName);
+  if (issues) {
+    createLintPanel(issues, workspaceRoot, projectName);
+  }
 }
 
 // ── Lint execution ───────────────────────────────────────────────────────────
 
-async function runAndCheckLint(workspaceRoot: string, projectName: string): Promise<void> {
+/**
+ * Runs `ng lint` and parses the results. Returns the issues, or `null` when
+ * there were no parseable results (a "lint not set up" dialog is shown instead).
+ */
+async function runAndCheckLint(
+  workspaceRoot: string,
+  projectName: string,
+): Promise<LintIssue[] | null> {
   let capturedOutput = '';
 
   await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
-      title: `Linting ${projectName}…`,
+      title: `Linting ${projectDisplayName(projectName)}…`,
       cancellable: false,
     },
     async () => {
-      const args = ['lint', '--project', projectName, '--format', 'json'];
+      const args = lintArgs(projectName, ['--format', 'json']);
       const ngCommand = resolveAngularCliSpawn(workspaceRoot, args);
       const result = await spawnCapture(
         ngCommand.command,
@@ -130,7 +167,7 @@ async function runAndCheckLint(workspaceRoot: string, projectName: string): Prom
     const ADD_LABEL = 'Add angular-eslint';
     const SHOW_LABEL = 'Show Output';
     const choice = await vscode.window.showErrorMessage(
-      `No lint results for "${projectName}". This project doesn't seem to have linting set up — run "ng add angular-eslint" to add it.`,
+      `No lint results for "${projectDisplayName(projectName)}". This project doesn't seem to have linting set up — run "ng add angular-eslint" to add it.`,
       ADD_LABEL,
       SHOW_LABEL,
     );
@@ -144,10 +181,10 @@ async function runAndCheckLint(workspaceRoot: string, projectName: string): Prom
       channel.appendLine(capturedOutput || '(no output)');
       channel.show();
     }
-    return;
+    return null;
   }
 
-  showLintWebview(issues, workspaceRoot, projectName);
+  return issues;
 }
 
 // ── Parsing ──────────────────────────────────────────────────────────────────
@@ -246,11 +283,14 @@ function extractJsonArray(text: string): string | null {
 
 // ── Webview ──────────────────────────────────────────────────────────────────
 
-let activePanel: vscode.WebviewPanel | undefined;
-let lastIssues: LintIssue[] = [];
-let lastWorkspaceRoot = '';
-let lastProjectName = '';
-let sortMode: SortMode = 'file';
+/** Per-panel state. Each run opens its own tab, tracked independently. */
+interface LintPanel {
+  panel: vscode.WebviewPanel;
+  workspaceRoot: string;
+  projectName: string;
+  issues: LintIssue[];
+  sortMode: SortMode;
+}
 
 interface WebviewMessage {
   command: string;
@@ -273,49 +313,57 @@ interface WebviewMessage {
   }>;
 }
 
-function showLintWebview(issues: LintIssue[], workspaceRoot: string, projectName: string): void {
-  lastIssues = issues;
-  lastWorkspaceRoot = workspaceRoot;
-  lastProjectName = projectName;
-
-  const html = renderHtml();
-  const title = `Lint (${issues.length})`;
-
-  if (activePanel) {
-    activePanel.title = title;
-    activePanel.webview.html = html;
-    activePanel.reveal(undefined, true);
-  } else {
-    activePanel = vscode.window.createWebviewPanel('angularLintIssues', title, vscode.ViewColumn.Beside, {
-      enableScripts: true,
-      retainContextWhenHidden: true,
-    });
-    activePanel.webview.html = html;
-    activePanel.onDidDispose(() => {
-      activePanel = undefined;
-    });
-    activePanel.webview.onDidReceiveMessage((m: WebviewMessage) => {
-      void handleMessage(m);
-    });
-  }
+function lintTitle(projectName: string, count: number): string {
+  return `Lint: ${projectDisplayName(projectName)} (${count})`;
 }
 
-/** Rebuilds the panel HTML from the cached issues (used by sort + after fixes). */
-function renderHtml(): string {
+/**
+ * Creates a fresh panel for the given results. Each run opens its own tab; the
+ * panel's Reload button re-lints and refreshes that same tab in place.
+ */
+function createLintPanel(issues: LintIssue[], workspaceRoot: string, projectName: string): void {
+  const state: LintPanel = {
+    panel: vscode.window.createWebviewPanel(
+      'angularLintIssues',
+      lintTitle(projectName, issues.length),
+      vscode.ViewColumn.Beside,
+      { enableScripts: true, retainContextWhenHidden: true },
+    ),
+    workspaceRoot,
+    projectName,
+    issues,
+    sortMode: 'file',
+  };
+  renderInto(state);
+  state.panel.webview.onDidReceiveMessage((m: WebviewMessage) => {
+    void handleMessage(state, m);
+  });
+}
+
+/** Rebuilds a panel's title + HTML from its current state. */
+function renderInto(state: LintPanel): void {
   const config = vscode.workspace.getConfiguration('angularCliPlus');
   const autoFixEnabled = config.get<boolean>('copilot.autoFixEnabled', true);
-  return buildWebviewHtml(lastIssues, lastWorkspaceRoot, lastProjectName, autoFixEnabled, sortMode);
+  state.panel.title = lintTitle(state.projectName, state.issues.length);
+  state.panel.webview.html = buildWebviewHtml(
+    state.issues,
+    state.workspaceRoot,
+    projectDisplayName(state.projectName),
+    autoFixEnabled,
+    state.sortMode,
+  );
 }
 
-function refreshPanel(): void {
-  if (!activePanel) {
-    return;
+/** Re-runs lint for the panel's scope and refreshes it in place. */
+async function reloadPanel(state: LintPanel): Promise<void> {
+  const issues = await runAndCheckLint(state.workspaceRoot, state.projectName);
+  if (issues) {
+    state.issues = issues;
+    renderInto(state);
   }
-  activePanel.title = `Lint (${lastIssues.length})`;
-  activePanel.webview.html = renderHtml();
 }
 
-async function handleMessage(message: WebviewMessage): Promise<void> {
+async function handleMessage(state: LintPanel, message: WebviewMessage): Promise<void> {
   switch (message.command) {
     case 'openFile': {
       if (!message.file) {
@@ -334,12 +382,12 @@ async function handleMessage(message: WebviewMessage): Promise<void> {
     }
     case 'sort':
       if (message.mode === 'file' || message.mode === 'rule') {
-        sortMode = message.mode;
-        refreshPanel();
+        state.sortMode = message.mode;
+        renderInto(state);
       }
       return;
     case 'reload':
-      await runAndCheckLint(lastWorkspaceRoot, lastProjectName);
+      await reloadPanel(state);
       return;
     case 'copilotFix':
       await sendCopilotAutoFix({
@@ -361,11 +409,11 @@ async function handleMessage(message: WebviewMessage): Promise<void> {
       return;
     case 'eslintFix':
       if (message.files && message.files.length > 0) {
-        await runEslintFix(message.files);
+        await runEslintFix(state, message.files);
       }
       return;
     case 'eslintFixAll':
-      await runEslintFixAll();
+      await runEslintFixAll(state);
       return;
   }
 }
@@ -377,7 +425,7 @@ function quoteArg(arg: string): string {
 }
 
 /** Runs `eslint --fix` on the given files, then re-lints to refresh the panel. */
-async function runEslintFix(files: string[]): Promise<void> {
+async function runEslintFix(state: LintPanel, files: string[]): Promise<void> {
   await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
@@ -385,29 +433,29 @@ async function runEslintFix(files: string[]): Promise<void> {
       cancellable: false,
     },
     async () => {
-      const cmd = resolveEslintSpawn(lastWorkspaceRoot, ['--fix']);
+      const cmd = resolveEslintSpawn(state.workspaceRoot, ['--fix']);
       const fileArgs = cmd.shell ? files.map(quoteArg) : files;
-      await spawnCapture(cmd.command, [...cmd.args, ...fileArgs], lastWorkspaceRoot, cmd.shell);
+      await spawnCapture(cmd.command, [...cmd.args, ...fileArgs], state.workspaceRoot, cmd.shell);
     },
   );
-  await runAndCheckLint(lastWorkspaceRoot, lastProjectName);
+  await reloadPanel(state);
 }
 
 /** Fixes every auto-fixable problem in the project via `ng lint --fix`. */
-async function runEslintFixAll(): Promise<void> {
+async function runEslintFixAll(state: LintPanel): Promise<void> {
   await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
-      title: `Auto-fixing ${lastProjectName}…`,
+      title: `Auto-fixing ${projectDisplayName(state.projectName)}…`,
       cancellable: false,
     },
     async () => {
-      const args = ['lint', '--project', lastProjectName, '--fix'];
-      const cmd = resolveAngularCliSpawn(lastWorkspaceRoot, args);
-      await spawnCapture(cmd.command, cmd.args, lastWorkspaceRoot, cmd.shell);
+      const args = lintArgs(state.projectName, ['--fix']);
+      const cmd = resolveAngularCliSpawn(state.workspaceRoot, args);
+      await spawnCapture(cmd.command, cmd.args, state.workspaceRoot, cmd.shell);
     },
   );
-  await runAndCheckLint(lastWorkspaceRoot, lastProjectName);
+  await reloadPanel(state);
 }
 
 // ── HTML ─────────────────────────────────────────────────────────────────────
@@ -435,6 +483,12 @@ const RULE_SVG =
 
 const RELOAD_SVG =
   '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" width="13" height="13"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c1.8 0 3.4.87 4.4 2.2L11 6h3.5V2.5L13 4a7 7 0 1 0 .5 4H13.5z" fill="currentColor"/></svg>';
+
+const TOGGLE_GROUP_BTN =
+  '<button class="toggle-group-btn" title="Collapse/expand this group"><svg class="chevron" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5.5 3L10.5 8L5.5 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>';
+
+const COLLAPSE_ALL_SVG =
+  '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" width="13" height="13"><path d="M2 4.5h12M2 8h12M2 11.5h12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
 
 function copilotIssueData(issue: LintIssue, snippet: string) {
   return {
@@ -485,7 +539,7 @@ function issueRow(
       : `Line ${issue.line}`;
 
   return /* html */ `
-      <div class="issue-item">
+      <div class="issue-item" data-severity="${issue.severity}" data-fixable="${issue.fixable}">
         <a class="line-num" href="#" data-file="${escapeHtml(issue.file)}" data-line="${issue.line}">${escapeHtml(linkText)}</a>
         ${sevPill}
         ${rulePill}
@@ -548,6 +602,7 @@ function renderByFile(
         <span class="file-badge">${countLabel}</span>
         ${fileFixBtn}
         ${copilotBtn}
+        ${TOGGLE_GROUP_BTN}
       </div>
       <div class="issue-list">${rows}</div>
     </div>`;
@@ -600,6 +655,7 @@ function renderByRule(
         ${badge}
         <span class="file-badge">${countLabel}</span>
         ${ruleFixBtn}
+        ${TOGGLE_GROUP_BTN}
       </div>
       <div class="issue-list">${rows}</div>
     </div>`;
@@ -620,8 +676,10 @@ function buildWebviewHtml(
 
   const errorCount = issues.filter((i) => i.severity === 'error').length;
   const warningCount = issues.filter((i) => i.severity === 'warning').length;
+  const fixableCount = issues.filter((i) => i.fixable).length;
+  const manualCount = issues.length - fixableCount;
   const fileCount = new Set(issues.map((i) => i.file)).size;
-  const hasFixable = issues.some((i) => i.fixable);
+  const hasFixable = fixableCount > 0;
 
   // Read each source file once to provide the offending line as Copilot context.
   const fileLines = new Map<string, string[]>();
@@ -646,6 +704,29 @@ function buildWebviewHtml(
   const fixAllBtn = hasFixable
     ? /* html */ `<button class="action-btn fix-all" id="fixAllBtn" title="Run ng lint --fix for the whole project">${WRENCH_SVG}<span>Fix all auto-fixable</span></button>`
     : '';
+
+  const filterPill = (value: string, cls: string, label: string): string =>
+    `<button class="filter-pill ${cls}" data-value="${value}" title="Toggle ${label}">${label}</button>`;
+  const sevFilters = [
+    errorCount > 0 ? filterPill('error', 'flt-error', `${errorCount} error${errorCount !== 1 ? 's' : ''}`) : '',
+    warningCount > 0 ? filterPill('warning', 'flt-warning', `${warningCount} warning${warningCount !== 1 ? 's' : ''}`) : '',
+  ].join('');
+  const fixFilters = [
+    fixableCount > 0 ? filterPill('fixable', 'flt-fixable', `${fixableCount} fixable`) : '',
+    manualCount > 0 ? filterPill('manual', 'flt-manual', `${manualCount} manual`) : '',
+  ].join('');
+  // Only show a filter dimension when it actually splits the list in two.
+  const showSev = errorCount > 0 && warningCount > 0;
+  const showFix = fixableCount > 0 && manualCount > 0;
+  const filterBar =
+    showSev || showFix
+      ? /* html */ `<div class="filter-bar">
+        <span class="filter-label">Show:</span>
+        ${showSev ? sevFilters : ''}
+        ${showSev && showFix ? '<span class="filter-sep"></span>' : ''}
+        ${showFix ? fixFilters : ''}
+      </div>`
+      : '';
 
   return /* html */ `<!DOCTYPE html>
   <html lang="en">
@@ -681,6 +762,22 @@ function buildWebviewHtml(
       }
       .stats { font-size: 0.82em; color: var(--vscode-descriptionForeground); }
       .spacer { flex: 1; }
+      .filter-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+      .filter-label { font-size: 0.78em; color: var(--vscode-descriptionForeground); }
+      .filter-sep { width: 1px; height: 16px; background: var(--vscode-panel-border); margin: 0 2px; }
+      .filter-pill {
+        font-size: 0.72em; font-weight: 700; text-transform: uppercase;
+        padding: 2px 9px; border-radius: 8px; cursor: pointer; user-select: none;
+        font-family: var(--vscode-font-family); white-space: nowrap;
+        transition: opacity 0.15s, text-decoration 0.15s;
+      }
+      .filter-pill.flt-error { background: rgba(240, 100, 80, 0.15); color: var(--vscode-problemsErrorIcon-foreground, #f06450); border: 1px solid rgba(240, 100, 80, 0.3); }
+      .filter-pill.flt-warning { background: rgba(220, 170, 60, 0.15); color: var(--vscode-problemsWarningIcon-foreground, #d9a93c); border: 1px solid rgba(220, 170, 60, 0.3); }
+      .filter-pill.flt-fixable { background: rgba(80, 200, 120, 0.15); color: var(--vscode-testing-iconPassed, #4ec27a); border: 1px solid rgba(80, 200, 120, 0.3); }
+      .filter-pill.flt-manual { background: rgba(128, 128, 128, 0.15); color: var(--vscode-descriptionForeground); border: 1px solid rgba(128, 128, 128, 0.3); }
+      .filter-pill:hover { opacity: 0.8; }
+      .filter-pill.pill-off { opacity: 0.4; text-decoration: line-through; }
+      .file-group.all-hidden { display: none; }
       .sort-toggle { display: inline-flex; border: 1px solid var(--vscode-panel-border); border-radius: 5px; overflow: hidden; }
       .sort-btn {
         padding: 3px 10px; border: none; background: transparent;
@@ -703,8 +800,26 @@ function buildWebviewHtml(
       .file-header {
         display: flex; align-items: center; gap: 8px; padding: 8px 12px;
         background: var(--vscode-sideBarSectionHeader-background, var(--vscode-sideBar-background, rgba(128,128,128,0.08)));
-        border-bottom: 1px solid var(--vscode-panel-border); user-select: none;
+        border-bottom: 1px solid var(--vscode-panel-border); user-select: none; cursor: pointer;
       }
+      .file-header:hover { background: var(--vscode-list-hoverBackground, var(--vscode-sideBarSectionHeader-background, rgba(128,128,128,0.12))); }
+      .toggle-group-btn {
+        flex-shrink: 0; background: transparent; border: none; color: var(--vscode-icon-foreground);
+        cursor: pointer; padding: 2px; display: flex; align-items: center; justify-content: center; border-radius: 3px;
+      }
+      .toggle-group-btn:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.2)); }
+      .chevron { width: 16px; height: 16px; transition: transform 0.15s ease-in-out; transform: rotate(90deg); }
+      .file-group.collapsed .chevron { transform: rotate(0deg); }
+      .file-group.collapsed .issue-list { display: none; }
+      .file-group.collapsed .file-header { border-bottom: none; }
+      .collapse-btn {
+        display: inline-flex; align-items: center; gap: 5px;
+        padding: 3px 10px; border: 1px solid var(--vscode-button-border, transparent); border-radius: 4px;
+        background: var(--vscode-button-secondaryBackground, rgba(128,128,128,0.15));
+        color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+        font-size: 0.8em; font-family: var(--vscode-font-family); cursor: pointer; white-space: nowrap;
+      }
+      .collapse-btn:hover { background: var(--vscode-button-secondaryHoverBackground, rgba(128,128,128,0.25)); }
       .file-icon { width: 14px; height: 14px; flex-shrink: 0; color: var(--vscode-descriptionForeground); }
       .file-path { flex: 1; font-size: 0.88em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .file-dir { color: var(--vscode-descriptionForeground); }
@@ -790,15 +905,45 @@ function buildWebviewHtml(
           <button class="sort-btn ${mode === 'rule' ? 'active' : ''}" data-mode="rule">Group by rule</button>
         </div>
         ${fixAllBtn}
+        <button class="collapse-btn" id="toggleTablesBtn" title="Collapse or expand all groups">${COLLAPSE_ALL_SVG}<span id="toggleTablesLabel">Collapse all</span></button>
         <button class="reload-btn" id="reloadBtn">${RELOAD_SVG}Reload</button>
       </div>
       <p class="stats">Project: ${escapeHtml(projectName)} &middot; ${errorCount} error${errorCount !== 1 ? 's' : ''} &middot; ${warningCount} warning${warningCount !== 1 ? 's' : ''} &middot; ${fileCount} file${fileCount !== 1 ? 's' : ''}</p>
+      ${filterBar}
     </div>
     <div class="file-list">
       ${groupsHtml}
     </div>
     <script>
       const vscode = acquireVsCodeApi();
+
+      // Preserve scroll position when jumping to a file and back: VS Code can
+      // reset a webview's scroll when a text editor takes over its column.
+      (function () {
+        function saveScroll() {
+          var s = vscode.getState() || {};
+          s.scrollY = window.scrollY;
+          vscode.setState(s);
+        }
+        function restoreScroll() {
+          var s = vscode.getState();
+          if (s && typeof s.scrollY === 'number') {
+            window.scrollTo(0, s.scrollY);
+          }
+        }
+        var timer;
+        window.addEventListener('scroll', function () {
+          clearTimeout(timer);
+          timer = setTimeout(saveScroll, 100);
+        }, { passive: true });
+        document.addEventListener('visibilitychange', function () {
+          if (document.visibilityState === 'visible') {
+            requestAnimationFrame(restoreScroll);
+          }
+        });
+        restoreScroll();
+      })();
+
       document.querySelectorAll('a[data-file]').forEach(function (link) {
         link.addEventListener('click', function (e) {
           e.preventDefault();
@@ -816,6 +961,45 @@ function buildWebviewHtml(
       });
       document.getElementById('reloadBtn').addEventListener('click', function () {
         vscode.postMessage({ command: 'reload' });
+      });
+      document.querySelectorAll('.file-group .file-header').forEach(function (header) {
+        header.addEventListener('click', function (e) {
+          if (e.target.closest('a, .fix-file-btn, .copilot-fix-file-btn, .fix-btn, .copilot-fix-btn')) { return; }
+          header.parentElement.classList.toggle('collapsed');
+        });
+      });
+      var toggleTablesBtn = document.getElementById('toggleTablesBtn');
+      var toggleTablesLabel = document.getElementById('toggleTablesLabel');
+      toggleTablesBtn.addEventListener('click', function () {
+        var groups = document.querySelectorAll('.file-group');
+        var anyExpanded = Array.prototype.some.call(groups, function (g) {
+          return !g.classList.contains('collapsed');
+        });
+        groups.forEach(function (g) { g.classList.toggle('collapsed', anyExpanded); });
+        toggleTablesLabel.textContent = anyExpanded ? 'Expand all' : 'Collapse all';
+      });
+      // ── Severity / fixability filters ──────────────────────────────────────
+      var filterState = { error: true, warning: true, fixable: true, manual: true };
+      function applyFilters() {
+        document.querySelectorAll('.issue-item').forEach(function (item) {
+          var sev = item.getAttribute('data-severity');
+          var fixKey = item.getAttribute('data-fixable') === 'true' ? 'fixable' : 'manual';
+          var visible = filterState[sev] !== false && filterState[fixKey] !== false;
+          item.style.display = visible ? '' : 'none';
+        });
+        document.querySelectorAll('.file-group').forEach(function (group) {
+          var items = group.querySelectorAll('.issue-item');
+          var allHidden = Array.prototype.every.call(items, function (i) { return i.style.display === 'none'; });
+          group.classList.toggle('all-hidden', allHidden);
+        });
+      }
+      document.querySelectorAll('.filter-pill').forEach(function (pill) {
+        pill.addEventListener('click', function () {
+          var key = pill.getAttribute('data-value');
+          filterState[key] = !filterState[key];
+          pill.classList.toggle('pill-off', !filterState[key]);
+          applyFilters();
+        });
       });
       var fixAll = document.getElementById('fixAllBtn');
       if (fixAll) {

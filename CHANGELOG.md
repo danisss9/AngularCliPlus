@@ -4,6 +4,23 @@ All notable changes to the "angular-cli-plus" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.8.0]
+
+### Added
+
+- **Collapse/expand tables** in the `Lint`, `Optimizations`, and `Memory Leaks` panels. Each file/rule group now has a chevron toggle (the whole group header is clickable), plus a **Collapse all / Expand all** button in the panel header that flips its label to match the current state. Groups start expanded, preserving the previous look.
+- **Severity & fixability filters** in the `Lint` panel. A **Show:** bar exposes toggle pills for **errors** / **warnings** and **fixable** / **manual** problems. The two dimensions combine (e.g. turn off *Warnings* and *Manual* to see only auto-fixable errors); groups whose issues are all filtered out are hidden. A pill pair only appears when it actually splits the list.
+- **All projects** option in the `Lint` panel's project picker. Selecting it runs `ng lint` with no `--project`, linting every project and merging the results into one panel (the project-wide **Fix all auto-fixable** honours the same scope). Shown only when the workspace has more than one project.
+
+### Changed
+
+- **A new tab per run for analysis panels.** `Lint`, `Build Errors`, `Optimizations`, and `Memory Leaks` now open their own Webview tab on each run instead of replacing a shared one, so you can compare results across projects/files side by side. The scope is shown in the tab title (e.g. `Lint: my-app (12)`, `Optimizations: app.component.ts (3)`). Each panel's **Reload** button (and the lint fix actions) refresh that same tab in place. `Update Packages` and `Show Signal Graph` likewise open a fresh tab per run.
+
+### Fixed
+
+- **Reload targeting the wrong command.** When a panel tab was reused for a second run, its **Reload** button (and, for Optimizations/Memory Leaks, the whole reload flow) kept re-running the *first* command's scope because the message handler was bound once and closed over the original scope. Each run now owns its tab and handler, so Reload always matches the tab it lives in.
+- **Webview scroll jumping to the top** after clicking a source link and returning to the panel. `Lint`, `Build Errors`, `Optimizations`, and `Memory Leaks` now persist and restore the scroll position across visibility changes, so returning from a file keeps your place.
+
 ## [1.7.0]
 
 ### Added

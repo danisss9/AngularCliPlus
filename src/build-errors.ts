@@ -75,7 +75,8 @@ export async function checkBuildErrors(): Promise<void> {
   }
   setLastProject(COMMAND_KEY, projectName);
 
-  await runAndCheckBuildErrors(workspaceRoot, projectName, projects[projectName]);
+  const errors = await runAndCheckBuildErrors(workspaceRoot, projectName, projects[projectName]);
+  createBuildErrorsPanel(errors, workspaceRoot, projectName, projects[projectName]);
 }
 
 // ── Build Execution ────────────────────────────────────────────────────────────
@@ -84,7 +85,7 @@ async function runAndCheckBuildErrors(
   workspaceRoot: string,
   projectName: string,
   projectDef: AngularProject,
-) {
+): Promise<BuildError[]> {
   let capturedOutput = '';
   let builderType: 'esbuild' | 'webpack' = 'webpack';
 
@@ -129,8 +130,7 @@ async function runAndCheckBuildErrors(
     },
   );
 
-  const errors = parseBuildErrors(capturedOutput, builderType);
-  showBuildErrorsWebview(errors, workspaceRoot, projectName);
+  return parseBuildErrors(capturedOutput, builderType);
 }
 
 // ── Parsing ────────────────────────────────────────────────────────────────────
@@ -228,86 +228,88 @@ function parseBuildErrors(rawOutput: string, builderType: 'esbuild' | 'webpack')
 
 // ── Webview ────────────────────────────────────────────────────────────────────
 
-let activePanel: vscode.WebviewPanel | undefined;
+function buildErrorsTitle(projectName: string, count: number): string {
+  return `Build Errors: ${projectName} (${count})`;
+}
 
-function showBuildErrorsWebview(
+/**
+ * Creates a fresh panel for the given results. Each run opens its own tab; the
+ * panel's Reload button re-runs the build and refreshes that same tab in place.
+ */
+function createBuildErrorsPanel(
   errors: BuildError[],
   workspaceRoot: string,
   projectName: string,
+  projectDef: AngularProject,
 ): void {
-  const config = vscode.workspace.getConfiguration('angularCliPlus');
-  const autoFixEnabled = config.get<boolean>('copilot.autoFixEnabled', true);
+  const autoFixEnabled = (): boolean =>
+    vscode.workspace
+      .getConfiguration('angularCliPlus')
+      .get<boolean>('copilot.autoFixEnabled', true);
 
-  if (activePanel) {
-    activePanel.title = `Build Errors (${errors.length})`;
-    activePanel.webview.html = buildWebviewHtml(errors, workspaceRoot, projectName, autoFixEnabled);
-    activePanel.reveal(undefined, true);
-  } else {
-    activePanel = vscode.window.createWebviewPanel(
-      'angularBuildErrors',
-      `Build Errors (${errors.length})`,
-      vscode.ViewColumn.Beside,
-      { enableScripts: true, retainContextWhenHidden: true },
-    );
-    activePanel.webview.html = buildWebviewHtml(errors, workspaceRoot, projectName, autoFixEnabled);
-    activePanel.onDidDispose(() => {
-      activePanel = undefined;
-    });
+  const panel = vscode.window.createWebviewPanel(
+    'angularBuildErrors',
+    buildErrorsTitle(projectName, errors.length),
+    vscode.ViewColumn.Beside,
+    { enableScripts: true, retainContextWhenHidden: true },
+  );
+  panel.webview.html = buildWebviewHtml(errors, workspaceRoot, projectName, autoFixEnabled());
 
-    activePanel.webview.onDidReceiveMessage(
-      async (message: {
-        command: string;
-        file: string;
-        line: number;
-        kind?: string;
-        kindLabel?: string;
-        snippet?: string;
-        description?: string;
-        fixHint?: string;
-        issues?: Array<{ line: number; kind: string; kindLabel: string; snippet: string; description: string; fixHint: string }>;
-      }) => {
-        if (message.command === 'openFile') {
-          const uri = vscode.Uri.file(path.join(workspaceRoot, message.file));
-          try {
-            await vscode.window.showTextDocument(uri, {
-              selection: new vscode.Range(
-                new vscode.Position(message.line - 1, 0),
-                new vscode.Position(message.line - 1, 0),
-              ),
-              preview: false,
-            });
-          } catch (e) {
-            vscode.window.showErrorMessage(`Could not open file: ${message.file}`);
-          }
-        } else if (message.command === 'reload') {
-          const resolved = await resolveWorkspaceAndAngularJson();
-          if (resolved) {
-            await runAndCheckBuildErrors(
-              workspaceRoot,
-              projectName,
-              resolved.projects[projectName],
-            );
-          }
-        } else if (message.command === 'copilotFix') {
-          await sendCopilotAutoFix({
-            file: message.file,
-            line: message.line,
-            kind: message.kind ?? '',
-            kindLabel: message.kindLabel ?? message.kind ?? '',
-            snippet: message.snippet ?? '',
-            description: message.description ?? '',
-            fixHint: message.fixHint ?? '',
+  panel.webview.onDidReceiveMessage(
+    async (message: {
+      command: string;
+      file: string;
+      line: number;
+      kind?: string;
+      kindLabel?: string;
+      snippet?: string;
+      description?: string;
+      fixHint?: string;
+      issues?: Array<{ line: number; kind: string; kindLabel: string; snippet: string; description: string; fixHint: string }>;
+    }) => {
+      if (message.command === 'openFile') {
+        const uri = vscode.Uri.file(path.join(workspaceRoot, message.file));
+        try {
+          await vscode.window.showTextDocument(uri, {
+            selection: new vscode.Range(
+              new vscode.Position(message.line - 1, 0),
+              new vscode.Position(message.line - 1, 0),
+            ),
+            preview: false,
           });
-        } else if (message.command === 'copilotFixFile') {
-          await sendCopilotAutoFixForFile({
-            file: message.file,
-            issues: message.issues ?? [],
-            issueType: 'Build Error',
-          });
+        } catch (e) {
+          vscode.window.showErrorMessage(`Could not open file: ${message.file}`);
         }
-      },
-    );
-  }
+      } else if (message.command === 'reload') {
+        const resolved = await resolveWorkspaceAndAngularJson();
+        if (resolved && resolved.projects[projectName]) {
+          const fresh = await runAndCheckBuildErrors(
+            workspaceRoot,
+            projectName,
+            resolved.projects[projectName],
+          );
+          panel.title = buildErrorsTitle(projectName, fresh.length);
+          panel.webview.html = buildWebviewHtml(fresh, workspaceRoot, projectName, autoFixEnabled());
+        }
+      } else if (message.command === 'copilotFix') {
+        await sendCopilotAutoFix({
+          file: message.file,
+          line: message.line,
+          kind: message.kind ?? '',
+          kindLabel: message.kindLabel ?? message.kind ?? '',
+          snippet: message.snippet ?? '',
+          description: message.description ?? '',
+          fixHint: message.fixHint ?? '',
+        });
+      } else if (message.command === 'copilotFixFile') {
+        await sendCopilotAutoFixForFile({
+          file: message.file,
+          issues: message.issues ?? [],
+          issueType: 'Build Error',
+        });
+      }
+    },
+  );
 }
 
 function escapeHtml(str: string): string {
@@ -799,6 +801,34 @@ function buildWebviewHtml(
     </div>
     <script>
       const vscode = acquireVsCodeApi();
+
+      // Preserve scroll position when jumping to a file and back: VS Code can
+      // reset a webview's scroll when a text editor takes over its column.
+      (function () {
+        function saveScroll() {
+          var s = vscode.getState() || {};
+          s.scrollY = window.scrollY;
+          vscode.setState(s);
+        }
+        function restoreScroll() {
+          var s = vscode.getState();
+          if (s && typeof s.scrollY === 'number') {
+            window.scrollTo(0, s.scrollY);
+          }
+        }
+        var timer;
+        window.addEventListener('scroll', function () {
+          clearTimeout(timer);
+          timer = setTimeout(saveScroll, 100);
+        }, { passive: true });
+        document.addEventListener('visibilitychange', function () {
+          if (document.visibilityState === 'visible') {
+            requestAnimationFrame(restoreScroll);
+          }
+        });
+        restoreScroll();
+      })();
+
       document.querySelectorAll('a[data-file]').forEach(function(link) {
         link.addEventListener('click', function(e) {
           e.preventDefault();

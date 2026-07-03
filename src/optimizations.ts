@@ -66,9 +66,11 @@ export async function checkOptimizations(): Promise<void> {
   // ── Resolve file list from selection ──────────────────────────────────────
 
   let filesToCheck: string[] = [];
+  let scopeLabel = '';
 
   if (CURRENT_FILE_LABEL && picked === CURRENT_FILE_LABEL) {
     filesToCheck = [activeFile!];
+    scopeLabel = path.basename(activeFile!);
   } else {
     let projectName: string;
     if (CURRENT_PROJECT_LABEL && picked === CURRENT_PROJECT_LABEL) {
@@ -80,6 +82,7 @@ export async function checkOptimizations(): Promise<void> {
       projectName = picked;
       setLastProject(COMMAND_KEY, projectName);
     }
+    scopeLabel = projectName;
 
     const project = projects[projectName];
     const projectRoot = project?.sourceRoot ?? project?.root ?? projectName;
@@ -130,102 +133,100 @@ export async function checkOptimizations(): Promise<void> {
     return;
   }
 
-  showOptimizationsWebview(results, workspaceRoot, filesToCheck);
+  showOptimizationsWebview(results, workspaceRoot, filesToCheck, scopeLabel);
 }
 
 // ── Webview ────────────────────────────────────────────────────────────────────
 
-let activePanel: vscode.WebviewPanel | undefined;
+function optimizationsTitle(scopeLabel: string, count: number): string {
+  return `Optimizations: ${scopeLabel} (${count})`;
+}
 
+/**
+ * Creates a fresh panel for the given results. Each run opens its own tab; the
+ * panel's Reload button re-scans the same files and refreshes that tab in place.
+ */
 function showOptimizationsWebview(
   issues: OptimizationLocation[],
   workspaceRoot: string,
   filesToCheck: string[],
+  scopeLabel: string,
 ): void {
-  const config = vscode.workspace.getConfiguration('angularCliPlus');
-  const autoFixEnabled = config.get<boolean>('copilot.autoFixEnabled', true);
+  const autoFixEnabled = (): boolean =>
+    vscode.workspace
+      .getConfiguration('angularCliPlus')
+      .get<boolean>('copilot.autoFixEnabled', true);
 
-  if (activePanel) {
-    activePanel.title = `Optimizations (${issues.length})`;
-    activePanel.webview.html = buildWebviewHtml(issues, workspaceRoot, autoFixEnabled);
-    activePanel.reveal(undefined, true);
-  } else {
-    activePanel = vscode.window.createWebviewPanel(
-      'angularOptimizations',
-      `Optimizations (${issues.length})`,
-      vscode.ViewColumn.Beside,
-      { enableScripts: true, retainContextWhenHidden: true },
-    );
-    activePanel.webview.html = buildWebviewHtml(issues, workspaceRoot, autoFixEnabled);
-    activePanel.onDidDispose(() => {
-      activePanel = undefined;
-    });
+  const panel = vscode.window.createWebviewPanel(
+    'angularOptimizations',
+    optimizationsTitle(scopeLabel, issues.length),
+    vscode.ViewColumn.Beside,
+    { enableScripts: true, retainContextWhenHidden: true },
+  );
+  panel.webview.html = buildWebviewHtml(issues, workspaceRoot, autoFixEnabled());
 
-    activePanel.webview.onDidReceiveMessage(
-      async (message: {
-        command: string;
-        file: string;
-        line: number;
-        kind?: string;
-        kindLabel?: string;
-        snippet?: string;
-        description?: string;
-        fixHint?: string;
-        issues?: Array<{ line: number; kind: string; kindLabel: string; snippet: string; description: string; fixHint: string }>;
-      }) => {
-        if (message.command === 'openFile') {
-          const uri = vscode.Uri.file(message.file);
-          void vscode.window.showTextDocument(uri, {
-            selection: new vscode.Range(
-              new vscode.Position(message.line - 1, 0),
-              new vscode.Position(message.line - 1, 0),
-            ),
-            preview: false,
-          });
-        } else if (message.command === 'reload') {
-          const freshIssues = await vscode.window.withProgress(
-            {
-              location: vscode.ProgressLocation.Notification,
-              title: 'Checking for optimizations…',
-              cancellable: false,
-            },
-            async (progress) => {
-              const found: OptimizationLocation[] = [];
-              const total = filesToCheck.length;
-              for (let i = 0; i < total; i++) {
-                progress.report({
-                  increment: (1 / total) * 100,
-                  message: path.basename(filesToCheck[i]),
-                });
-                found.push(...findOptimizationsInFile(filesToCheck[i]));
-              }
-              return found;
-            },
-          );
-          if (activePanel) {
-            activePanel.title = `Optimizations (${freshIssues.length})`;
-            activePanel.webview.html = buildWebviewHtml(freshIssues, workspaceRoot, autoFixEnabled);
-          }
-        } else if (message.command === 'copilotFix') {
-          await sendCopilotAutoFix({
-            file: message.file,
-            line: message.line,
-            kind: message.kind ?? '',
-            kindLabel: message.kindLabel ?? message.kind ?? '',
-            snippet: message.snippet ?? '',
-            description: message.description ?? '',
-            fixHint: message.fixHint ?? '',
-          });
-        } else if (message.command === 'copilotFixFile') {
-          await sendCopilotAutoFixForFile({
-            file: message.file,
-            issues: message.issues ?? [],
-            issueType: 'Optimization',
-          });
-        }
-      },
-    );
-  }
+  panel.webview.onDidReceiveMessage(
+    async (message: {
+      command: string;
+      file: string;
+      line: number;
+      kind?: string;
+      kindLabel?: string;
+      snippet?: string;
+      description?: string;
+      fixHint?: string;
+      issues?: Array<{ line: number; kind: string; kindLabel: string; snippet: string; description: string; fixHint: string }>;
+    }) => {
+      if (message.command === 'openFile') {
+        const uri = vscode.Uri.file(message.file);
+        void vscode.window.showTextDocument(uri, {
+          selection: new vscode.Range(
+            new vscode.Position(message.line - 1, 0),
+            new vscode.Position(message.line - 1, 0),
+          ),
+          preview: false,
+        });
+      } else if (message.command === 'reload') {
+        const freshIssues = await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: 'Checking for optimizations…',
+            cancellable: false,
+          },
+          async (progress) => {
+            const found: OptimizationLocation[] = [];
+            const total = filesToCheck.length;
+            for (let i = 0; i < total; i++) {
+              progress.report({
+                increment: (1 / total) * 100,
+                message: path.basename(filesToCheck[i]),
+              });
+              found.push(...findOptimizationsInFile(filesToCheck[i]));
+            }
+            return found;
+          },
+        );
+        panel.title = optimizationsTitle(scopeLabel, freshIssues.length);
+        panel.webview.html = buildWebviewHtml(freshIssues, workspaceRoot, autoFixEnabled());
+      } else if (message.command === 'copilotFix') {
+        await sendCopilotAutoFix({
+          file: message.file,
+          line: message.line,
+          kind: message.kind ?? '',
+          kindLabel: message.kindLabel ?? message.kind ?? '',
+          snippet: message.snippet ?? '',
+          description: message.description ?? '',
+          fixHint: message.fixHint ?? '',
+        });
+      } else if (message.command === 'copilotFixFile') {
+        await sendCopilotAutoFixForFile({
+          file: message.file,
+          issues: message.issues ?? [],
+          issueType: 'Optimization',
+        });
+      }
+    },
+  );
 }
 
 function buildWebviewHtml(issues: OptimizationLocation[], workspaceRoot: string, autoFixEnabled: boolean): string {
@@ -353,6 +354,11 @@ function buildWebviewHtml(issues: OptimizationLocation[], workspaceRoot: string,
           <span class="file-path"><span class="file-dir">${escapeHtml(dir)}</span><span class="file-name">${escapeHtml(filename)}</span></span>
           <span class="file-badge">${countLabel}</span>
           ${fileFixAllBtn}
+          <button class="toggle-group-btn" title="Collapse/expand this file">
+            <svg class="chevron" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M5.5 3L10.5 8L5.5 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
         </div>
         <div class="issue-list leak-list">${issueRows}</div>
       </div>`;
@@ -608,6 +614,47 @@ function buildWebviewHtml(issues: OptimizationLocation[], workspaceRoot: string,
       background: var(--vscode-sideBarSectionHeader-background, var(--vscode-sideBar-background, rgba(128,128,128,0.08)));
       border-bottom: 1px solid var(--vscode-panel-border);
       user-select: none;
+      cursor: pointer;
+    }
+
+    .file-header:hover {
+      background: var(--vscode-list-hoverBackground, var(--vscode-sideBarSectionHeader-background, rgba(128,128,128,0.12)));
+    }
+
+    .toggle-group-btn {
+      flex-shrink: 0;
+      background: transparent;
+      border: none;
+      color: var(--vscode-icon-foreground);
+      cursor: pointer;
+      padding: 2px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 3px;
+    }
+
+    .toggle-group-btn:hover {
+      background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.2));
+    }
+
+    .chevron {
+      width: 16px;
+      height: 16px;
+      transition: transform 0.15s ease-in-out;
+      transform: rotate(90deg);
+    }
+
+    .file-group.collapsed .chevron {
+      transform: rotate(0deg);
+    }
+
+    .file-group.collapsed .issue-list {
+      display: none;
+    }
+
+    .file-group.collapsed .file-header {
+      border-bottom: none;
     }
 
     .file-icon {
@@ -724,6 +771,25 @@ function buildWebviewHtml(issues: OptimizationLocation[], workspaceRoot: string,
       background: var(--vscode-button-secondaryHoverBackground, rgba(128,128,128,0.25));
     }
 
+    .collapse-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 10px;
+      border: 1px solid var(--vscode-button-border, transparent);
+      border-radius: 4px;
+      background: var(--vscode-button-secondaryBackground, rgba(128,128,128,0.15));
+      color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+      font-size: 0.8em;
+      font-family: var(--vscode-font-family);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .collapse-btn:hover {
+      background: var(--vscode-button-secondaryHoverBackground, rgba(128,128,128,0.25));
+    }
+
     .reload-btn.spinning svg {
       animation: spin 0.7s linear infinite;
     }
@@ -825,6 +891,12 @@ function buildWebviewHtml(issues: OptimizationLocation[], workspaceRoot: string,
           <path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c1.8 0 3.4.87 4.4 2.2L11 6h3.5V2.5L13 4a7 7 0 1 0 .5 4H13.5z" fill="currentColor"/>
         </svg>
         Reload
+      </button>
+      <button class="collapse-btn" id="toggleTablesBtn" title="Collapse or expand all files">
+        <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" width="13" height="13">
+          <path d="M2 4.5h12M2 8h12M2 11.5h12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+        </svg>
+        <span id="toggleTablesLabel">Collapse all</span>
       </button>
     </div>
     <p class="stats">${statsLabel}</p>
@@ -936,6 +1008,34 @@ function buildWebviewHtml(issues: OptimizationLocation[], workspaceRoot: string,
 
   <script>
     const vscode = acquireVsCodeApi();
+
+    // Preserve scroll position when jumping to a file and back: VS Code can
+    // reset a webview's scroll when a text editor takes over its column.
+    (function () {
+      function saveScroll() {
+        var s = vscode.getState() || {};
+        s.scrollY = window.scrollY;
+        vscode.setState(s);
+      }
+      function restoreScroll() {
+        var s = vscode.getState();
+        if (s && typeof s.scrollY === 'number') {
+          window.scrollTo(0, s.scrollY);
+        }
+      }
+      var timer;
+      window.addEventListener('scroll', function () {
+        clearTimeout(timer);
+        timer = setTimeout(saveScroll, 100);
+      }, { passive: true });
+      document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState === 'visible') {
+          requestAnimationFrame(restoreScroll);
+        }
+      });
+      restoreScroll();
+    })();
+
     document.querySelectorAll('a[data-file]').forEach(function(link) {
       link.addEventListener('click', function(e) {
         e.preventDefault();
@@ -984,6 +1084,25 @@ function buildWebviewHtml(issues: OptimizationLocation[], workspaceRoot: string,
           issues: JSON.parse(btn.getAttribute('data-issues') || '[]')
         });
       });
+    });
+
+    // ── Collapse / expand file groups ─────────────────────────────────────────
+    document.querySelectorAll('.file-group .file-header').forEach(function(header) {
+      header.addEventListener('click', function(e) {
+        if (e.target.closest('a, .copilot-fix-file-btn')) { return; }
+        header.parentElement.classList.toggle('collapsed');
+      });
+    });
+
+    var toggleTablesBtn = document.getElementById('toggleTablesBtn');
+    var toggleTablesLabel = document.getElementById('toggleTablesLabel');
+    toggleTablesBtn.addEventListener('click', function() {
+      var groups = document.querySelectorAll('.file-group');
+      var anyExpanded = Array.prototype.some.call(groups, function(g) {
+        return !g.classList.contains('collapsed');
+      });
+      groups.forEach(function(g) { g.classList.toggle('collapsed', anyExpanded); });
+      toggleTablesLabel.textContent = anyExpanded ? 'Expand all' : 'Collapse all';
     });
 
     // ── Kind filter toggles ──────────────────────────────────────────────────

@@ -4,64 +4,51 @@ import * as fs from 'fs';
 import { getExtensionContext } from './state';
 import type { SignalGraphData, SignalKind } from './signals-ast';
 
-// ── State ──────────────────────────────────────────────────────────────────────
-
-let activePanel: vscode.WebviewPanel | undefined;
-
 // ── Entry point ────────────────────────────────────────────────────────────────
 
+/** Each run opens its own tab (the graph is scoped to a specific file/class). */
 export function showSignalGraphWebview(data: SignalGraphData): void {
   const context = getExtensionContext();
 
-  if (activePanel) {
-    activePanel.title = buildTitle(data);
-    activePanel.webview.html = buildWebviewHtml(data, activePanel.webview, context.extensionUri);
-    activePanel.reveal(undefined, true);
-  } else {
-    activePanel = vscode.window.createWebviewPanel(
-      'angularSignalGraph',
-      buildTitle(data),
-      vscode.ViewColumn.Beside,
-      {
-        enableScripts: true,
-        retainContextWhenHidden: true,
-        localResourceRoots: [
-          vscode.Uri.joinPath(context.extensionUri, 'dist'),
-          ...(vscode.workspace.workspaceFolders ? vscode.workspace.workspaceFolders.map(f => f.uri) : []),
-        ],
-      },
-    );
+  const panel = vscode.window.createWebviewPanel(
+    'angularSignalGraph',
+    buildTitle(data),
+    vscode.ViewColumn.Beside,
+    {
+      enableScripts: true,
+      retainContextWhenHidden: true,
+      localResourceRoots: [
+        vscode.Uri.joinPath(context.extensionUri, 'dist'),
+        ...(vscode.workspace.workspaceFolders ? vscode.workspace.workspaceFolders.map(f => f.uri) : []),
+      ],
+    },
+  );
 
-    activePanel.webview.html = buildWebviewHtml(data, activePanel.webview, context.extensionUri);
+  panel.webview.html = buildWebviewHtml(data, panel.webview, context.extensionUri);
 
-    activePanel.onDidDispose(() => {
-      activePanel = undefined;
-    });
-
-    activePanel.webview.onDidReceiveMessage(
-      async (message: { command: string; file: string; line: number }) => {
-        if (message.command === 'openFile') {
-          const uri = vscode.Uri.file(message.file);
-          await vscode.window.showTextDocument(uri, {
-            selection: new vscode.Range(
-              new vscode.Position(message.line - 1, 0),
-              new vscode.Position(message.line - 1, 0),
-            ),
-            preview: false,
-          });
-        } else if (message.command === 'installMermaid') {
-          const workspaceFolder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(data.file));
-          if (workspaceFolder) {
-            const terminal = vscode.window.createTerminal('Install Mermaid');
-            terminal.show();
-            terminal.sendText('npm install mermaid -D');
-          } else {
-            vscode.window.showErrorMessage('Could not determine workspace folder to install Mermaid.');
-          }
+  panel.webview.onDidReceiveMessage(
+    async (message: { command: string; file: string; line: number }) => {
+      if (message.command === 'openFile') {
+        const uri = vscode.Uri.file(message.file);
+        await vscode.window.showTextDocument(uri, {
+          selection: new vscode.Range(
+            new vscode.Position(message.line - 1, 0),
+            new vscode.Position(message.line - 1, 0),
+          ),
+          preview: false,
+        });
+      } else if (message.command === 'installMermaid') {
+        const workspaceFolder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(data.file));
+        if (workspaceFolder) {
+          const terminal = vscode.window.createTerminal('Install Mermaid');
+          terminal.show();
+          terminal.sendText('npm install mermaid -D');
+        } else {
+          vscode.window.showErrorMessage('Could not determine workspace folder to install Mermaid.');
         }
-      },
-    );
-  }
+      }
+    },
+  );
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────

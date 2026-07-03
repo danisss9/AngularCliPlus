@@ -50,7 +50,7 @@ Detection runs via `ng version` (preferring the workspace-local CLI from `node_m
 | Angular: Build Project (Watch) | `Ctrl+Shift+A W`   | Runs `ng build --watch` with the configured watch configuration                                                                                                                              |
 | Angular: Test Project          | `Ctrl+Shift+A T`   | Runs `ng test` for a project, all projects, or the currently open spec file                                                                                                                  |
 | Angular: Restart Serve         | `Ctrl+Shift+A R`   | Restarts any active serve/build-watch terminal; re-attaches the debugger if a debug session was running                                                                                      |
-| Angular: Lint Project          | `Ctrl+Shift+A L`   | Runs `ng lint --format json` for a selected project and shows the results in an interactive Webview panel with sort-by-file/sort-by-rule grouping and native `eslint --fix` + Copilot auto-fix buttons |
+| Angular: Lint Project          | `Ctrl+Shift+A L`   | Runs `ng lint --format json` for a selected project (or all projects) and shows the results in an interactive Webview panel with sort-by-file/sort-by-rule grouping, severity/fixability filters, collapsible groups, and native `eslint --fix` + Copilot auto-fix buttons |
 | Angular: Update Packages       | `Ctrl+Shift+A U`   | Checks for updates with `ng update` and `npm-check-updates` and shows them in an interactive Webview panel with separate tables for Angular and other packages, each with selective update buttons |
 | Angular: Switch Component File | `Ctrl+Shift+A Tab` | Quickly switch between a component's `.ts`, `.html`, `.scss`/`.css`, and `.spec.ts` files via a QuickPick                                                                                    |
 | Angular: Run npm Script        | `Ctrl+Shift+A N`   | Shows a searchable list of all npm scripts from `package.json` and runs the selected one in a terminal                                                                                       |
@@ -81,7 +81,7 @@ Analyses Angular source files in the workspace to detect common performance pitf
 | High Frequency Event       | High-frequency DOM events (`scroll`, `mousemove`, etc.) bound directly in the template                           |
 | Complex Template           | Templates exceeding a high number of bindings and directives                                                     |
 
-Like the Memory Leaks checker, the panel features file-grouped results with clickable source links, per-kind pill filters, a stats bar, and a **Reload** button to re-run the analysis.
+Like the Memory Leaks checker, the panel features file-grouped results with clickable source links, per-kind pill filters, collapsible groups (with a **Collapse all / Expand all** toggle), a stats bar, and a **Reload** button to re-run the analysis. Each run opens its own tab, titled with the scope you picked (a project name or the current file).
 
 ### Angular: Check Memory Leaks (`Ctrl+Shift+A M`)
 
@@ -100,7 +100,7 @@ Analyses Angular source files in the workspace using the TypeScript Compiler API
 | Retained DOM reference      | `document.getElementById()` / `querySelector()` / etc. result stored on `this` and not nulled in `ngOnDestroy` |
 | Incomplete destroy subject  | A `Subject` used in `takeUntil()` that is never `.next()`-ed and `.complete()`-ed in `ngOnDestroy`             |
 
-**Panel features:** file-grouped results with clickable source links, colour-coded kind badges, per-kind pill filters, a stats bar, and a **Reload** button that re-runs the analysis and refreshes the same panel without opening a new one.
+**Panel features:** file-grouped results with clickable source links, colour-coded kind badges, per-kind pill filters, collapsible groups (with a **Collapse all / Expand all** toggle), a stats bar, and a **Reload** button that re-runs the analysis and refreshes that tab in place. Each run opens its own tab, titled with the scope you picked (a project name or the current file).
 
 On launch a QuickPick lets you choose the scope: the whole workspace, a single workspace folder, or a custom glob pattern.
 
@@ -141,11 +141,14 @@ Runs a full Angular build in the background and parses the output for TypeScript
 Runs `ng lint --format json` for a selected project, parses the ESLint results, and presents every problem in an interactive Webview panel.
 
 **Key features:**
+- **Project scope, including all projects**: pick a single project, or choose **All projects** (shown when the workspace has more than one) to run `ng lint` with no `--project` and review every project's problems in one panel.
 - **Sort by file or by problem type**: toggle the header between **Group by file** and **Group by rule**. Switching re-renders the panel instantly from the cached results — no re-lint required.
+- **Filter by severity & fixability**: the **Show:** bar has toggle pills for **errors** / **warnings** and **fixable** / **manual** problems. The dimensions combine (e.g. hide *Warnings* and *Manual* to see only auto-fixable errors), and a pill pair only appears when it actually splits the list.
+- **Collapse/expand groups**: click any file/rule header (or its chevron) to collapse that group, or use **Collapse all / Expand all** in the header.
 - **Hybrid auto-fix**: ESLint reports which problems are auto-fixable, so the panel adapts:
   - Auto-fixable problems show a native **Fix** button that runs `eslint --fix`. Fix a single issue, a whole file ("Fix file" / per-rule "Fix"), or the entire project with **Fix all auto-fixable** (`ng lint --fix`). After every fix the panel re-lints automatically so resolved problems disappear.
   - Problems that can't be auto-fixed show an **Auto Fix with Copilot** (✨) button that opens Copilot Chat with a context-aware prompt.
-- **Deep links & details**: each row shows its severity (error/warning) and rule id, with a clickable link that jumps straight to the source location. A **Reload** button re-runs the lint in place.
+- **Deep links & details**: each row shows its severity (error/warning) and rule id, with a clickable link that jumps straight to the source location. A **Reload** button re-runs the lint in place, and each run opens its own tab (titled with the scope) so you can compare projects side by side.
 - **Guided setup**: if the selected project has no lint target, the panel offers a one-click **Add angular-eslint** button that runs `ng add angular-eslint`.
 
 ### Angular: Update Packages (`Ctrl+Shift+A U`)

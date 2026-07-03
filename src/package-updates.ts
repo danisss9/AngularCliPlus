@@ -20,16 +20,23 @@ export async function showPackageUpdates(): Promise<void> {
   if (!resolved) {
     return;
   }
-  await runChecks(resolved.workspaceRoot);
+  const results = await runChecks(resolved.workspaceRoot);
+  createPackageUpdatesPanel(resolved.workspaceRoot, results);
 }
 
 // ── Checks ───────────────────────────────────────────────────────────────────
 
+interface UpdateResults {
+  angular: UpdatablePackage[];
+  other: UpdatablePackage[];
+  ncuFailed: boolean;
+}
+
 /**
  * Runs `ng update` (Angular packages) and `npm-check-updates` (everything else)
- * and renders both result sets in the webview.
+ * and returns both result sets.
  */
-async function runChecks(workspaceRoot: string): Promise<void> {
+async function runChecks(workspaceRoot: string): Promise<UpdateResults> {
   let angular: UpdatablePackage[] = [];
   let other: UpdatablePackage[] | null = [];
 
@@ -57,7 +64,7 @@ async function runChecks(workspaceRoot: string): Promise<void> {
   const angularNames = new Set(angular.map((a) => a.name));
   const otherList = other === null ? [] : other.filter((o) => !angularNames.has(o.name));
 
-  showWebview(workspaceRoot, angular, otherList, other === null);
+  return { angular, other: otherList, ncuFailed: other === null };
 }
 
 /**
@@ -187,49 +194,56 @@ async function updateOtherPackages(names: string[], workspaceRoot: string): Prom
 
 // ── Webview ──────────────────────────────────────────────────────────────────
 
-let activePanel: vscode.WebviewPanel | undefined;
-let lastWorkspaceRoot = '';
+/** Per-panel state. Each run opens its own tab, tracked independently. */
+interface PackagePanel {
+  panel: vscode.WebviewPanel;
+  workspaceRoot: string;
+}
 
 interface WebviewMessage {
   command: string;
   packages?: string[];
 }
 
-function showWebview(
-  workspaceRoot: string,
-  angular: UpdatablePackage[],
-  other: UpdatablePackage[],
-  ncuFailed: boolean,
-): void {
-  lastWorkspaceRoot = workspaceRoot;
-
-  const total = angular.length + other.length;
-  const html = buildWebviewHtml(angular, other, ncuFailed);
-  const title = `Package Updates (${total})`;
-
-  if (activePanel) {
-    activePanel.title = title;
-    activePanel.webview.html = html;
-    activePanel.reveal(undefined, true);
-  } else {
-    activePanel = vscode.window.createWebviewPanel('angularPackageUpdates', title, vscode.ViewColumn.Beside, {
-      enableScripts: true,
-      retainContextWhenHidden: true,
-    });
-    activePanel.webview.html = html;
-    activePanel.onDidDispose(() => {
-      activePanel = undefined;
-    });
-    activePanel.webview.onDidReceiveMessage((m: WebviewMessage) => {
-      void handleMessage(m);
-    });
-  }
+/**
+ * Creates a fresh panel for the given results. Each run opens its own tab; the
+ * panel's Reload button (and the update actions) refresh that same tab in place.
+ */
+function createPackageUpdatesPanel(workspaceRoot: string, results: UpdateResults): void {
+  const state: PackagePanel = {
+    panel: vscode.window.createWebviewPanel(
+      'angularPackageUpdates',
+      packageUpdatesTitle(results),
+      vscode.ViewColumn.Beside,
+      { enableScripts: true, retainContextWhenHidden: true },
+    ),
+    workspaceRoot,
+  };
+  renderInto(state, results);
+  state.panel.webview.onDidReceiveMessage((m: WebviewMessage) => {
+    void handleMessage(state, m);
+  });
 }
 
-async function handleMessage(message: WebviewMessage): Promise<void> {
+function packageUpdatesTitle(results: UpdateResults): string {
+  return `Package Updates (${results.angular.length + results.other.length})`;
+}
+
+function renderInto(state: PackagePanel, results: UpdateResults): void {
+  state.panel.title = packageUpdatesTitle(results);
+  state.panel.webview.html = buildWebviewHtml(results.angular, results.other, results.ncuFailed);
+}
+
+/** Re-runs the update checks and refreshes the panel in place. */
+async function reloadPanel(state: PackagePanel): Promise<void> {
+  const results = await runChecks(state.workspaceRoot);
+  renderInto(state, results);
+}
+
+async function handleMessage(state: PackagePanel, message: WebviewMessage): Promise<void> {
   switch (message.command) {
     case 'reload':
-      await runChecks(lastWorkspaceRoot);
+      await reloadPanel(state);
       return;
     case 'updateAngular': {
       const packages = message.packages ?? [];
@@ -238,8 +252,8 @@ async function handleMessage(message: WebviewMessage): Promise<void> {
       }
       const config = vscode.workspace.getConfiguration('angularCliPlus');
       const allowDirty = config.get<boolean>('update.allowDirty', false);
-      await runNgUpdate(packages, allowDirty, false, lastWorkspaceRoot);
-      await runChecks(lastWorkspaceRoot);
+      await runNgUpdate(packages, allowDirty, false, state.workspaceRoot);
+      await reloadPanel(state);
       return;
     }
     case 'updateOther': {
@@ -247,8 +261,8 @@ async function handleMessage(message: WebviewMessage): Promise<void> {
       if (packages.length === 0) {
         return;
       }
-      await updateOtherPackages(packages, lastWorkspaceRoot);
-      await runChecks(lastWorkspaceRoot);
+      await updateOtherPackages(packages, state.workspaceRoot);
+      await reloadPanel(state);
       return;
     }
   }
