@@ -7,12 +7,34 @@ import * as fs from 'fs';
 import * as jsonc from 'jsonc-parser';
 import { logDiagnostic } from './state';
 
-/** Formatting applied to inserted/modified properties. */
-const FORMATTING_OPTIONS: jsonc.FormattingOptions = {
-  tabSize: 2,
-  insertSpaces: true,
-  eol: '\n',
-};
+/** Detects the dominant line ending so edits don't mix CRLF/LF in an existing file. */
+function detectEol(text: string): string {
+  return text.includes('\r\n') ? '\r\n' : '\n';
+}
+
+/** Detects indentation from the first indented line, falling back to 2 spaces. */
+function detectIndent(text: string): { tabSize: number; insertSpaces: boolean } {
+  const match = text.match(/\n([ \t]+)\S/);
+  if (!match) {
+    return { tabSize: 2, insertSpaces: true };
+  }
+  const indent = match[1];
+  if (indent.includes('\t')) {
+    return { tabSize: 1, insertSpaces: false };
+  }
+  return { tabSize: indent.length, insertSpaces: true };
+}
+
+function formattingOptionsFor(text: string): jsonc.FormattingOptions {
+  return { ...detectIndent(text), eol: detectEol(text) };
+}
+
+/** Writes a file via a temp file + rename so a crash mid-write can't truncate it. */
+export function writeFileAtomic(filePath: string, content: string): void {
+  const tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  fs.writeFileSync(tmpPath, content, 'utf-8');
+  fs.renameSync(tmpPath, filePath);
+}
 
 /** A path into the JSON tree, e.g. `['compilerOptions', 'strict']`. */
 export type JsonPath = jsonc.JSONPath;
@@ -70,10 +92,10 @@ function applyModification(filePath: string, jsonPath: JsonPath, value: unknown)
   }
   try {
     const edits = jsonc.modify(raw, jsonPath, value, {
-      formattingOptions: FORMATTING_OPTIONS,
+      formattingOptions: formattingOptionsFor(raw),
     });
     const updated = jsonc.applyEdits(raw, edits);
-    fs.writeFileSync(filePath, updated, 'utf-8');
+    writeFileAtomic(filePath, updated);
     return true;
   } catch (err) {
     logDiagnostic(`Failed to modify ${filePath} at ${jsonPath.join('.')}: ${err}`);

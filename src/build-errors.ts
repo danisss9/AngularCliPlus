@@ -12,6 +12,7 @@ import { spawnCapture } from './dependencies';
 import { detectCliVersion } from './version';
 import { getBuildConfigFlag } from './version-adapter';
 import { sendCopilotAutoFix, sendCopilotAutoFixForFile } from './copilot-fix';
+import { createAnalysisPanel, escapeHtml, ANALYSIS_PANEL_CSP } from './webview-utils';
 
 const COMMAND_KEY = 'checkBuildErrors';
 
@@ -247,15 +248,13 @@ function createBuildErrorsPanel(
       .getConfiguration('angularCliPlus')
       .get<boolean>('copilot.autoFixEnabled', true);
 
-  const panel = vscode.window.createWebviewPanel(
+  const analysisPanel = createAnalysisPanel(
     'angularBuildErrors',
     buildErrorsTitle(projectName, errors.length),
-    vscode.ViewColumn.Beside,
-    { enableScripts: true, retainContextWhenHidden: true },
   );
-  panel.webview.html = buildWebviewHtml(errors, workspaceRoot, projectName, autoFixEnabled());
+  analysisPanel.setHtml(buildWebviewHtml(errors, workspaceRoot, projectName, autoFixEnabled()));
 
-  panel.webview.onDidReceiveMessage(
+  analysisPanel.onMessage(
     async (message: {
       command: string;
       file: string;
@@ -288,8 +287,8 @@ function createBuildErrorsPanel(
             projectName,
             resolved.projects[projectName],
           );
-          panel.title = buildErrorsTitle(projectName, fresh.length);
-          panel.webview.html = buildWebviewHtml(fresh, workspaceRoot, projectName, autoFixEnabled());
+          analysisPanel.setTitle(buildErrorsTitle(projectName, fresh.length));
+          analysisPanel.setHtml(buildWebviewHtml(fresh, workspaceRoot, projectName, autoFixEnabled()));
         }
       } else if (message.command === 'copilotFix') {
         await sendCopilotAutoFix({
@@ -310,15 +309,6 @@ function createBuildErrorsPanel(
       }
     },
   );
-}
-
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
 }
 
 function buildWebviewHtml(
@@ -358,6 +348,7 @@ function buildWebviewHtml(
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta http-equiv="Content-Security-Policy" content="${ANALYSIS_PANEL_CSP}">
       <title>Build Errors</title>
       <style>
         body {
@@ -502,6 +493,7 @@ function buildWebviewHtml(
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="${ANALYSIS_PANEL_CSP}">
     <title>Build Errors</title>
     <style>
       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }

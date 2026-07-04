@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as net from 'net';
 import type { AngularProject, BrowserDebugConfig, DebugConfig } from './types';
+import { readJsonc } from './jsonc-io';
 import { activeServeTerminals, logDiagnostic } from './state';
 import {
   resolveWorkspaceAndAngularJson,
@@ -226,10 +227,8 @@ export async function debugStorybookProject(context: vscode.ExtensionContext) {
 
   const angularJsonPath = path.join(workspaceRoot, 'angular.json');
   if (fs.existsSync(angularJsonPath)) {
-    try {
-      const angularJson = JSON.parse(fs.readFileSync(angularJsonPath, 'utf-8')) as {
-        projects?: Record<string, AngularProject>;
-      };
+    const angularJson = readJsonc<{ projects?: Record<string, AngularProject> }>(angularJsonPath);
+    if (angularJson) {
       for (const [projectName, project] of Object.entries(angularJson.projects ?? {})) {
         if (project.architect?.storybook) {
           entries.push({
@@ -239,8 +238,8 @@ export async function debugStorybookProject(context: vscode.ExtensionContext) {
           });
         }
       }
-    } catch (err) {
-      logDiagnostic(`Failed to parse angular.json for storybook detection: ${err}`);
+    } else {
+      logDiagnostic(`Failed to parse angular.json for storybook detection at ${angularJsonPath}`);
     }
   }
 
@@ -711,6 +710,10 @@ export function waitForPort(
         }
         handled = true;
         socket.destroy();
+        if (token.isCancellationRequested || Date.now() >= deadline) {
+          resolve(false);
+          return;
+        }
         setTimeout(attempt, PORT_CHECK_INTERVAL_MS);
       };
 

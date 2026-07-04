@@ -1,9 +1,11 @@
 /**
- * Shared helpers for the JSON-config webview editors. Existing webviews each
- * redefine their own `escapeHtml`; the config editors share these instead since
- * several panels are added at once and they all use the same chrome.
+ * Shared helpers for webview panels. Existing webviews each redefined their own
+ * `escapeHtml`; panels share these instead since several are added at once and
+ * they all use the same chrome.
  */
+import * as vscode from 'vscode';
 import type { OptionType } from './json-config-catalogs';
+import { getExtensionContext, logDiagnostic } from './state';
 
 /** Escapes a string for safe interpolation into HTML text/attributes. */
 export function escapeHtml(str: string): string {
@@ -120,6 +122,69 @@ export function parseArray(raw: string): string[] {
     .split(',')
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
+}
+
+// ── Analysis panels ─────────────────────────────────────────────────────────────
+
+/** Standard CSP for analysis panels: no remote content, inline styles/scripts only. */
+export const ANALYSIS_PANEL_CSP =
+  "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';";
+
+export interface AnalysisPanel {
+  panel: vscode.WebviewPanel;
+  isDisposed(): boolean;
+  /** No-ops once the panel has been disposed (e.g. the user closed the tab mid-reload). */
+  setHtml(html: string): void;
+  setTitle(title: string): void;
+  /** Wraps the handler so a rejected promise surfaces an error message instead of vanishing. */
+  onMessage<T>(handler: (message: T) => void | Promise<void>): void;
+}
+
+/**
+ * Creates a `WebviewPanel` for a one-shot analysis run (lint/build-errors/memory-leak/
+ * optimizations/package-updates). Each run opens its own tab; handles disposal so a
+ * reload started before the user closes the tab can't throw, and registers the panel
+ * with `context.subscriptions` for cleanup on deactivation.
+ */
+export function createAnalysisPanel(
+  viewType: string,
+  title: string,
+  webviewOptions?: vscode.WebviewPanelOptions & vscode.WebviewOptions,
+): AnalysisPanel {
+  const panel = vscode.window.createWebviewPanel(viewType, title, vscode.ViewColumn.Beside, {
+    enableScripts: true,
+    retainContextWhenHidden: true,
+    ...webviewOptions,
+  });
+
+  let disposed = false;
+  panel.onDidDispose(() => {
+    disposed = true;
+  });
+  getExtensionContext().subscriptions.push(panel);
+
+  return {
+    panel,
+    isDisposed: () => disposed,
+    setHtml(html: string) {
+      if (!disposed) {
+        panel.webview.html = html;
+      }
+    },
+    setTitle(newTitle: string) {
+      if (!disposed) {
+        panel.title = newTitle;
+      }
+    },
+    onMessage<T>(handler: (message: T) => void | Promise<void>) {
+      panel.webview.onDidReceiveMessage((message: T) => {
+        void Promise.resolve(handler(message)).catch((err) => {
+          logDiagnostic(`Webview message handler failed for ${viewType}: ${err}`);
+          vscode.window.showErrorMessage(`Something went wrong: ${err}`);
+        });
+      });
+    },
+  };
 }
 
 /** Infers a render type from an existing JSON value (for non-catalog keys). */

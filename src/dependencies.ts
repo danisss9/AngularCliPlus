@@ -1,10 +1,10 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as cp from 'child_process';
 import { npmOutput, depCheckTimeouts, logDiagnostic, invalidateCliVersionCache } from './state';
 import { semverSatisfies, validateCustomCommand } from './pure-utils';
 import { invalidateAngularJsonCache } from './utils';
+import { spawnManaged } from './spawn';
 
 // ── Timing constants ───────────────────────────────────────────────────────────
 const DEP_CHECK_STARTUP_DELAY_MS = 3000;
@@ -12,32 +12,27 @@ const DEP_CHECK_CHANGE_DELAY_MS = 2000;
 
 // ── npm / ng spawning ─────────────────────────────────────────────────────────
 
-export function spawnNpm(args: string[], cwd: string): Promise<number> {
-  return new Promise((resolve) => {
-    npmOutput.appendLine(`> npm ${args.join(' ')}\n`);
-    const proc = cp.spawn('npm', args, { cwd, shell: true });
-    proc.stdout.on('data', (d: Buffer) => npmOutput.append(d.toString()));
-    proc.stderr.on('data', (d: Buffer) => npmOutput.append(d.toString()));
-    proc.on('error', (err) => {
-      npmOutput.appendLine(`Failed to start process: ${err.message}`);
-      resolve(1);
-    });
-    proc.on('close', (code) => resolve(code ?? 1));
+export async function spawnNpm(args: string[], cwd: string): Promise<number> {
+  npmOutput.appendLine(`> npm ${args.join(' ')}\n`);
+  const { exitCode } = await spawnManaged('npm', args, {
+    cwd,
+    shell: true,
+    onStdout: (t) => npmOutput.append(t),
+    onStderr: (t) => npmOutput.append(t),
   });
+  return exitCode;
 }
 
-export function spawnShellCommand(command: string, cwd: string): Promise<number> {
-  return new Promise((resolve) => {
-    npmOutput.appendLine(`> ${command}\n`);
-    const proc = cp.spawn(command, [], { cwd, shell: true });
-    proc.stdout.on('data', (d: Buffer) => npmOutput.append(d.toString()));
-    proc.stderr.on('data', (d: Buffer) => npmOutput.append(d.toString()));
-    proc.on('error', (err) => {
-      npmOutput.appendLine(`Failed to start process: ${err.message}`);
-      resolve(1);
-    });
-    proc.on('close', (code) => resolve(code ?? 1));
+export async function spawnShellCommand(command: string, cwd: string): Promise<number> {
+  npmOutput.appendLine(`> ${command}\n`);
+  const { exitCode } = await spawnManaged(command, [], {
+    cwd,
+    shell: true,
+    quoteCommand: false,
+    onStdout: (t) => npmOutput.append(t),
+    onStderr: (t) => npmOutput.append(t),
   });
+  return exitCode;
 }
 
 // ── npm install ───────────────────────────────────────────────────────────────
@@ -157,11 +152,26 @@ export async function runNpmInstall(clean: boolean, force = false, workspaceRoot
 
 // ── Dependency checking ───────────────────────────────────────────────────────
 
+/** Per-root disposables registered by {@link setupDependencyCheck}, so a removed workspace folder can tear them down instead of leaking until deactivation. */
+const rootDisposables = new Map<string, vscode.Disposable[]>();
+
 export function setupDependencyCheck(context: vscode.ExtensionContext, workspaceRoot: string) {
+  if (rootDisposables.has(workspaceRoot)) {
+    return; // already registered — avoids duplicate watchers if a folder is re-added
+  }
+
   const pkgPath = path.join(workspaceRoot, 'package.json');
   if (!fs.existsSync(pkgPath)) {
     return;
   }
+
+  const disposables: vscode.Disposable[] = [];
+  rootDisposables.set(workspaceRoot, disposables);
+  const track = <T extends vscode.Disposable>(d: T): T => {
+    disposables.push(d);
+    context.subscriptions.push(d);
+    return d;
+  };
 
   const config = vscode.workspace.getConfiguration('angularCliPlus');
   if (config.get<boolean>('checkDependencies.enabled', true)) {
@@ -175,14 +185,14 @@ export function setupDependencyCheck(context: vscode.ExtensionContext, workspace
         scheduleDependencyCheck(workspaceRoot, DEP_CHECK_CHANGE_DELAY_MS),
       );
       fsWatcher.on('error', (err) => logDiagnostic(`fs.watch error for .git/HEAD: ${err}`));
-      context.subscriptions.push({ dispose: () => fsWatcher.close() });
+      track({ dispose: () => fsWatcher.close() });
     } catch (err) {
       logDiagnostic(`fs.watch unavailable for .git/HEAD (${err}), falling back to VS Code watcher`);
       const watcher = vscode.workspace.createFileSystemWatcher(
         new vscode.RelativePattern(vscode.Uri.file(path.join(workspaceRoot, '.git')), 'HEAD'),
       );
       watcher.onDidChange(() => scheduleDependencyCheck(workspaceRoot, DEP_CHECK_CHANGE_DELAY_MS));
-      context.subscriptions.push(watcher);
+      track(watcher);
     }
   }
 
@@ -193,7 +203,7 @@ export function setupDependencyCheck(context: vscode.ExtensionContext, workspace
     invalidateCliVersionCache(workspaceRoot);
     scheduleDependencyCheck(workspaceRoot, DEP_CHECK_CHANGE_DELAY_MS);
   });
-  context.subscriptions.push(pkgWatcher);
+  track(pkgWatcher);
 
   // Invalidate the angular.json cache whenever the file is saved
   const angularJsonWatcher = vscode.workspace.createFileSystemWatcher(
@@ -202,7 +212,27 @@ export function setupDependencyCheck(context: vscode.ExtensionContext, workspace
   angularJsonWatcher.onDidChange(() => invalidateAngularJsonCache(workspaceRoot));
   angularJsonWatcher.onDidCreate(() => invalidateAngularJsonCache(workspaceRoot));
   angularJsonWatcher.onDidDelete(() => invalidateAngularJsonCache(workspaceRoot));
-  context.subscriptions.push(angularJsonWatcher);
+  track(angularJsonWatcher);
+}
+
+/** Disposes the watchers/timers registered for a workspace root and clears its caches. Called when the folder is removed from the workspace. */
+export function teardownDependencyCheck(workspaceRoot: string): void {
+  const disposables = rootDisposables.get(workspaceRoot);
+  if (disposables) {
+    for (const d of disposables) {
+      d.dispose();
+    }
+    rootDisposables.delete(workspaceRoot);
+  }
+
+  const timeout = depCheckTimeouts.get(workspaceRoot);
+  if (timeout) {
+    clearTimeout(timeout);
+    depCheckTimeouts.delete(workspaceRoot);
+  }
+
+  invalidateCliVersionCache(workspaceRoot);
+  invalidateAngularJsonCache(workspaceRoot);
 }
 
 export function scheduleDependencyCheck(workspaceRoot: string, delayMs: number) {
@@ -269,9 +299,16 @@ export async function checkDependencies(workspaceRoot: string) {
             `Dependency check: "${name}" flagged as outdated (installed="${version}", required="${required}")`,
           );
         }
-      } catch {
-        missing.push(name);
-        logDiagnostic(`Dependency check: "${name}" flagged as missing (required="${required}")`);
+      } catch (err) {
+        // Only a genuinely missing package.json (ENOENT) counts as "missing" — a
+        // transient read/parse error (e.g. npm mid-write to node_modules) should
+        // not trigger another install prompt on the next watcher-triggered check.
+        if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') {
+          missing.push(name);
+          logDiagnostic(`Dependency check: "${name}" flagged as missing (required="${required}")`);
+        } else {
+          logDiagnostic(`Dependency check: skipping "${name}" due to a transient read error: ${err}`);
+        }
       }
     }),
   );
@@ -313,21 +350,9 @@ export function spawnCapture(
   args: string[],
   cwd: string,
   shell = true,
+  timeoutMs?: number,
 ): Promise<{ stdout: string; exitCode: number }> {
-  return new Promise((resolve) => {
-    let out = '';
-    const proc = cp.spawn(cmd, args, { cwd, shell });
-    proc.stdout.on('data', (d: Buffer) => {
-      out += d.toString();
-    });
-    proc.stderr.on('data', (d: Buffer) => {
-      out += d.toString();
-    });
-    proc.on('error', (err) =>
-      resolve({ stdout: `Failed to start process: ${err.message}`, exitCode: 1 }),
-    );
-    proc.on('close', (code) => resolve({ stdout: out, exitCode: code ?? 1 }));
-  });
+  return spawnManaged(cmd, args, { cwd, shell, timeoutMs });
 }
 
 export async function attemptToolUpdate(

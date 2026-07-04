@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { getExtensionContext } from './state';
 import type { SignalGraphData, SignalKind } from './signals-ast';
+import { createAnalysisPanel, escapeHtml } from './webview-utils';
 
 // ── Entry point ────────────────────────────────────────────────────────────────
 
@@ -10,23 +11,16 @@ import type { SignalGraphData, SignalKind } from './signals-ast';
 export function showSignalGraphWebview(data: SignalGraphData): void {
   const context = getExtensionContext();
 
-  const panel = vscode.window.createWebviewPanel(
-    'angularSignalGraph',
-    buildTitle(data),
-    vscode.ViewColumn.Beside,
-    {
-      enableScripts: true,
-      retainContextWhenHidden: true,
-      localResourceRoots: [
-        vscode.Uri.joinPath(context.extensionUri, 'dist'),
-        ...(vscode.workspace.workspaceFolders ? vscode.workspace.workspaceFolders.map(f => f.uri) : []),
-      ],
-    },
-  );
+  const analysisPanel = createAnalysisPanel('angularSignalGraph', buildTitle(data), {
+    localResourceRoots: [
+      vscode.Uri.joinPath(context.extensionUri, 'dist'),
+      ...(vscode.workspace.workspaceFolders ? vscode.workspace.workspaceFolders.map((f) => f.uri) : []),
+    ],
+  });
 
-  panel.webview.html = buildWebviewHtml(data, panel.webview, context.extensionUri);
+  analysisPanel.setHtml(buildWebviewHtml(data, analysisPanel.panel.webview, context.extensionUri));
 
-  panel.webview.onDidReceiveMessage(
+  analysisPanel.onMessage(
     async (message: { command: string; file: string; line: number }) => {
       if (message.command === 'openFile') {
         const uri = vscode.Uri.file(message.file);
@@ -58,15 +52,6 @@ function buildTitle(data: SignalGraphData): string {
   return `Signal Graph: ${base}`;
 }
 
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
 function sanitizeId(name: string): string {
   return name.replace(/[^a-zA-Z0-9_]/g, '_');
 }
@@ -95,15 +80,37 @@ interface NodeMeta {
   line: number;
 }
 
+/** Allocates a stable, collision-free id per name within one graph build (`sanitizeId` alone can map distinct names like `foo.bar` and `foo_bar` to the same id). */
+function makeIdAllocator(): (name: string) => string {
+  const seen = new Map<string, string>();
+  const used = new Set<string>();
+  return (name: string) => {
+    const existing = seen.get(name);
+    if (existing) {
+      return existing;
+    }
+    const base = sanitizeId(name);
+    let candidate = base;
+    let n = 1;
+    while (used.has(candidate)) {
+      candidate = `${base}_${n++}`;
+    }
+    used.add(candidate);
+    seen.set(name, candidate);
+    return candidate;
+  };
+}
+
 function buildMermaidGraph(data: SignalGraphData): {
   mermaidGraph: string;
   nodeDataMap: Record<string, NodeMeta>;
 } {
   const lines: string[] = ['flowchart LR'];
   const nodeDataMap: Record<string, NodeMeta> = {};
+  const idFor = makeIdAllocator();
 
   for (const node of data.nodes) {
-    const id = sanitizeId(node.name);
+    const id = idFor(node.name);
     const label = `${node.kind}: ${node.name}`;
     lines.push(`  ${id}${shapeWrap(label, node.kind)}`);
     nodeDataMap[id] = { file: node.file, line: node.line };
@@ -112,8 +119,8 @@ function buildMermaidGraph(data: SignalGraphData): {
   lines.push('');
 
   for (const edge of data.edges) {
-    const fromId = sanitizeId(edge.from);
-    const toId = sanitizeId(edge.to);
+    const fromId = idFor(edge.from);
+    const toId = idFor(edge.to);
     const arrow = edge.label ? `-- ${edge.label} -->` : '-->';
     lines.push(`  ${fromId} ${arrow} ${toId}`);
   }
@@ -121,7 +128,7 @@ function buildMermaidGraph(data: SignalGraphData): {
   lines.push('');
 
   for (const node of data.nodes) {
-    const id = sanitizeId(node.name);
+    const id = idFor(node.name);
     lines.push(`  click ${id} __signalNodeClick`);
   }
 
@@ -136,7 +143,7 @@ function buildMermaidGraph(data: SignalGraphData): {
   const byKind = new Map<string, string[]>();
   for (const node of data.nodes) {
     const ids = byKind.get(node.kind) ?? [];
-    ids.push(sanitizeId(node.name));
+    ids.push(idFor(node.name));
     byKind.set(node.kind, ids);
   }
   for (const [kind, ids] of byKind.entries()) {
@@ -166,7 +173,8 @@ function buildWebviewHtml(
   const mermaidUri = webview.asWebviewUri(mermaidDiskPath);
 
   const { mermaidGraph, nodeDataMap } = buildMermaidGraph(data);
-  const nodeDataJson = JSON.stringify(nodeDataMap);
+  // Escape `<` so a file path or name containing `</script>` can't break out of the inline script.
+  const nodeDataJson = JSON.stringify(nodeDataMap).replace(/</g, '\\u003c');
   const cspSource = webview.cspSource;
 
   const classNameSuffix = data.className ? ` &mdash; ${escapeHtml(data.className)}` : '';

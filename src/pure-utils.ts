@@ -140,6 +140,22 @@ export function parseNgUpdateOutput(output: string): Array<{ name: string; versi
   return results;
 }
 
+// ── Path containment ───────────────────────────────────────────────────────────
+
+/**
+ * Returns true when `child` is inside (or equal to) `parent`. Uses `path.relative`
+ * instead of `startsWith` so a sibling directory with the same prefix (e.g.
+ * `C:\proj` vs `C:\proj-other`) isn't mistaken for a containment match, and
+ * compares case-insensitively on Windows.
+ */
+export function isPathInside(parent: string, child: string): boolean {
+  const caseSensitive = process.platform !== 'win32';
+  const p = caseSensitive ? parent : parent.toLowerCase();
+  const c = caseSensitive ? child : child.toLowerCase();
+  const rel = path.relative(p, c);
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+}
+
 // ── Angular project matching ──────────────────────────────────────────────────
 
 /**

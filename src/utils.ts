@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { AngularJson, AngularProject } from './types';
+import { readJsonc } from './jsonc-io';
 import {
   activeServeTerminals,
   clearTrackedTerminalState,
@@ -50,14 +51,13 @@ async function readAngularJson(workspaceRoot: string): Promise<AngularJson | nul
     return { projects: cached.projects };
   }
 
-  try {
-    const parsed = JSON.parse(await fs.promises.readFile(filePath, 'utf-8')) as AngularJson;
-    angularJsonCache.set(workspaceRoot, { projects: parsed.projects ?? {}, mtimeMs });
-    return parsed;
-  } catch (err) {
-    logDiagnostic(`Failed to parse angular.json at ${filePath}: ${err}`);
+  const parsed = readJsonc<AngularJson>(filePath);
+  if (!parsed) {
+    logDiagnostic(`Failed to parse angular.json at ${filePath}`);
     return null;
   }
+  angularJsonCache.set(workspaceRoot, { projects: parsed.projects ?? {}, mtimeMs });
+  return parsed;
 }
 
 // ── Workspace helpers ──────────────────────────────────────────────────────────

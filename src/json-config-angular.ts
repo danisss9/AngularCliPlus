@@ -160,9 +160,7 @@ async function handleMessage(message: WebviewMessage): Promise<void> {
       } else {
         vscode.window.showErrorMessage(`Failed to save ${message.key}`);
       }
-      if (message.command === 'addOption') {
-        showWebview(lastWorkspaceRoot);
-      }
+      showWebview(lastWorkspaceRoot);
       return;
     }
   }

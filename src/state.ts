@@ -60,24 +60,36 @@ export function logDiagnostic(message: string): void {
   diagnosticOutput.appendLine(`[${new Date().toISOString()}] ${message}`);
 }
 
+// Chains reads/writes of the persisted-terminal map so two calls in quick
+// succession (e.g. two terminals created back-to-back) can't interleave their
+// get-modify-update and silently drop one entry.
+let terminalStateQueue: Promise<void> = Promise.resolve();
+
+function updateTerminalEntries(
+  mutate: (map: Record<string, PersistedTerminalEntry>) => void,
+): void {
+  terminalStateQueue = terminalStateQueue.then(async () => {
+    const map =
+      _extensionContext.workspaceState.get<Record<string, PersistedTerminalEntry>>(
+        TERMINAL_ENTRIES_KEY,
+      ) ?? {};
+    mutate(map);
+    await _extensionContext.workspaceState.update(TERMINAL_ENTRIES_KEY, map);
+  });
+}
+
 export function persistTerminalEntry(name: string, entry: PersistedTerminalEntry): void {
-  const map =
-    _extensionContext.workspaceState.get<Record<string, PersistedTerminalEntry>>(
-      TERMINAL_ENTRIES_KEY,
-    ) ?? {};
-  map[name] = entry;
-  void _extensionContext.workspaceState.update(TERMINAL_ENTRIES_KEY, map);
+  updateTerminalEntries((map) => {
+    map[name] = entry;
+  });
 }
 
 export function removePersistedTerminalEntry(name: string): void {
-  const map =
-    _extensionContext.workspaceState.get<Record<string, PersistedTerminalEntry>>(
-      TERMINAL_ENTRIES_KEY,
-    ) ?? {};
-  if (Object.prototype.hasOwnProperty.call(map, name)) {
-    delete map[name];
-    void _extensionContext.workspaceState.update(TERMINAL_ENTRIES_KEY, map);
-  }
+  updateTerminalEntries((map) => {
+    if (Object.prototype.hasOwnProperty.call(map, name)) {
+      delete map[name];
+    }
+  });
 }
 
 export function loadPersistedTerminalEntries(): Record<string, PersistedTerminalEntry> {

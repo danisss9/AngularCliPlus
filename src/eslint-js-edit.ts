@@ -58,8 +58,8 @@ export function readFlatConfigRules(filePath: string): Map<string, Severity> {
     scriptKindFor(filePath),
   );
 
-  for (const obj of findRulesObjects(sourceFile)) {
-    for (const prop of obj.properties) {
+  for (const block of findRulesBlocks(sourceFile)) {
+    for (const prop of block.rulesObj.properties) {
       if (!ts.isPropertyAssignment(prop)) {
         continue;
       }
@@ -136,8 +136,8 @@ export function setFlatConfigRuleSeverity(
     scriptKindFor(filePath),
   );
 
-  const rulesObjects = findRulesObjects(sourceFile);
-  if (rulesObjects.length === 0) {
+  const rulesBlocks = findRulesBlocks(sourceFile);
+  if (rulesBlocks.length === 0) {
     return {
       ok: false,
       reason: 'No `rules` block found to edit. Add a `rules: {}` to the config and reload.',
@@ -148,16 +148,18 @@ export function setFlatConfigRuleSeverity(
 
   // Prefer editing an existing entry for this rule (search last block first,
   // matching how the JSON editor targets the last config block).
-  for (const obj of [...rulesObjects].reverse()) {
-    const prop = findRuleProperty(obj, ruleName);
+  for (const block of [...rulesBlocks].reverse()) {
+    const prop = findRuleProperty(block.rulesObj, ruleName);
     if (prop) {
       const updated = replaceSeverity(text, prop, severity, quote);
       return write(filePath, updated);
     }
   }
 
-  // Otherwise insert a new entry into the last rules block.
-  const target = rulesObjects[rulesObjects.length - 1];
+  // Otherwise insert a new entry into the last block that applies to TypeScript
+  // files (or is unscoped) so the new rule doesn't land in a block whose `files`
+  // glob wouldn't cover the files it's meant for.
+  const target = pickTargetBlock(rulesBlocks);
   const updated = insertRule(text, sourceFile, target, ruleName, severity, quote);
   return write(filePath, updated);
 }
@@ -174,21 +176,60 @@ function scriptKindFor(filePath: string): ts.ScriptKind {
   return ts.ScriptKind.JS;
 }
 
-/** Collects every `rules: { … }` object-literal initializer in source order. */
-function findRulesObjects(sourceFile: ts.SourceFile): ts.ObjectLiteralExpression[] {
-  const found: ts.ObjectLiteralExpression[] = [];
+interface RulesBlock {
+  rulesObj: ts.ObjectLiteralExpression;
+  /** `files` glob patterns for this config block, or `null` when unscoped (applies to all files). */
+  filesPatterns: string[] | null;
+}
+
+/** Collects every config-object literal containing a `rules: { … }` property, along with its `files` scope, in source order. */
+function findRulesBlocks(sourceFile: ts.SourceFile): RulesBlock[] {
+  const found: RulesBlock[] = [];
   function visit(node: ts.Node): void {
-    if (
-      ts.isPropertyAssignment(node) &&
-      propertyKeyText(node.name) === 'rules' &&
-      ts.isObjectLiteralExpression(node.initializer)
-    ) {
-      found.push(node.initializer);
+    if (ts.isObjectLiteralExpression(node)) {
+      let rulesObj: ts.ObjectLiteralExpression | null = null;
+      let filesPatterns: string[] | null = null;
+      let hasFilesProp = false;
+      for (const prop of node.properties) {
+        if (!ts.isPropertyAssignment(prop)) {
+          continue;
+        }
+        const key = propertyKeyText(prop.name);
+        if (key === 'rules' && ts.isObjectLiteralExpression(prop.initializer)) {
+          rulesObj = prop.initializer;
+        } else if (key === 'files' && ts.isArrayLiteralExpression(prop.initializer)) {
+          hasFilesProp = true;
+          filesPatterns = prop.initializer.elements
+            .filter((e): e is ts.StringLiteral => ts.isStringLiteral(e))
+            .map((e) => e.text);
+        }
+      }
+      if (rulesObj) {
+        found.push({ rulesObj, filesPatterns: hasFilesProp ? filesPatterns : null });
+      }
     }
     ts.forEachChild(node, visit);
   }
   visit(sourceFile);
   return found;
+}
+
+/** True when a block's `files` scope plausibly covers TypeScript files (or the block is unscoped). */
+function blockAppliesToTs(block: RulesBlock): boolean {
+  if (block.filesPatterns === null) {
+    return true;
+  }
+  return block.filesPatterns.some((p) => p.includes('ts'));
+}
+
+/** Picks the last block that applies to TypeScript, falling back to the last block overall. */
+function pickTargetBlock(blocks: RulesBlock[]): ts.ObjectLiteralExpression {
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    if (blockAppliesToTs(blocks[i])) {
+      return blocks[i].rulesObj;
+    }
+  }
+  return blocks[blocks.length - 1].rulesObj;
 }
 
 /** Returns the static key of a property name, or null when computed. */
@@ -275,10 +316,15 @@ function lineIndentOf(text: string, pos: number): string {
   return ws;
 }
 
-/** Picks the quote style used most often in the file (defaults to single). */
+/**
+ * Picks the quote style used most often in the file (defaults to single).
+ * Line comments are stripped first so stray apostrophes in prose (e.g. `// don't`)
+ * don't skew the count away from the file's actual code style.
+ */
 function detectQuote(text: string): string {
-  const singles = (text.match(/'/g) ?? []).length;
-  const doubles = (text.match(/"/g) ?? []).length;
+  const withoutLineComments = text.replace(/\/\/[^\n]*/g, '');
+  const singles = (withoutLineComments.match(/'/g) ?? []).length;
+  const doubles = (withoutLineComments.match(/"/g) ?? []).length;
   return doubles > singles ? '"' : "'";
 }
 

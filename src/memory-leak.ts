@@ -8,6 +8,7 @@ import {
 } from './utils';
 import { findMemoryLeaksInFile, MemoryLeakLocation, MemoryLeakKind } from './ast-utils';
 import { sendCopilotAutoFix, sendCopilotAutoFixForFile } from './copilot-fix';
+import { createAnalysisPanel, escapeHtml, ANALYSIS_PANEL_CSP } from './webview-utils';
 
 const COMMAND_KEY = 'checkMemoryLeaks';
 
@@ -157,15 +158,13 @@ function showMemoryLeaksWebview(
       .getConfiguration('angularCliPlus')
       .get<boolean>('copilot.autoFixEnabled', true);
 
-  const panel = vscode.window.createWebviewPanel(
+  const analysisPanel = createAnalysisPanel(
     'angularMemoryLeaks',
     memoryLeaksTitle(scopeLabel, leaks.length),
-    vscode.ViewColumn.Beside,
-    { enableScripts: true, retainContextWhenHidden: true },
   );
-  panel.webview.html = buildWebviewHtml(leaks, workspaceRoot, autoFixEnabled());
+  analysisPanel.setHtml(buildWebviewHtml(leaks, workspaceRoot, autoFixEnabled()));
 
-  panel.webview.onDidReceiveMessage(
+  analysisPanel.onMessage(
     async (message: {
       command: string;
       file: string;
@@ -207,8 +206,8 @@ function showMemoryLeaksWebview(
             return found;
           },
         );
-        panel.title = memoryLeaksTitle(scopeLabel, freshLeaks.length);
-        panel.webview.html = buildWebviewHtml(freshLeaks, workspaceRoot, autoFixEnabled());
+        analysisPanel.setTitle(memoryLeaksTitle(scopeLabel, freshLeaks.length));
+        analysisPanel.setHtml(buildWebviewHtml(freshLeaks, workspaceRoot, autoFixEnabled()));
       } else if (message.command === 'copilotFix') {
         await sendCopilotAutoFix({
           file: message.file,
@@ -338,7 +337,7 @@ function buildWebviewHtml(leaks: MemoryLeakLocation[], workspaceRoot: string, au
         : '';
 
       return /* html */ `
-      <div class="file-group">
+      <div class="file-group" data-group-key="${absolutePath}">
         <div class="file-header">
           <svg class="file-icon" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M9 1H3a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6L9 1z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
@@ -394,7 +393,7 @@ function buildWebviewHtml(leaks: MemoryLeakLocation[], workspaceRoot: string, au
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
+  <meta http-equiv="Content-Security-Policy" content="${ANALYSIS_PANEL_CSP}">
   <title>Memory Leaks</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1043,44 +1042,101 @@ function buildWebviewHtml(leaks: MemoryLeakLocation[], workspaceRoot: string, au
       });
     });
 
+    // ── Persisted UI state (kind filters + collapsed groups) survives Reload ───
+    var uiState = vscode.getState() || {};
+    var collapsedGroups = uiState.collapsedGroups || [];
+    var offKinds = uiState.offKinds || [];
+    function persistUiState() {
+      var s = vscode.getState() || {};
+      s.collapsedGroups = collapsedGroups;
+      s.offKinds = offKinds;
+      vscode.setState(s);
+    }
+
     // ── Collapse / expand file groups ─────────────────────────────────────────
+    document.querySelectorAll('.file-group').forEach(function (group) {
+      var key = group.getAttribute('data-group-key');
+      if (key && collapsedGroups.indexOf(key) !== -1) {
+        group.classList.add('collapsed');
+      }
+    });
     document.querySelectorAll('.file-group .file-header').forEach(function(header) {
       header.addEventListener('click', function(e) {
         if (e.target.closest('a, .copilot-fix-file-btn')) { return; }
-        header.parentElement.classList.toggle('collapsed');
+        var group = header.parentElement;
+        group.classList.toggle('collapsed');
+        var key = group.getAttribute('data-group-key');
+        if (key) {
+          var idx = collapsedGroups.indexOf(key);
+          if (group.classList.contains('collapsed')) {
+            if (idx === -1) { collapsedGroups.push(key); }
+          } else if (idx !== -1) {
+            collapsedGroups.splice(idx, 1);
+          }
+          persistUiState();
+        }
       });
     });
 
     var toggleTablesBtn = document.getElementById('toggleTablesBtn');
     var toggleTablesLabel = document.getElementById('toggleTablesLabel');
+    (function initToggleLabel() {
+      var groups = document.querySelectorAll('.file-group');
+      var anyExpanded = Array.prototype.some.call(groups, function(g) {
+        return !g.classList.contains('collapsed');
+      });
+      toggleTablesLabel.textContent = anyExpanded ? 'Collapse all' : 'Expand all';
+    })();
     toggleTablesBtn.addEventListener('click', function() {
       var groups = document.querySelectorAll('.file-group');
       var anyExpanded = Array.prototype.some.call(groups, function(g) {
         return !g.classList.contains('collapsed');
       });
-      groups.forEach(function(g) { g.classList.toggle('collapsed', anyExpanded); });
+      groups.forEach(function(g) {
+        g.classList.toggle('collapsed', anyExpanded);
+        var key = g.getAttribute('data-group-key');
+        if (key) {
+          var idx = collapsedGroups.indexOf(key);
+          if (anyExpanded) {
+            if (idx === -1) { collapsedGroups.push(key); }
+          } else if (idx !== -1) {
+            collapsedGroups.splice(idx, 1);
+          }
+        }
+      });
       toggleTablesLabel.textContent = anyExpanded ? 'Expand all' : 'Collapse all';
+      persistUiState();
     });
 
     // ── Kind filter toggles ──────────────────────────────────────────────────
+    function applyKindFilter(kind, isOff) {
+      document.querySelectorAll('.leak-item[data-kind="' + kind + '"]').forEach(function(item) {
+        item.style.display = isOff ? 'none' : '';
+      });
+      document.querySelectorAll('.file-group').forEach(function(group) {
+        var items = group.querySelectorAll('.leak-item');
+        var allHidden = Array.prototype.every.call(items, function(item) {
+          return item.style.display === 'none';
+        });
+        group.classList.toggle('all-hidden', allHidden);
+      });
+    }
     document.querySelectorAll('.legend-item .kind-pill[data-kind]').forEach(function(pill) {
+      var kind = pill.getAttribute('data-kind');
+      if (offKinds.indexOf(kind) !== -1) {
+        pill.classList.add('pill-off');
+        applyKindFilter(kind, true);
+      }
       pill.addEventListener('click', function() {
-        var kind = pill.getAttribute('data-kind');
         var isOff = pill.classList.toggle('pill-off');
-
-        // Show/hide all leak items of this kind
-        document.querySelectorAll('.leak-item[data-kind="' + kind + '"]').forEach(function(item) {
-          item.style.display = isOff ? 'none' : '';
-        });
-
-        // Hide file groups where every leak item is hidden
-        document.querySelectorAll('.file-group').forEach(function(group) {
-          var items = group.querySelectorAll('.leak-item');
-          var allHidden = Array.prototype.every.call(items, function(item) {
-            return item.style.display === 'none';
-          });
-          group.classList.toggle('all-hidden', allHidden);
-        });
+        applyKindFilter(kind, isOff);
+        var idx = offKinds.indexOf(kind);
+        if (isOff) {
+          if (idx === -1) { offKinds.push(kind); }
+        } else if (idx !== -1) {
+          offKinds.splice(idx, 1);
+        }
+        persistUiState();
       });
     });
   </script>
@@ -1088,11 +1144,3 @@ function buildWebviewHtml(leaks: MemoryLeakLocation[], workspaceRoot: string, au
 </html>`;
 }
 
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}

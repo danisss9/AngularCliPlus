@@ -40,6 +40,8 @@ export async function detectCliVersion(workspaceRoot: string): Promise<number | 
   return majorVersion;
 }
 
+const NG_VERSION_TIMEOUT_MS = 20_000;
+
 async function detectFromNgVersion(workspaceRoot: string): Promise<number | null> {
   try {
     const ngCommand = resolveAngularCliSpawn(workspaceRoot, ['version']);
@@ -48,6 +50,7 @@ async function detectFromNgVersion(workspaceRoot: string): Promise<number | null
       ngCommand.args,
       workspaceRoot,
       ngCommand.shell,
+      NG_VERSION_TIMEOUT_MS,
     );
     if (result.exitCode === 0) {
       return parseNgVersionOutput(result.stdout);

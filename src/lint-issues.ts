@@ -13,6 +13,8 @@ import {
 } from './utils';
 import { spawnCapture } from './dependencies';
 import { sendCopilotAutoFix, sendCopilotAutoFixForFile } from './copilot-fix';
+import { createAnalysisPanel, escapeHtml, ANALYSIS_PANEL_CSP } from './webview-utils';
+import type { AnalysisPanel } from './webview-utils';
 
 const COMMAND_KEY = 'lint';
 
@@ -285,7 +287,7 @@ function extractJsonArray(text: string): string | null {
 
 /** Per-panel state. Each run opens its own tab, tracked independently. */
 interface LintPanel {
-  panel: vscode.WebviewPanel;
+  panel: AnalysisPanel;
   workspaceRoot: string;
   projectName: string;
   issues: LintIssue[];
@@ -323,34 +325,29 @@ function lintTitle(projectName: string, count: number): string {
  */
 function createLintPanel(issues: LintIssue[], workspaceRoot: string, projectName: string): void {
   const state: LintPanel = {
-    panel: vscode.window.createWebviewPanel(
-      'angularLintIssues',
-      lintTitle(projectName, issues.length),
-      vscode.ViewColumn.Beside,
-      { enableScripts: true, retainContextWhenHidden: true },
-    ),
+    panel: createAnalysisPanel('angularLintIssues', lintTitle(projectName, issues.length)),
     workspaceRoot,
     projectName,
     issues,
     sortMode: 'file',
   };
   renderInto(state);
-  state.panel.webview.onDidReceiveMessage((m: WebviewMessage) => {
-    void handleMessage(state, m);
-  });
+  state.panel.onMessage((m: WebviewMessage) => handleMessage(state, m));
 }
 
 /** Rebuilds a panel's title + HTML from its current state. */
 function renderInto(state: LintPanel): void {
   const config = vscode.workspace.getConfiguration('angularCliPlus');
   const autoFixEnabled = config.get<boolean>('copilot.autoFixEnabled', true);
-  state.panel.title = lintTitle(state.projectName, state.issues.length);
-  state.panel.webview.html = buildWebviewHtml(
-    state.issues,
-    state.workspaceRoot,
-    projectDisplayName(state.projectName),
-    autoFixEnabled,
-    state.sortMode,
+  state.panel.setTitle(lintTitle(state.projectName, state.issues.length));
+  state.panel.setHtml(
+    buildWebviewHtml(
+      state.issues,
+      state.workspaceRoot,
+      projectDisplayName(state.projectName),
+      autoFixEnabled,
+      state.sortMode,
+    ),
   );
 }
 
@@ -459,15 +456,6 @@ async function runEslintFixAll(state: LintPanel): Promise<void> {
 }
 
 // ── HTML ─────────────────────────────────────────────────────────────────────
-
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
 
 const COPILOT_SVG =
   '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M8 1L9.5 5.5L14 7L9.5 8.5L8 13L6.5 8.5L2 7L6.5 5.5L8 1Z" fill="currentColor"/><path d="M13 1L13.75 3.25L16 4L13.75 4.75L13 7L12.25 4.75L10 4L12.25 3.25L13 1Z" fill="currentColor" opacity="0.7"/><path d="M3 10L3.5 11.5L5 12L3.5 12.5L3 14L2.5 12.5L1 12L2.5 11.5L3 10Z" fill="currentColor" opacity="0.7"/></svg>';
@@ -595,7 +583,7 @@ function renderByFile(
         autoFixEnabled && manualIssues.length > 0 ? copilotFileButton(file, manualIssues, getLine) : '';
 
       return /* html */ `
-    <div class="file-group">
+    <div class="file-group" data-group-key="${escapeHtml(file)}">
       <div class="file-header">
         ${FILE_SVG}
         <span class="file-path"><span class="file-dir">${escapeHtml(dir)}</span><span class="file-name">${escapeHtml(filename)}</span></span>
@@ -648,7 +636,7 @@ function renderByRule(
           : '';
 
       return /* html */ `
-    <div class="file-group">
+    <div class="file-group" data-group-key="${escapeHtml(ruleId)}">
       <div class="file-header">
         ${RULE_SVG}
         <span class="file-path"><span class="file-name">${escapeHtml(ruleId)}</span></span>
@@ -733,6 +721,7 @@ function buildWebviewHtml(
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="${ANALYSIS_PANEL_CSP}">
     <title>Lint</title>
     <style>
       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -962,24 +951,69 @@ function buildWebviewHtml(
       document.getElementById('reloadBtn').addEventListener('click', function () {
         vscode.postMessage({ command: 'reload' });
       });
+      // ── Persisted UI state (filters + collapsed groups) survives Reload ────────
+      var uiState = vscode.getState() || {};
+      var collapsedGroups = uiState.collapsedGroups || [];
+      var filterState = uiState.filterState || { error: true, warning: true, fixable: true, manual: true };
+      function persistUiState() {
+        var s = vscode.getState() || {};
+        s.collapsedGroups = collapsedGroups;
+        s.filterState = filterState;
+        vscode.setState(s);
+      }
+      document.querySelectorAll('.file-group').forEach(function (group) {
+        var key = group.getAttribute('data-group-key');
+        if (key && collapsedGroups.indexOf(key) !== -1) {
+          group.classList.add('collapsed');
+        }
+      });
       document.querySelectorAll('.file-group .file-header').forEach(function (header) {
         header.addEventListener('click', function (e) {
           if (e.target.closest('a, .fix-file-btn, .copilot-fix-file-btn, .fix-btn, .copilot-fix-btn')) { return; }
-          header.parentElement.classList.toggle('collapsed');
+          var group = header.parentElement;
+          group.classList.toggle('collapsed');
+          var key = group.getAttribute('data-group-key');
+          if (key) {
+            var idx = collapsedGroups.indexOf(key);
+            if (group.classList.contains('collapsed')) {
+              if (idx === -1) { collapsedGroups.push(key); }
+            } else if (idx !== -1) {
+              collapsedGroups.splice(idx, 1);
+            }
+            persistUiState();
+          }
         });
       });
       var toggleTablesBtn = document.getElementById('toggleTablesBtn');
       var toggleTablesLabel = document.getElementById('toggleTablesLabel');
+      (function initToggleLabel() {
+        var groups = document.querySelectorAll('.file-group');
+        var anyExpanded = Array.prototype.some.call(groups, function (g) {
+          return !g.classList.contains('collapsed');
+        });
+        toggleTablesLabel.textContent = anyExpanded ? 'Collapse all' : 'Expand all';
+      })();
       toggleTablesBtn.addEventListener('click', function () {
         var groups = document.querySelectorAll('.file-group');
         var anyExpanded = Array.prototype.some.call(groups, function (g) {
           return !g.classList.contains('collapsed');
         });
-        groups.forEach(function (g) { g.classList.toggle('collapsed', anyExpanded); });
+        groups.forEach(function (g) {
+          g.classList.toggle('collapsed', anyExpanded);
+          var key = g.getAttribute('data-group-key');
+          if (key) {
+            var idx = collapsedGroups.indexOf(key);
+            if (anyExpanded) {
+              if (idx === -1) { collapsedGroups.push(key); }
+            } else if (idx !== -1) {
+              collapsedGroups.splice(idx, 1);
+            }
+          }
+        });
         toggleTablesLabel.textContent = anyExpanded ? 'Expand all' : 'Collapse all';
+        persistUiState();
       });
       // ── Severity / fixability filters ──────────────────────────────────────
-      var filterState = { error: true, warning: true, fixable: true, manual: true };
       function applyFilters() {
         document.querySelectorAll('.issue-item').forEach(function (item) {
           var sev = item.getAttribute('data-severity');
@@ -994,13 +1028,19 @@ function buildWebviewHtml(
         });
       }
       document.querySelectorAll('.filter-pill').forEach(function (pill) {
+        var initKey = pill.getAttribute('data-value');
+        if (filterState[initKey] === false) {
+          pill.classList.add('pill-off');
+        }
         pill.addEventListener('click', function () {
           var key = pill.getAttribute('data-value');
           filterState[key] = !filterState[key];
           pill.classList.toggle('pill-off', !filterState[key]);
           applyFilters();
+          persistUiState();
         });
       });
+      applyFilters();
       var fixAll = document.getElementById('fixAllBtn');
       if (fixAll) {
         fixAll.addEventListener('click', function () {
@@ -1064,6 +1104,7 @@ function emptyStateHtml(projectName: string): string {
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="${ANALYSIS_PANEL_CSP}">
     <title>Lint</title>
     <style>
       body {

@@ -18,6 +18,7 @@ import { readJsonc, setKey } from './jsonc-io';
 import { logDiagnostic } from './state';
 import { escapeHtml, baseStyles } from './webview-utils';
 import { isJsEslintConfig, readFlatConfigRules, setFlatConfigRuleSeverity } from './eslint-js-edit';
+import { isPathInside } from './pure-utils';
 
 type Severity = 'off' | 'warn' | 'error';
 
@@ -145,7 +146,7 @@ async function findRepresentativeFile(workspaceRoot: string): Promise<string | n
   if (
     active &&
     active.endsWith('.ts') &&
-    active.startsWith(workspaceRoot) &&
+    isPathInside(workspaceRoot, active) &&
     fs.existsSync(active)
   ) {
     return active;
@@ -379,13 +380,25 @@ function writeRuleSeverity(filePath: string, ruleName: string, severity: Severit
 
 /**
  * Returns the JSON path to the `rules` object. Flat config (`eslint.config.json`)
- * is an array of blocks — the last block is used (or block 0 when empty).
- * Legacy `.eslintrc.json` uses a top-level `rules` object.
+ * is an array of blocks, each optionally scoped by a `files` glob — writing a
+ * new rule into a block whose `files` doesn't cover TypeScript would silently
+ * no-op, so this prefers the last block that is either unscoped (applies to all
+ * files) or whose `files` patterns look like they cover `.ts`, falling back to
+ * the last block. Legacy `.eslintrc.json` uses a top-level `rules` object.
  */
 function resolveRulesPath(parsed: unknown): (string | number)[] {
   if (Array.isArray(parsed)) {
-    const index = parsed.length > 0 ? parsed.length - 1 : 0;
-    return [index, 'rules'];
+    if (parsed.length === 0) {
+      return [0, 'rules'];
+    }
+    for (let i = parsed.length - 1; i >= 0; i--) {
+      const block = parsed[i];
+      const files = block && typeof block === 'object' ? (block as { files?: unknown }).files : undefined;
+      if (!Array.isArray(files) || files.some((f) => typeof f === 'string' && f.includes('ts'))) {
+        return [i, 'rules'];
+      }
+    }
+    return [parsed.length - 1, 'rules'];
   }
   return ['rules'];
 }

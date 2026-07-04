@@ -4,6 +4,29 @@ All notable changes to the "angular-cli-plus" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.8.1]
+
+### Fixed
+
+- **Commands could fail on workspace paths containing a space.** `ng`/`eslint` were resolved to their `node_modules/.bin` path but spawned with `shell: true` without quoting the executable, so on Windows `cmd.exe` split the path at the first space (e.g. a folder named `My Project`) and tried to run the wrong program. Every capture-based spawn (`ng version`, `ng update`, `eslint --fix`, `ng lint --fix`, build/lint checks) now goes through a shared spawn helper (`src/spawn.ts`) that quotes the executable correctly.
+- **Startup checks didn't run until a command was used.** The extension had no activation event, so the "on open" dependency and tool-version checks only fired after the user manually ran a command. Added `onStartupFinished` so they run when the window opens, as the settings already described.
+- **Analysis panels could throw "Webview is disposed."** Closing a `Lint` / `Build Errors` / `Optimizations` / `Memory Leaks` / `Package Updates` tab while a Reload or auto-fix was still running could throw once the in-flight work tried to update the closed panel. Panel creation, title/HTML updates, and message handling are now centralized in a shared helper that guards against this and surfaces handler errors instead of swallowing them.
+- **Missing Content-Security-Policy** on the `Lint`, `Build Errors`, and `Package Updates` panels — they now set the same policy as the other panels.
+- **Editing tsconfig/eslint/angular.json could mix line endings** on CRLF files, since edits were always written with `\n`. The JSONC writer now detects the file's existing EOL and indentation and writes atomically (temp file + rename), which also protects `.npmrc` writes.
+- **A commented `angular.json` could break project pickers** in some commands (serve/build/generate/debug) while working fine in the JSON config editor, because those paths used strict `JSON.parse` instead of the comment-tolerant JSONC parser. All angular.json reads are now consistent.
+- **Removing a workspace folder leaked its file watchers and timers** instead of disposing them, and re-adding the same folder could register duplicate watchers.
+- Several `ng serve` / `ng test` / `ng build` / schematic-generation commands could fail silently if the terminal couldn't be created, since the error was never surfaced.
+- The debugger's port-wait logic could open one extra, unnecessary socket connection right after a debug session was cancelled or timed out.
+- `Signal Graph` node names that collapse to the same id after sanitizing (e.g. `foo.bar` and `foo_bar`) no longer merge into a single graph node, and a node name containing `</script>` can no longer break out of the panel's inline script.
+- The "run npm install?" prompt could keep reappearing if a dependency check read `node_modules` while npm was still mid-write; only a genuinely missing package now counts as missing.
+- Writing a rule severity in a flat ESLint config (`eslint.config.js`/`.json` with multiple `files`-scoped blocks) could insert the rule into a block that doesn't apply to TypeScript files, making the change appear to do nothing. New rules now prefer a block that actually covers `.ts` files.
+- The angular.json editor didn't refresh after changing an existing option's value (only after adding/removing one), so the panel could show a stale value.
+- Two terminals started back-to-back could race and drop one of their persisted-terminal-state entries.
+
+### Changed
+
+- **Filter and collapse state now survives Reload** in the `Lint`, `Optimizations`, and `Memory Leaks` panels — severity/fixability/kind filters and collapsed groups used to reset every time the panel refreshed.
+
 ## [1.8.0]
 
 ### Added

@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
-import * as cp from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
+import { spawnManaged } from './spawn';
 import { ngOutput, extensionTerminals } from './state';
 import { getTrackedTerminalState } from './state';
 import { analyzeSignalsInFile } from './signals-ast';
@@ -125,7 +125,9 @@ export async function serveAngularProject() {
     `ng serve --project "${projectName}"`,
   );
   const terminalName = `ng serve (${projectName})`;
-  runInTerminal(terminalName, serveCommand, workspaceRoot, { trackAsServe: true });
+  void runInTerminal(terminalName, serveCommand, workspaceRoot, { trackAsServe: true }).catch(
+    (err) => vscode.window.showErrorMessage(`Failed to start "${terminalName}": ${err}`),
+  );
 }
 
 // ── Test ──────────────────────────────────────────────────────────────────────
@@ -229,10 +231,10 @@ export async function testAngularProject() {
     terminalName = `ng test (${picked})`;
   }
 
-  runInTerminal(terminalName, testCommand, workspaceRoot, {
+  void runInTerminal(terminalName, testCommand, workspaceRoot, {
     successMessage: watchMode ? undefined : `${terminalName} completed successfully.`,
     retryLabel: watchMode ? undefined : 'Retry',
-  });
+  }).catch((err) => vscode.window.showErrorMessage(`Failed to start "${terminalName}": ${err}`));
 }
 
 // ── Build ─────────────────────────────────────────────────────────────────────
@@ -286,11 +288,11 @@ async function runNgBuild(watch: boolean) {
     workspaceRoot,
     `ng build --project "${projectName}"${configFlag}${watchFlag}`,
   );
-  runInTerminal(terminalName, buildCommand, workspaceRoot, {
+  void runInTerminal(terminalName, buildCommand, workspaceRoot, {
     trackAsServe: watch,
     successMessage: watch ? undefined : `ng build (${projectName}) completed successfully.`,
     retryLabel: watch ? undefined : 'Retry',
-  });
+  }).catch((err) => vscode.window.showErrorMessage(`Failed to start "${terminalName}": ${err}`));
 }
 
 // ── Clear terminals ───────────────────────────────────────────────────────────
@@ -392,19 +394,16 @@ export async function clearFinishedTerminals() {
 
 // ── Update packages ───────────────────────────────────────────────────────────
 
-export function spawnNg(args: string[], cwd: string): Promise<number> {
-  return new Promise((resolve) => {
-    const ngCommand = resolveAngularCliSpawn(cwd, args);
-    ngOutput.appendLine(`> ${ngCommand.displayCommand}\n`);
-    const proc = cp.spawn(ngCommand.command, ngCommand.args, { cwd, shell: ngCommand.shell });
-    proc.stdout.on('data', (d: Buffer) => ngOutput.append(d.toString()));
-    proc.stderr.on('data', (d: Buffer) => ngOutput.append(d.toString()));
-    proc.on('error', (err) => {
-      ngOutput.appendLine(`Failed to start process: ${err.message}`);
-      resolve(1);
-    });
-    proc.on('close', (code) => resolve(code ?? 1));
+export async function spawnNg(args: string[], cwd: string): Promise<number> {
+  const ngCommand = resolveAngularCliSpawn(cwd, args);
+  ngOutput.appendLine(`> ${ngCommand.displayCommand}\n`);
+  const { exitCode } = await spawnManaged(ngCommand.command, ngCommand.args, {
+    cwd,
+    shell: ngCommand.shell,
+    onStdout: (t) => ngOutput.append(t),
+    onStderr: (t) => ngOutput.append(t),
   });
+  return exitCode;
 }
 
 export async function runNgUpdate(

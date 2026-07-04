@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { AngularJson, GenerateOptions, SchematicType } from './types';
 import { buildAngularCliTerminalCommand, runInTerminal } from './utils';
+import { readJsonc } from './jsonc-io';
 import { logDiagnostic } from './state';
 import {
   buildNgGenerateCommand as buildCommand,
@@ -64,9 +65,11 @@ export async function generatengSchematic(schematic: SchematicType, uri?: vscode
     `${buildCommand(schematic, options)} ${name}`,
   );
 
-  runInTerminal(`Angular CLI Plus: ${schematic}`, finalCommand, folderPath, {
+  void runInTerminal(`Angular CLI Plus: ${schematic}`, finalCommand, folderPath, {
     successMessage: `${schematic} "${name}" generated successfully.`,
-  });
+  }).catch((err) =>
+    vscode.window.showErrorMessage(`Failed to generate ${schematic} "${name}": ${err}`),
+  );
 }
 
 async function resolveSchematicTargetFolder(uri?: vscode.Uri): Promise<string | null> {
@@ -121,12 +124,9 @@ export async function detectAngularProject(
     return promptForProjectName();
   }
 
-  let angularJson: AngularJson;
-  try {
-    const raw = fs.readFileSync(angularJsonPath, 'utf-8');
-    angularJson = JSON.parse(raw) as AngularJson;
-  } catch (err) {
-    logDiagnostic(`Failed to parse angular.json: ${err}`);
+  const angularJson = readJsonc<AngularJson>(angularJsonPath);
+  if (!angularJson) {
+    logDiagnostic(`Failed to parse angular.json at ${angularJsonPath}`);
     return promptForProjectName();
   }
 

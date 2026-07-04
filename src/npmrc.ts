@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { pickWorkspaceFolder } from './utils';
+import { writeFileAtomic } from './jsonc-io';
 
 export async function setupNpmrcCommand() {
   const workspaceRoot = await pickWorkspaceFolder();
@@ -88,7 +89,7 @@ export async function setupNpmrcCommand() {
 
   if (addedTokens > 0) {
     try {
-      fs.writeFileSync(globalNpmrcPath, updatedGlobalNpmrc, 'utf-8');
+      writeFileAtomic(globalNpmrcPath, updatedGlobalNpmrc);
       vscode.window.showInformationMessage(`Successfully added ${addedTokens} auth token(s) to global .npmrc.`);
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to write to global .npmrc: ${error}`);

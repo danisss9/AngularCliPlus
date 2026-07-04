@@ -36,11 +36,13 @@ import {
 import {
   runNpmInstall,
   setupDependencyCheck,
+  teardownDependencyCheck,
   scheduleDependencyCheck,
   checkToolVersions,
   checkDependencies,
 } from './dependencies';
 import { pickWorkspaceFolder } from './utils';
+import { killAllManagedChildren } from './spawn';
 import { checkMemoryLeaks } from './memory-leak';
 import { setupNpmrcCommand } from './npmrc';
 import { checkOptimizations } from './optimizations';
@@ -156,6 +158,9 @@ export function activate(context: vscode.ExtensionContext) {
           void checkToolVersions(folder.uri.fsPath);
         }
       }
+      for (const folder of e.removed) {
+        teardownDependencyCheck(folder.uri.fsPath);
+      }
     }),
   );
 
@@ -206,4 +211,5 @@ export function deactivate() {
     clearTimeout(timeout);
   }
   depCheckTimeouts.clear();
+  killAllManagedChildren();
 }

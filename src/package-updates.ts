@@ -6,6 +6,8 @@ import { spawnCapture, spawnNpm, spawnShellCommand } from './dependencies';
 import { npmOutput } from './state';
 import { parseNgUpdateOutput } from './pure-utils';
 import { runNgUpdate } from './commands';
+import { createAnalysisPanel, escapeHtml, ANALYSIS_PANEL_CSP } from './webview-utils';
+import type { AnalysisPanel } from './webview-utils';
 
 interface UpdatablePackage {
   name: string;
@@ -196,7 +198,7 @@ async function updateOtherPackages(names: string[], workspaceRoot: string): Prom
 
 /** Per-panel state. Each run opens its own tab, tracked independently. */
 interface PackagePanel {
-  panel: vscode.WebviewPanel;
+  panel: AnalysisPanel;
   workspaceRoot: string;
 }
 
@@ -211,18 +213,11 @@ interface WebviewMessage {
  */
 function createPackageUpdatesPanel(workspaceRoot: string, results: UpdateResults): void {
   const state: PackagePanel = {
-    panel: vscode.window.createWebviewPanel(
-      'angularPackageUpdates',
-      packageUpdatesTitle(results),
-      vscode.ViewColumn.Beside,
-      { enableScripts: true, retainContextWhenHidden: true },
-    ),
+    panel: createAnalysisPanel('angularPackageUpdates', packageUpdatesTitle(results)),
     workspaceRoot,
   };
   renderInto(state, results);
-  state.panel.webview.onDidReceiveMessage((m: WebviewMessage) => {
-    void handleMessage(state, m);
-  });
+  state.panel.onMessage((m: WebviewMessage) => handleMessage(state, m));
 }
 
 function packageUpdatesTitle(results: UpdateResults): string {
@@ -230,8 +225,8 @@ function packageUpdatesTitle(results: UpdateResults): string {
 }
 
 function renderInto(state: PackagePanel, results: UpdateResults): void {
-  state.panel.title = packageUpdatesTitle(results);
-  state.panel.webview.html = buildWebviewHtml(results.angular, results.other, results.ncuFailed);
+  state.panel.setTitle(packageUpdatesTitle(results));
+  state.panel.setHtml(buildWebviewHtml(results.angular, results.other, results.ncuFailed));
 }
 
 /** Re-runs the update checks and refreshes the panel in place. */
@@ -266,15 +261,6 @@ async function handleMessage(state: PackagePanel, message: WebviewMessage): Prom
       return;
     }
   }
-}
-
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
 }
 
 const RELOAD_SVG =
@@ -375,6 +361,7 @@ function buildWebviewHtml(
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="${ANALYSIS_PANEL_CSP}">
     <title>Package Updates</title>
     <style>
       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
