@@ -13,6 +13,14 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
   - `angularCliPlus.ai.autoFixEnabled`: Enable/disable AI auto-fix buttons
 - Auto-fix buttons now dynamically show the current AI provider name ("Auto Fix with Claude Code" or "Auto Fix with Copilot")
 - Added recommendations for both GitHub Copilot and Claude Code extensions
+- **Angular Language Service Recommendation.** The extension now recommends installing the Angular Language Service (`angular.ng-template`) for enhanced Angular template editing support in VS Code
+- **Vitest UI in VS Code Browser.** When using `ng test --ui`, the Vitest UI now automatically opens in a VS Code browser tab instead of the default external browser. This provides a more integrated development experience:
+  - Uses VS Code's `workbench.action.browser.open` command to open the UI at `http://localhost:51204/__vitest__/#/`
+  - Falls back to a webview panel if the command is not available
+  - Always includes `--watch` flag when `--ui` is used for continuous test running
+  - New settings:
+    - `angularCliPlus.test.uiInVscode`: Enable/disable opening Vitest UI in VS Code (default: `true`)
+    - `angularCliPlus.test.uiPort`: Configure the Vitest UI port (default: `51204`)
 
 ### Changed
 

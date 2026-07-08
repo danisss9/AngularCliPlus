@@ -18,7 +18,8 @@
   "main": "./dist/extension.js",
   "recommendations": [
     "github.copilot",
-    "claudecode.claude-code"
+    "claudecode.claude-code",
+    "angular.ng-template"
   ],
   "contributes": {
     "commands": [
@@ -554,6 +555,16 @@
           "type": "boolean",
           "default": false,
           "description": "Enable the Vitest UI for interactive test execution (--ui). Only available for the Vitest runner."
+        },
+        "angularCliPlus.test.uiInVscode": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the Vitest UI in a VS Code browser tab instead of opening in the default browser."
+        },
+        "angularCliPlus.test.uiPort": {
+          "type": "number",
+          "default": 51204,
+          "description": "The port where Vitest UI is expected to run. Default is 51204 (Vitest UI default port)."
         },
         "angularCliPlus.checkDependencies.enabled": {
           "type": "boolean",

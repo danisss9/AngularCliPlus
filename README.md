@@ -48,7 +48,7 @@ Detection runs via `ng version` (preferring the workspace-local CLI from `node_m
 | Angular: Debug Build (Watch)   | `Ctrl+Shift+A H`   | Runs `ng build --watch` + a static file server, then attaches a browser debugger                                                                                                             |
 | Angular: Build Project         | `Ctrl+Shift+A B`   | Runs `ng build` with the configured build configuration                                                                                                                                      |
 | Angular: Build Project (Watch) | `Ctrl+Shift+A W`   | Runs `ng build --watch` with the configured watch configuration                                                                                                                              |
-| Angular: Test Project          | `Ctrl+Shift+A T`   | Runs `ng test` for a project, all projects, or the currently open spec file                                                                                                                  |
+| Angular: Test Project          | `Ctrl+Shift+A T`   | Runs `ng test` for a project, all projects, or the currently open spec file; when using `--ui` flag, automatically opens Vitest UI in a VS Code browser tab with `--watch` mode enabled |
 | Angular: Restart Serve         | `Ctrl+Shift+A R`   | Restarts any active serve/build-watch terminal; re-attaches the debugger if a debug session was running                                                                                      |
 | Angular: Lint Project          | `Ctrl+Shift+A L`   | Runs `ng lint --format json` for a selected project (or all projects) and shows the results in an interactive Webview panel with sort-by-file/sort-by-rule grouping, severity/fixability filters, collapsible groups, and native `eslint --fix` + AI auto-fix buttons |
 | Angular: Update Packages       | `Ctrl+Shift+A U`   | Checks for updates with `ng update` and `npm-check-updates` and shows them in an interactive Webview panel with separate tables for Angular and other packages, each with selective update buttons |
@@ -301,6 +301,12 @@ Commands containing dangerous patterns (`; rm`, `&& rm`, `| del`, `$()`, backtic
 - Your workspace must be an Angular project
 - Supports Angular CLI version 8 and above
 
+## Recommended Extensions
+
+This extension recommends installing the following VS Code extensions for the best experience:
+
+- **[Angular Language Service](https://marketplace.visualstudio.com/items?itemName=angular.ng-template)** - Provides enhanced Angular template editing support, including autocompletion, navigation, and diagnostic messages for Angular templates
+
 ## Extension Settings
 
 This extension contributes the following settings:
@@ -373,6 +379,8 @@ This extension contributes the following settings:
 
 - `angularCliPlus.test.watch`: Run `ng test` in watch mode (default: `false`)
 - `angularCliPlus.test.ui`: Enable the Vitest UI for interactive test execution — only available for the Vitest runner (default: `false`)
+- `angularCliPlus.test.uiInVscode`: Show the Vitest UI in a VS Code browser tab instead of opening in the default browser (default: `true`)
+- `angularCliPlus.test.uiPort`: The port where Vitest UI is expected to run (default: `51204`)
 
 ### Storybook Options
 

@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as net from 'net';
 import { spawnManaged } from './spawn';
 import { ngOutput, extensionTerminals } from './state';
 import { getTrackedTerminalState } from './state';
@@ -132,6 +133,96 @@ export async function serveAngularProject() {
 
 // ── Test ──────────────────────────────────────────────────────────────────────
 
+const VITEST_UI_DEFAULT_PORT = 51204;
+const VITEST_UI_START_TIMEOUT_MS = 60000;
+
+let vitestUiPanel: vscode.WebviewPanel | null = null;
+
+function createVitestUiWebview(port: number): void {
+  const url = `http://localhost:${port}/__vitest__/#/`;
+  
+  if (vitestUiPanel) {
+    vitestUiPanel.reveal();
+    return;
+  }
+  
+  vitestUiPanel = vscode.window.createWebviewPanel(
+    'angularCliPlus.vitestUi',
+    'Vitest UI',
+    vscode.ViewColumn.One,
+    {
+      enableScripts: true,
+      retainContextWhenHidden: true,
+      enableCommandUris: true,
+    },
+  );
+
+  vitestUiPanel.webview.html = `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Vitest UI</title>
+      <style>
+        html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+        iframe { width: 100%; height: 100%; border: none; }
+      </style>
+    </head>
+    <body>
+      <iframe src="${url}"></iframe>
+    </body>
+    </html>
+  `;
+
+  vitestUiPanel.onDidDispose(() => {
+    vitestUiPanel = null;
+  });
+}
+
+async function openVitestUiInVscode(port: number = VITEST_UI_DEFAULT_PORT): Promise<void> {
+  const url = `http://localhost:${port}/__vitest__/#/`;
+  
+  try {
+    await vscode.commands.executeCommand('workbench.action.browser.open', url);
+  } catch {
+    createVitestUiWebview(port);
+  }
+}
+
+async function waitForVitestUi(port: number = VITEST_UI_DEFAULT_PORT, timeoutMs: number = VITEST_UI_START_TIMEOUT_MS): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  
+  while (Date.now() < deadline) {
+    try {
+      const socket = net.createConnection({ port, host: 'localhost' });
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          socket.destroy();
+          reject(new Error('socket timeout'));
+        }, 1000);
+        
+        socket.on('connect', () => {
+          clearTimeout(timeout);
+          socket.destroy();
+          resolve();
+        });
+        
+        socket.on('error', () => {
+          clearTimeout(timeout);
+          socket.destroy();
+          reject(new Error('connection refused'));
+        });
+      });
+      return true;
+    } catch {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+  }
+  
+  return false;
+}
+
 export async function testAngularProject() {
   const resolved = await resolveWorkspaceAndAngularJson();
   if (!resolved) {
@@ -189,12 +280,23 @@ export async function testAngularProject() {
   let terminalName: string;
 
   const cliVersion = await detectCliVersion(workspaceRoot);
+  const supportsUi = supportsTestUiFlag(cliVersion);
 
   const config = vscode.workspace.getConfiguration('angularCliPlus');
   const watchMode = config.get<boolean>('test.watch', false);
-  const watchFlag = watchMode ? ' --watch' : ' --watch=false';
   const uiMode = config.get<boolean>('test.ui', false);
-  const uiFlag = uiMode && supportsTestUiFlag(cliVersion) ? ' --ui' : '';
+  const uiInVscode = config.get<boolean>('test.uiInVscode', true);
+  const uiPort = config.get<number>('test.uiPort', VITEST_UI_DEFAULT_PORT);
+  
+  let watchFlag = '';
+  let uiFlag = '';
+  
+  if (uiMode && supportsUi) {
+    uiFlag = ' --ui';
+    watchFlag = ' --watch';
+  } else {
+    watchFlag = watchMode ? ' --watch' : ' --watch=false';
+  }
 
   if (picked === CURRENT_FILE && activeFile) {
     const relPath = path.relative(workspaceRoot, activeFile).replaceAll(path.sep, '/');
@@ -231,10 +333,24 @@ export async function testAngularProject() {
     terminalName = `ng test (${picked})`;
   }
 
-  void runInTerminal(terminalName, testCommand, workspaceRoot, {
+  const terminalPromise = runInTerminal(terminalName, testCommand, workspaceRoot, {
     successMessage: watchMode ? undefined : `${terminalName} completed successfully.`,
     retryLabel: watchMode ? undefined : 'Retry',
   }).catch((err) => vscode.window.showErrorMessage(`Failed to start "${terminalName}": ${err}`));
+  
+  if (uiMode && supportsUi && uiInVscode) {
+    void terminalPromise.then(async () => {
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      try {
+        await waitForVitestUi(uiPort, VITEST_UI_START_TIMEOUT_MS);
+        await openVitestUiInVscode(uiPort);
+      } catch {
+        vscode.window.showWarningMessage(
+          `Vitest UI did not start within the expected time. Please try opening http://localhost:${uiPort} manually.`,
+        );
+      }
+    });
+  }
 }
 
 // ── Build ─────────────────────────────────────────────────────────────────────
