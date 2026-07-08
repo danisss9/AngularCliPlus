@@ -7,7 +7,7 @@ import {
   setLastProject,
 } from './utils';
 import { findOptimizationsInFile, OptimizationLocation, OptimizationKind } from './optimizations-ast';
-import { sendCopilotAutoFix, sendCopilotAutoFixForFile } from './copilot-fix';
+import { sendCopilotAutoFix, sendCopilotAutoFixForFile, sendAIAutoFix, sendAIAutoFixForFile, getAIProvider } from './copilot-fix';
 import { createAnalysisPanel, escapeHtml, ANALYSIS_PANEL_CSP } from './webview-utils';
 
 const COMMAND_KEY = 'checkOptimizations';
@@ -156,7 +156,9 @@ function showOptimizationsWebview(
   const autoFixEnabled = (): boolean =>
     vscode.workspace
       .getConfiguration('angularCliPlus')
-      .get<boolean>('copilot.autoFixEnabled', true);
+      .get<boolean>('ai.autoFixEnabled', true);
+
+  const aiProvider = (): string => getAIProvider();
 
   const analysisPanel = createAnalysisPanel(
     'angularOptimizations',
@@ -207,8 +209,10 @@ function showOptimizationsWebview(
         );
         analysisPanel.setTitle(optimizationsTitle(scopeLabel, freshIssues.length));
         analysisPanel.setHtml(buildWebviewHtml(freshIssues, workspaceRoot, autoFixEnabled()));
-      } else if (message.command === 'copilotFix') {
-        await sendCopilotAutoFix({
+      } else if (message.command === 'copilotFix' || message.command === 'aiFix') {
+        const fixProvider = message.command === 'aiFix' ? aiProvider() : 'copilot';
+        const sendFix = fixProvider === 'claude' ? sendAIAutoFix : sendCopilotAutoFix;
+        await sendFix({
           file: message.file,
           line: message.line,
           kind: message.kind ?? '',
@@ -217,8 +221,10 @@ function showOptimizationsWebview(
           description: message.description ?? '',
           fixHint: message.fixHint ?? '',
         });
-      } else if (message.command === 'copilotFixFile') {
-        await sendCopilotAutoFixForFile({
+      } else if (message.command === 'copilotFixFile' || message.command === 'aiFixFile') {
+        const fixFileProvider = message.command === 'aiFixFile' ? aiProvider() : 'copilot';
+        const sendFixFile = fixFileProvider === 'claude' ? sendAIAutoFixForFile : sendCopilotAutoFixForFile;
+        await sendFixFile({
           file: message.file,
           issues: message.issues ?? [],
           issueType: 'Optimization',
@@ -307,8 +313,10 @@ function buildWebviewHtml(issues: OptimizationLocation[], workspaceRoot: string,
             .replace(/(get\s+)/g, '<mark>$1</mark>')
             .replace(/(scroll|mousemove|wheel|drag|dragover)/g, '<mark>$1</mark>');
 
-          const copilotBtn = autoFixEnabled
-            ? /* html */ `<button class="copilot-fix-btn" title="Auto Fix with Copilot"
+          const aiProviderName = aiProvider() === 'claude' ? 'Claude Code' : 'Copilot';
+          const aiBtn = autoFixEnabled
+            ? /* html */ `<button class="ai-fix-btn copilot-fix-btn" title="Auto Fix with ${aiProviderName}"
+                data-command="aiFix"
                 data-file="${absolutePath}"
                 data-line="${issue.line}"
                 data-kind="${escapeHtml(issue.kind)}"
@@ -318,6 +326,9 @@ function buildWebviewHtml(issues: OptimizationLocation[], workspaceRoot: string,
                 data-fix-hint="${escapeHtml(kindFixHint[issue.kind])}"
               >${copilotIconSvg}</button>`
             : '';
+          
+          // Keep backward compatibility
+          const copilotBtn = aiBtn;
 
           return /* html */ `
           <div class="issue-item leak-item" data-kind="${issue.kind}">
@@ -329,8 +340,10 @@ function buildWebviewHtml(issues: OptimizationLocation[], workspaceRoot: string,
         })
         .join('');
 
+      const aiProviderName = aiProvider() === 'claude' ? 'Claude Code' : 'Copilot';
       const fileFixAllBtn = autoFixEnabled
-        ? /* html */ `<button class="copilot-fix-file-btn" title="Auto Fix all ${fileIssues.length} issue${fileIssues.length !== 1 ? 's' : ''} in this file with Copilot"
+        ? /* html */ `<button class="ai-fix-file-btn copilot-fix-file-btn" title="Auto Fix all ${fileIssues.length} issue${fileIssues.length !== 1 ? 's' : ''} in this file with ${aiProviderName}"
+            data-command="aiFixFile"
             data-file="${absolutePath}"
             data-issues="${escapeHtml(JSON.stringify(fileIssues.map((i) => ({
               line: i.line,
@@ -1054,13 +1067,14 @@ function buildWebviewHtml(issues: OptimizationLocation[], workspaceRoot: string,
       vscode.postMessage({ command: 'reload' });
     });
 
-    // ── Copilot fix buttons (per-issue) ───────────────────────────────────────
-    document.querySelectorAll('.copilot-fix-btn').forEach(function(btn) {
+    // ── AI fix buttons (per-issue) ───────────────────────────────────────
+    document.querySelectorAll('.copilot-fix-btn, .ai-fix-btn').forEach(function(btn) {
       btn.addEventListener('click', function(e) {
         e.preventDefault();
         e.stopPropagation();
+        const command = btn.getAttribute('data-command') || 'copilotFix';
         vscode.postMessage({
-          command: 'copilotFix',
+          command: command,
           file: btn.getAttribute('data-file'),
           line: parseInt(btn.getAttribute('data-line'), 10),
           kind: btn.getAttribute('data-kind'),
@@ -1072,13 +1086,14 @@ function buildWebviewHtml(issues: OptimizationLocation[], workspaceRoot: string,
       });
     });
 
-    // ── Copilot fix all buttons (per-file) ────────────────────────────────────
-    document.querySelectorAll('.copilot-fix-file-btn').forEach(function(btn) {
+    // ── AI fix all buttons (per-file) ────────────────────────────────────
+    document.querySelectorAll('.copilot-fix-file-btn, .ai-fix-file-btn').forEach(function(btn) {
       btn.addEventListener('click', function(e) {
         e.preventDefault();
         e.stopPropagation();
+        const command = btn.getAttribute('data-command') || 'copilotFixFile';
         vscode.postMessage({
-          command: 'copilotFixFile',
+          command: command,
           file: btn.getAttribute('data-file'),
           issues: JSON.parse(btn.getAttribute('data-issues') || '[]')
         });

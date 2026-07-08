@@ -1,10 +1,10 @@
 {
   "name": "angular-cli-plus",
   "displayName": "Angular CLI Plus",
-  "description": "Angular CLI commands, schematics generator, and project tools for VS Code",
+  "description": "Angular CLI commands, schematics generator, and project tools for VS Code with AI-powered auto-fix support (GitHub Copilot & Claude Code)",
   "repository": "https://github.com/danisss9/AngularCliPlus",
   "publisher": "danisss9",
-  "version": "1.8.1",
+  "version": "1.9.0",
   "icon": "icon.png",
   "engines": {
     "vscode": "^1.107.0"
@@ -16,6 +16,10 @@
     "onStartupFinished"
   ],
   "main": "./dist/extension.js",
+  "recommendations": [
+    "github.copilot",
+    "claudecode.claude-code"
+  ],
   "contributes": {
     "commands": [
       {
@@ -576,10 +580,23 @@
           "default": "",
           "description": "Custom command to run for npm: Clean Install (e.g. 'yarn install --frozen-lockfile'). Leave empty to use the default behaviour (remove node_modules + package-lock.json, then run npm install)."
         },
-        "angularCliPlus.copilot.autoFixEnabled": {
+        "angularCliPlus.ai.provider": {
+          "type": "string",
+          "default": "copilot",
+          "enum": [
+            "copilot",
+            "claude"
+          ],
+          "enumDescriptions": [
+            "Use GitHub Copilot for AI-powered fixes",
+            "Use Claude Code for AI-powered fixes"
+          ],
+          "description": "Choose which AI assistant to use for auto-fix functionality. GitHub Copilot uses 'workbench.action.chat.open', Claude Code uses 'claude-code.open-chat'."
+        },
+        "angularCliPlus.ai.autoFixEnabled": {
           "type": "boolean",
           "default": true,
-          "description": "Show 'Auto Fix with Copilot' buttons in the Memory Leaks, Optimizations, and Build Errors webviews. Requires GitHub Copilot to be installed."
+          "description": "Show 'Auto Fix' buttons in the Memory Leaks, Optimizations, and Build Errors webviews. Requires the selected AI assistant to be installed."
         }
       }
     }

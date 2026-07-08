@@ -50,7 +50,7 @@ Detection runs via `ng version` (preferring the workspace-local CLI from `node_m
 | Angular: Build Project (Watch) | `Ctrl+Shift+A W`   | Runs `ng build --watch` with the configured watch configuration                                                                                                                              |
 | Angular: Test Project          | `Ctrl+Shift+A T`   | Runs `ng test` for a project, all projects, or the currently open spec file                                                                                                                  |
 | Angular: Restart Serve         | `Ctrl+Shift+A R`   | Restarts any active serve/build-watch terminal; re-attaches the debugger if a debug session was running                                                                                      |
-| Angular: Lint Project          | `Ctrl+Shift+A L`   | Runs `ng lint --format json` for a selected project (or all projects) and shows the results in an interactive Webview panel with sort-by-file/sort-by-rule grouping, severity/fixability filters, collapsible groups, and native `eslint --fix` + Copilot auto-fix buttons |
+| Angular: Lint Project          | `Ctrl+Shift+A L`   | Runs `ng lint --format json` for a selected project (or all projects) and shows the results in an interactive Webview panel with sort-by-file/sort-by-rule grouping, severity/fixability filters, collapsible groups, and native `eslint --fix` + AI auto-fix buttons |
 | Angular: Update Packages       | `Ctrl+Shift+A U`   | Checks for updates with `ng update` and `npm-check-updates` and shows them in an interactive Webview panel with separate tables for Angular and other packages, each with selective update buttons |
 | Angular: Switch Component File | `Ctrl+Shift+A Tab` | Quickly switch between a component's `.ts`, `.html`, `.scss`/`.css`, and `.spec.ts` files via a QuickPick                                                                                    |
 | Angular: Run npm Script        | `Ctrl+Shift+A N`   | Shows a searchable list of all npm scripts from `package.json` and runs the selected one in a terminal                                                                                       |
@@ -147,7 +147,7 @@ Runs `ng lint --format json` for a selected project, parses the ESLint results, 
 - **Collapse/expand groups**: click any file/rule header (or its chevron) to collapse that group, or use **Collapse all / Expand all** in the header.
 - **Hybrid auto-fix**: ESLint reports which problems are auto-fixable, so the panel adapts:
   - Auto-fixable problems show a native **Fix** button that runs `eslint --fix`. Fix a single issue, a whole file ("Fix file" / per-rule "Fix"), or the entire project with **Fix all auto-fixable** (`ng lint --fix`). After every fix the panel re-lints automatically so resolved problems disappear.
-  - Problems that can't be auto-fixed show an **Auto Fix with Copilot** (✨) button that opens Copilot Chat with a context-aware prompt.
+  - Problems that can't be auto-fixed show an **Auto Fix** (✨) button that opens your configured AI assistant (GitHub Copilot or Claude Code) with a context-aware prompt.
 - **Deep links & details**: each row shows its severity (error/warning) and rule id, with a clickable link that jumps straight to the source location. A **Reload** button re-runs the lint in place, and each run opens its own tab (titled with the scope) so you can compare projects side by side.
 - **Guided setup**: if the selected project has no lint target, the panel offers a one-click **Add angular-eslint** button that runs `ng add angular-eslint`.
 
@@ -163,14 +163,15 @@ Checks for outdated dependencies and presents them in an interactive Webview pan
   - Other packages run `npm-check-updates -u` for the selected packages to bump `package.json`, then `npm install`.
 - **Reload**: re-runs both checks and refreshes the panel in place. When nothing is outdated, an "all up to date" message is shown.
 
-### GitHub Copilot Integration (✨)
+### AI Auto-Fix Integration (✨)
 
-The `Memory Leaks`, `Optimizations`, `Build Errors`, and `Lint` panels feature deep integration with **GitHub Copilot** to help you fix issues with one click.
+The `Memory Leaks`, `Optimizations`, `Build Errors`, and `Lint` panels feature deep integration with AI assistants to help you fix issues with one click.
 
-- **Auto Fix**: Click the sparkle icon (✨) next to any diagnostic to open Copilot Chat with a pre-filled, context-aware prompt. The prompt includes the code snippet, the error description, and a concrete fix hint.
-- **Bulk Fix (Fix All)**: Every file group in the diagnostic panels includes a **Fix all** button. This sends all issues identified in that file to Copilot in a single batch, allowing the AI to refactor the entire file at once.
+- **AI Provider Selection**: Choose between **GitHub Copilot** or **Claude Code** as your preferred AI assistant in the settings.
+- **Auto Fix**: Click the sparkle icon (✨) next to any diagnostic to open your configured AI assistant with a pre-filled, context-aware prompt. The prompt includes the code snippet, the error description, and a concrete fix hint.
+- **Bulk Fix (Fix All)**: Every file group in the diagnostic panels includes a **Fix all** button. This sends all issues identified in that file to your AI assistant in a single batch, allowing it to refactor the entire file at once.
 
-*Note: Requires the **GitHub Copilot** and **GitHub Copilot Chat** extensions to be installed and active.*
+*Note: Requires the selected AI assistant extension to be installed and active (GitHub Copilot + GitHub Copilot Chat, or Claude Code).*
 
 
 ### Failure notifications and retry
@@ -232,7 +233,7 @@ Use the keyboard shortcuts (`Ctrl+Shift+A` followed by a letter) or search for *
 - **Build Watch** (`Ctrl+Shift+A W`): same as build but adds `--watch` (configuration controlled by `angularCliPlus.watch.configuration`)
 - **Test** (`Ctrl+Shift+A T`): select a project, all projects at once, or the `.spec.ts` file you have open; when a spec file belongs to a detected Angular project, the owning project is passed explicitly to `ng test`
 - **Restart Serve** (`Ctrl+Shift+A R`): restart any active `ng serve`, `ng build --watch`, Storybook, or static server terminal; if a debug session is attached it is stopped first and re-attached after the restart
-- **Lint** (`Ctrl+Shift+A L`): select a project, run `ng lint --format json`, and review the results in an interactive Webview panel — group issues by file or by ESLint rule, jump to any problem, and fix them with native `eslint --fix` or Copilot (see [Angular: Lint Project](#angular-lint-project-ctrlshifta-l) below)
+- **Lint** (`Ctrl+Shift+A L`): select a project, run `ng lint --format json`, and review the results in an interactive Webview panel — group issues by file or by ESLint rule, jump to any problem, and fix them with native `eslint --fix` or AI auto-fix (see [Angular: Lint Project](#angular-lint-project-ctrlshifta-l) below)
 - **Update** (`Ctrl+Shift+A U`): checks for updates with `ng update` (Angular packages) and `npm-check-updates` (everything else) and shows both in an interactive Webview panel with separate tables; tick the packages you want and update them in place (see [Angular: Update Packages](#angular-update-packages-ctrlshifta-u) below)
 - **Switch Component File** (`Ctrl+Shift+A Tab`): switch between a component's related files (`.ts`, `.html`, `.scss`/`.css`/`.sass`/`.less`, `.spec.ts`) — shows a QuickPick with icons for each file type; the current file is pre-selected
 - **Run npm Script** (`Ctrl+Shift+A N`): shows a searchable list of all scripts from `package.json`; select one to run it in a dedicated terminal
@@ -396,6 +397,7 @@ This extension contributes the following settings:
 - `angularCliPlus.npm.installCommand`: Custom command used by **npm: Install** (e.g. `yarn install`, `pnpm install`). Leave empty to use the default `npm install` with automatic clean/force fallbacks (default: `""`)
 - `angularCliPlus.npm.cleanInstallCommand`: Custom command used by **npm: Clean Install** (e.g. `yarn install --frozen-lockfile`). Leave empty to use the default behaviour — removes `node_modules` and `package-lock.json` then runs `npm install` (default: `""`)
 
-### Copilot Options
+### AI Options
 
-- `angularCliPlus.copilot.autoFixEnabled`: Show "Auto Fix with Copilot" buttons in diagnostic webviews (default: `true`)
+- `angularCliPlus.ai.provider`: Choose AI assistant for auto-fix functionality — `"copilot"` (default) or `"claude"`
+- `angularCliPlus.ai.autoFixEnabled`: Show "Auto Fix" buttons in diagnostic webviews (default: `true`)

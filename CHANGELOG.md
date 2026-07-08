@@ -4,6 +4,20 @@ All notable changes to the "angular-cli-plus" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.9.0]
+
+### Added
+
+- **Claude Code Auto-Fix Support.** Added support for using Claude Code as an alternative to GitHub Copilot for AI-powered auto-fix functionality. Users can now choose their preferred AI assistant in the settings:
+  - `angularCliPlus.ai.provider`: Choose between `"copilot"` (default) or `"claude"`
+  - `angularCliPlus.ai.autoFixEnabled`: Enable/disable AI auto-fix buttons
+- Auto-fix buttons now dynamically show the current AI provider name ("Auto Fix with Claude Code" or "Auto Fix with Copilot")
+- Added recommendations for both GitHub Copilot and Claude Code extensions
+
+### Changed
+
+- **Unified AI Configuration.** Replaced `angularCliPlus.copilot.autoFixEnabled` with the new `angularCliPlus.ai.autoFixEnabled` setting for consistent AI assistant control across all features
+
 ## [1.8.1]
 
 ### Fixed

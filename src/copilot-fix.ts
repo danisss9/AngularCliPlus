@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 
-export interface CopilotFixOptions {
+export type AIProvider = 'copilot' | 'claude';
+
+export interface AIFixOptions {
   /** Absolute path of the file containing the issue */
   file: string;
   /** 1-based line number */
@@ -17,7 +19,7 @@ export interface CopilotFixOptions {
   fixHint: string;
 }
 
-export interface CopilotFixFileOptions {
+export interface AIFixFileOptions {
   /** Absolute path of the file */
   file: string;
   /** All issues in the file */
@@ -33,36 +35,67 @@ export interface CopilotFixFileOptions {
   issueType: string;
 }
 
+// Keep old interfaces for backward compatibility
+export type CopilotFixOptions = AIFixOptions;
+export type CopilotFixFileOptions = AIFixFileOptions;
+
 
 /**
- * Opens Copilot Chat with a fix prompt for a single issue.
+ * Gets the configured AI provider from settings.
  */
+export function getAIProvider(): AIProvider {
+  const config = vscode.workspace.getConfiguration('angularCliPlus');
+  const provider = config.get<string>('ai.provider', 'copilot');
+  return provider === 'claude' ? 'claude' : 'copilot';
+}
+
+/**
+ * Opens AI Chat (Copilot or Claude Code) with a fix prompt for a single issue.
+ */
+export async function sendAIAutoFix(opts: AIFixOptions): Promise<void> {
+  const prompt = buildSinglePrompt(opts);
+  await openAIChatWithPrompt(prompt, getAIProvider());
+}
+
+/**
+ * Opens AI Chat (Copilot or Claude Code) with a fix prompt covering all issues in a single file.
+ */
+export async function sendAIAutoFixForFile(opts: AIFixFileOptions): Promise<void> {
+  const prompt = buildFilePrompt(opts);
+  await openAIChatWithPrompt(prompt, getAIProvider());
+}
+
+// Keep old functions for backward compatibility
 export async function sendCopilotAutoFix(opts: CopilotFixOptions): Promise<void> {
   const prompt = buildSinglePrompt(opts);
-  await openChatWithPrompt(prompt);
+  await openAIChatWithPrompt(prompt, 'copilot');
 }
 
-/**
- * Opens Copilot Chat with a fix prompt covering all issues in a single file.
- */
 export async function sendCopilotAutoFixForFile(opts: CopilotFixFileOptions): Promise<void> {
   const prompt = buildFilePrompt(opts);
-  await openChatWithPrompt(prompt);
+  await openAIChatWithPrompt(prompt, 'copilot');
 }
 
-async function openChatWithPrompt(prompt: string): Promise<void> {
+async function openAIChatWithPrompt(prompt: string, provider: AIProvider): Promise<void> {
+  const providerName = provider === 'claude' ? 'Claude Code' : 'GitHub Copilot';
+  const command = provider === 'claude' ? 'claude-code.open-chat' : 'workbench.action.chat.open';
 
   try {
-    await vscode.commands.executeCommand('workbench.action.chat.open', {
+    await vscode.commands.executeCommand(command, {
       query: prompt,
     });
   } catch {
-    // Copilot Chat not available — copy to clipboard as fallback
+    // AI Chat not available — copy to clipboard as fallback
     await vscode.env.clipboard.writeText(prompt);
     vscode.window.showWarningMessage(
-      'GitHub Copilot Chat does not appear to be available. The fix prompt has been copied to your clipboard.',
+      `${providerName} Chat does not appear to be available. The fix prompt has been copied to your clipboard.`,
     );
   }
+}
+
+// Keep old function for backward compatibility
+async function openChatWithPrompt(prompt: string): Promise<void> {
+  await openAIChatWithPrompt(prompt, 'copilot');
 }
 
 function buildSinglePrompt(opts: CopilotFixOptions): string {

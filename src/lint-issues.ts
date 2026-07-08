@@ -12,7 +12,7 @@ import {
   buildAngularCliTerminalCommand,
 } from './utils';
 import { spawnCapture } from './dependencies';
-import { sendCopilotAutoFix, sendCopilotAutoFixForFile } from './copilot-fix';
+import { sendCopilotAutoFix, sendCopilotAutoFixForFile, sendAIAutoFix, sendAIAutoFixForFile, getAIProvider } from './copilot-fix';
 import { createAnalysisPanel, escapeHtml, ANALYSIS_PANEL_CSP } from './webview-utils';
 import type { AnalysisPanel } from './webview-utils';
 
@@ -338,7 +338,8 @@ function createLintPanel(issues: LintIssue[], workspaceRoot: string, projectName
 /** Rebuilds a panel's title + HTML from its current state. */
 function renderInto(state: LintPanel): void {
   const config = vscode.workspace.getConfiguration('angularCliPlus');
-  const autoFixEnabled = config.get<boolean>('copilot.autoFixEnabled', true);
+  const autoFixEnabled = config.get<boolean>('ai.autoFixEnabled', true);
+  const aiProvider = getAIProvider();
   state.panel.setTitle(lintTitle(state.projectName, state.issues.length));
   state.panel.setHtml(
     buildWebviewHtml(
@@ -387,7 +388,10 @@ async function handleMessage(state: LintPanel, message: WebviewMessage): Promise
       await reloadPanel(state);
       return;
     case 'copilotFix':
-      await sendCopilotAutoFix({
+    case 'aiFix':
+      const fixProvider = message.command === 'aiFix' ? getAIProvider() : 'copilot';
+      const sendFix = fixProvider === 'claude' ? sendAIAutoFix : sendCopilotAutoFix;
+      await sendFix({
         file: message.file ?? '',
         line: message.line ?? 1,
         kind: message.kind ?? '',
@@ -398,7 +402,10 @@ async function handleMessage(state: LintPanel, message: WebviewMessage): Promise
       });
       return;
     case 'copilotFixFile':
-      await sendCopilotAutoFixForFile({
+    case 'aiFixFile':
+      const fixFileProvider = message.command === 'aiFixFile' ? getAIProvider() : 'copilot';
+      const sendFixFile = fixFileProvider === 'claude' ? sendAIAutoFixForFile : sendCopilotAutoFixForFile;
+      await sendFixFile({
         file: message.file ?? '',
         issues: message.issues ?? [],
         issueType: 'Lint Issue',

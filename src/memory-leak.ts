@@ -7,7 +7,7 @@ import {
   setLastProject,
 } from './utils';
 import { findMemoryLeaksInFile, MemoryLeakLocation, MemoryLeakKind } from './ast-utils';
-import { sendCopilotAutoFix, sendCopilotAutoFixForFile } from './copilot-fix';
+import { sendCopilotAutoFix, sendCopilotAutoFixForFile, sendAIAutoFix, sendAIAutoFixForFile, getAIProvider } from './copilot-fix';
 import { createAnalysisPanel, escapeHtml, ANALYSIS_PANEL_CSP } from './webview-utils';
 
 const COMMAND_KEY = 'checkMemoryLeaks';
@@ -156,7 +156,9 @@ function showMemoryLeaksWebview(
   const autoFixEnabled = (): boolean =>
     vscode.workspace
       .getConfiguration('angularCliPlus')
-      .get<boolean>('copilot.autoFixEnabled', true);
+      .get<boolean>('ai.autoFixEnabled', true);
+
+  const aiProvider = (): string => getAIProvider();
 
   const analysisPanel = createAnalysisPanel(
     'angularMemoryLeaks',
@@ -208,8 +210,10 @@ function showMemoryLeaksWebview(
         );
         analysisPanel.setTitle(memoryLeaksTitle(scopeLabel, freshLeaks.length));
         analysisPanel.setHtml(buildWebviewHtml(freshLeaks, workspaceRoot, autoFixEnabled()));
-      } else if (message.command === 'copilotFix') {
-        await sendCopilotAutoFix({
+      } else if (message.command === 'copilotFix' || message.command === 'aiFix') {
+        const fixProvider = message.command === 'aiFix' ? aiProvider() : 'copilot';
+        const sendFix = fixProvider === 'claude' ? sendAIAutoFix : sendCopilotAutoFix;
+        await sendFix({
           file: message.file,
           line: message.line,
           kind: message.kind ?? '',
@@ -218,8 +222,10 @@ function showMemoryLeaksWebview(
           description: message.description ?? '',
           fixHint: message.fixHint ?? '',
         });
-      } else if (message.command === 'copilotFixFile') {
-        await sendCopilotAutoFixForFile({
+      } else if (message.command === 'copilotFixFile' || message.command === 'aiFixFile') {
+        const fixFileProvider = message.command === 'aiFixFile' ? aiProvider() : 'copilot';
+        const sendFixFile = fixFileProvider === 'claude' ? sendAIAutoFixForFile : sendCopilotAutoFixForFile;
+        await sendFixFile({
           file: message.file,
           issues: message.issues ?? [],
           issueType: 'Memory Leak',
@@ -301,8 +307,10 @@ function buildWebviewHtml(leaks: MemoryLeakLocation[], workspaceRoot: string, au
               /(new\s+(?:Subject|BehaviorSubject|ReplaySubject|AsyncSubject)\s*[<(])/g,
               '<mark>$1</mark>',
             );
-          const copilotBtn = autoFixEnabled
-            ? /* html */ `<button class="copilot-fix-btn" title="Auto Fix with Copilot"
+          const aiProviderName = aiProvider() === 'claude' ? 'Claude Code' : 'Copilot';
+          const aiBtn = autoFixEnabled
+            ? /* html */ `<button class="ai-fix-btn copilot-fix-btn" title="Auto Fix with ${aiProviderName}"
+                data-command="aiFix"
                 data-file="${absolutePath}"
                 data-line="${leak.line}"
                 data-kind="${escapeHtml(leak.kind)}"
@@ -312,6 +320,8 @@ function buildWebviewHtml(leaks: MemoryLeakLocation[], workspaceRoot: string, au
                 data-fix-hint="${escapeHtml(kindFixHint[leak.kind])}"
               >${copilotIconSvg}</button>`
             : '';
+          // Keep backward compatibility
+          const copilotBtn = aiBtn;
           return /* html */ `
           <div class="leak-item" data-kind="${leak.kind}">
             <a class="line-num" href="#" data-file="${absolutePath}" data-line="${leak.line}">Line ${leak.line}</a>
@@ -322,8 +332,10 @@ function buildWebviewHtml(leaks: MemoryLeakLocation[], workspaceRoot: string, au
         })
         .join('');
 
+      const aiProviderName = aiProvider() === 'claude' ? 'Claude Code' : 'Copilot';
       const fileFixAllBtn = autoFixEnabled
-        ? /* html */ `<button class="copilot-fix-file-btn" title="Auto Fix all ${fileleaks.length} leak${fileleaks.length !== 1 ? 's' : ''} in this file with Copilot"
+        ? /* html */ `<button class="ai-fix-file-btn copilot-fix-file-btn" title="Auto Fix all ${fileleaks.length} leak${fileleaks.length !== 1 ? 's' : ''} in this file with ${aiProviderName}"
+            data-command="aiFixFile"
             data-file="${absolutePath}"
             data-issues="${escapeHtml(JSON.stringify(fileleaks.map((l) => ({
               line: l.line,
@@ -1011,13 +1023,14 @@ function buildWebviewHtml(leaks: MemoryLeakLocation[], workspaceRoot: string, au
       vscode.postMessage({ command: 'reload' });
     });
 
-    // ── Copilot fix buttons (per-issue) ───────────────────────────────────────
-    document.querySelectorAll('.copilot-fix-btn').forEach(function(btn) {
+    // ── AI fix buttons (per-issue) ───────────────────────────────────────
+    document.querySelectorAll('.copilot-fix-btn, .ai-fix-btn').forEach(function(btn) {
       btn.addEventListener('click', function(e) {
         e.preventDefault();
         e.stopPropagation();
+        const command = btn.getAttribute('data-command') || 'copilotFix';
         vscode.postMessage({
-          command: 'copilotFix',
+          command: command,
           file: btn.getAttribute('data-file'),
           line: parseInt(btn.getAttribute('data-line'), 10),
           kind: btn.getAttribute('data-kind'),
@@ -1029,13 +1042,14 @@ function buildWebviewHtml(leaks: MemoryLeakLocation[], workspaceRoot: string, au
       });
     });
 
-    // ── Copilot fix all buttons (per-file) ────────────────────────────────────
-    document.querySelectorAll('.copilot-fix-file-btn').forEach(function(btn) {
+    // ── AI fix all buttons (per-file) ────────────────────────────────────
+    document.querySelectorAll('.copilot-fix-file-btn, .ai-fix-file-btn').forEach(function(btn) {
       btn.addEventListener('click', function(e) {
         e.preventDefault();
         e.stopPropagation();
+        const command = btn.getAttribute('data-command') || 'copilotFixFile';
         vscode.postMessage({
-          command: 'copilotFixFile',
+          command: command,
           file: btn.getAttribute('data-file'),
           issues: JSON.parse(btn.getAttribute('data-issues') || '[]')
         });
