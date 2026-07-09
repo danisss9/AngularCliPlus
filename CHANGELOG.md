@@ -24,10 +24,14 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
   - New settings:
     - `angularCliPlus.test.uiInVscode`: Enable/disable opening Vitest UI in VS Code (default: `true`)
     - `angularCliPlus.test.uiPort`: Configure the Vitest UI port (default: `51204`)
+- **Angular: Run Migrations** (`Ctrl+Shift+A M`): integrated support for all official Angular migrations from [angular.dev/reference/migrations](https://angular.dev/reference/migrations). Shows a categorized QuickPick of the 13 available migrations (Standalone, Control Flow Syntax, inject() Function, Lazy-loaded Routes, Signal Inputs, Signal Outputs, Signal Queries, Clean Up Unused Imports, Self-closing Tags, NgClass to Class, NgStyle to Style, Router Testing Module, CommonModule to Standalone), lets you select a target project, and runs `ng generate @angular/core:migration-name --project "project-name"` in a terminal with success notifications and retry support
 
 ### Changed
 
 - **Unified AI Configuration.** Replaced `angularCliPlus.copilot.autoFixEnabled` with the new `angularCliPlus.ai.autoFixEnabled` setting for consistent AI assistant control across all features
+- **Updated keyboard shortcuts:** Rotated keybindings for better mnemonic alignment:
+  - Angular: Check Memory Leaks changed from `Ctrl+Shift+A M` to `Ctrl+Shift+A K`
+  - Angular: Debug Storybook changed from `Ctrl+Shift+A K` to `Ctrl+Shift+A P`
 
 ## [1.8.1]
 
@@ -57,7 +61,7 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 ### Added
 
 - **Collapse/expand tables** in the `Lint`, `Optimizations`, and `Memory Leaks` panels. Each file/rule group now has a chevron toggle (the whole group header is clickable), plus a **Collapse all / Expand all** button in the panel header that flips its label to match the current state. Groups start expanded, preserving the previous look.
-- **Severity & fixability filters** in the `Lint` panel. A **Show:** bar exposes toggle pills for **errors** / **warnings** and **fixable** / **manual** problems. The two dimensions combine (e.g. turn off *Warnings* and *Manual* to see only auto-fixable errors); groups whose issues are all filtered out are hidden. A pill pair only appears when it actually splits the list.
+- **Severity & fixability filters** in the `Lint` panel. A **Show:** bar exposes toggle pills for **errors** / **warnings** and **fixable** / **manual** problems. The two dimensions combine (e.g. turn off _Warnings_ and _Manual_ to see only auto-fixable errors); groups whose issues are all filtered out are hidden. A pill pair only appears when it actually splits the list.
 - **All projects** option in the `Lint` panel's project picker. Selecting it runs `ng lint` with no `--project`, linting every project and merging the results into one panel (the project-wide **Fix all auto-fixable** honours the same scope). Shown only when the workspace has more than one project.
 
 ### Changed
@@ -66,7 +70,7 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ### Fixed
 
-- **Reload targeting the wrong command.** When a panel tab was reused for a second run, its **Reload** button (and, for Optimizations/Memory Leaks, the whole reload flow) kept re-running the *first* command's scope because the message handler was bound once and closed over the original scope. Each run now owns its tab and handler, so Reload always matches the tab it lives in.
+- **Reload targeting the wrong command.** When a panel tab was reused for a second run, its **Reload** button (and, for Optimizations/Memory Leaks, the whole reload flow) kept re-running the _first_ command's scope because the message handler was bound once and closed over the original scope. Each run now owns its tab and handler, so Reload always matches the tab it lives in.
 - **Webview scroll jumping to the top** after clicking a source link and returning to the panel. `Lint`, `Build Errors`, `Optimizations`, and `Memory Leaks` now persist and restore the scroll position across visibility changes, so returning from a file keeps your place.
 
 ## [1.7.0]

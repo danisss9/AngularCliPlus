@@ -7,7 +7,13 @@ import {
   setLastProject,
 } from './utils';
 import { findMemoryLeaksInFile, MemoryLeakLocation, MemoryLeakKind } from './ast-utils';
-import { sendCopilotAutoFix, sendCopilotAutoFixForFile, sendAIAutoFix, sendAIAutoFixForFile, getAIProvider } from './copilot-fix';
+import {
+  sendCopilotAutoFix,
+  sendCopilotAutoFixForFile,
+  sendAIAutoFix,
+  sendAIAutoFixForFile,
+  getAIProvider,
+} from './copilot-fix';
 import { createAnalysisPanel, escapeHtml, ANALYSIS_PANEL_CSP } from './webview-utils';
 
 const COMMAND_KEY = 'checkMemoryLeaks';
@@ -154,9 +160,7 @@ function showMemoryLeaksWebview(
   scopeLabel: string,
 ): void {
   const autoFixEnabled = (): boolean =>
-    vscode.workspace
-      .getConfiguration('angularCliPlus')
-      .get<boolean>('ai.autoFixEnabled', true);
+    vscode.workspace.getConfiguration('angularCliPlus').get<boolean>('ai.autoFixEnabled', true);
 
   const aiProvider = (): string => getAIProvider();
 
@@ -177,7 +181,14 @@ function showMemoryLeaksWebview(
       description?: string;
       fixHint?: string;
       // copilotFixFile payload
-      issues?: Array<{ line: number; kind: string; kindLabel: string; snippet: string; description: string; fixHint: string }>;
+      issues?: Array<{
+        line: number;
+        kind: string;
+        kindLabel: string;
+        snippet: string;
+        description: string;
+        fixHint: string;
+      }>;
     }) => {
       if (message.command === 'openFile') {
         const uri = vscode.Uri.file(message.file);
@@ -224,7 +235,8 @@ function showMemoryLeaksWebview(
         });
       } else if (message.command === 'copilotFixFile' || message.command === 'aiFixFile') {
         const fixFileProvider = message.command === 'aiFixFile' ? aiProvider() : 'copilot';
-        const sendFixFile = fixFileProvider === 'claude' ? sendAIAutoFixForFile : sendCopilotAutoFixForFile;
+        const sendFixFile =
+          fixFileProvider === 'claude' ? sendAIAutoFixForFile : sendCopilotAutoFixForFile;
         await sendFixFile({
           file: message.file,
           issues: message.issues ?? [],
@@ -235,7 +247,11 @@ function showMemoryLeaksWebview(
   );
 }
 
-function buildWebviewHtml(leaks: MemoryLeakLocation[], workspaceRoot: string, autoFixEnabled: boolean): string {
+function buildWebviewHtml(
+  leaks: MemoryLeakLocation[],
+  workspaceRoot: string,
+  autoFixEnabled: boolean,
+): string {
   // Group leaks by relative file path
   const byFile = new Map<string, MemoryLeakLocation[]>();
   for (const leak of leaks) {
@@ -257,25 +273,39 @@ function buildWebviewHtml(leaks: MemoryLeakLocation[], workspaceRoot: string, au
   };
 
   const kindDescription: Record<MemoryLeakKind, string> = {
-    'unguarded-subscribe': 'Missing untilDestroyed() or takeUntilDestroyed() as the last operator in .pipe()',
+    'unguarded-subscribe':
+      'Missing untilDestroyed() or takeUntilDestroyed() as the last operator in .pipe()',
     'nested-subscribe': '.subscribe() called inside another .subscribe() callback',
-    'uncleared-interval': 'setInterval() whose return value is never passed to clearInterval() in ngOnDestroy()',
-    'uncleared-timeout': 'setTimeout() whose return value is stored but never passed to clearTimeout() in ngOnDestroy()',
-    'unremoved-event-listener': 'addEventListener() with no matching removeEventListener() in ngOnDestroy()',
-    'unremoved-renderer-listener': 'renderer.listen() return value stored on this but cleanup function never called in ngOnDestroy()',
-    'retained-dom-reference': 'document.querySelector()/getElementById() result stored on this but never nulled in ngOnDestroy()',
-    'incomplete-destroy-subject': 'Subject used in takeUntil() but .next()/.complete() never called in ngOnDestroy()',
+    'uncleared-interval':
+      'setInterval() whose return value is never passed to clearInterval() in ngOnDestroy()',
+    'uncleared-timeout':
+      'setTimeout() whose return value is stored but never passed to clearTimeout() in ngOnDestroy()',
+    'unremoved-event-listener':
+      'addEventListener() with no matching removeEventListener() in ngOnDestroy()',
+    'unremoved-renderer-listener':
+      'renderer.listen() return value stored on this but cleanup function never called in ngOnDestroy()',
+    'retained-dom-reference':
+      'document.querySelector()/getElementById() result stored on this but never nulled in ngOnDestroy()',
+    'incomplete-destroy-subject':
+      'Subject used in takeUntil() but .next()/.complete() never called in ngOnDestroy()',
   };
 
   const kindFixHint: Record<MemoryLeakKind, string> = {
-    'unguarded-subscribe': 'Add .pipe(takeUntilDestroyed()) (Angular 16+) or .pipe(untilDestroyed(this)) before .subscribe()',
-    'nested-subscribe': 'Flatten with switchMap, mergeMap, or concatMap instead of nesting subscriptions',
-    'uncleared-interval': 'Store the ID and call clearInterval(this.intervalId) inside ngOnDestroy()',
+    'unguarded-subscribe':
+      'Add .pipe(takeUntilDestroyed()) (Angular 16+) or .pipe(untilDestroyed(this)) before .subscribe()',
+    'nested-subscribe':
+      'Flatten with switchMap, mergeMap, or concatMap instead of nesting subscriptions',
+    'uncleared-interval':
+      'Store the ID and call clearInterval(this.intervalId) inside ngOnDestroy()',
     'uncleared-timeout': 'Call clearTimeout(this.timeoutId) inside ngOnDestroy()',
-    'unremoved-event-listener': 'Call removeEventListener() with the same handler reference in ngOnDestroy(); prefer @HostListener or Renderer2.listen()',
-    'unremoved-renderer-listener': 'Call the stored cleanup function (e.g. this.unlisten()) inside ngOnDestroy()',
-    'retained-dom-reference': 'Set the property to null in ngOnDestroy(); prefer @ViewChild for template elements',
-    'incomplete-destroy-subject': 'Add this.destroy$.next(); this.destroy$.complete(); to ngOnDestroy(), or switch to takeUntilDestroyed()',
+    'unremoved-event-listener':
+      'Call removeEventListener() with the same handler reference in ngOnDestroy(); prefer @HostListener or Renderer2.listen()',
+    'unremoved-renderer-listener':
+      'Call the stored cleanup function (e.g. this.unlisten()) inside ngOnDestroy()',
+    'retained-dom-reference':
+      'Set the property to null in ngOnDestroy(); prefer @ViewChild for template elements',
+    'incomplete-destroy-subject':
+      'Add this.destroy$.next(); this.destroy$.complete(); to ngOnDestroy(), or switch to takeUntilDestroyed()',
   };
 
   const copilotIconSvg = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -307,7 +337,7 @@ function buildWebviewHtml(leaks: MemoryLeakLocation[], workspaceRoot: string, au
               /(new\s+(?:Subject|BehaviorSubject|ReplaySubject|AsyncSubject)\s*[<(])/g,
               '<mark>$1</mark>',
             );
-          const aiProviderName = aiProvider() === 'claude' ? 'Claude Code' : 'Copilot';
+          const aiProviderName = getAIProvider() === 'claude' ? 'Claude Code' : 'Copilot';
           const aiBtn = autoFixEnabled
             ? /* html */ `<button class="ai-fix-btn copilot-fix-btn" title="Auto Fix with ${aiProviderName}"
                 data-command="aiFix"
@@ -332,19 +362,23 @@ function buildWebviewHtml(leaks: MemoryLeakLocation[], workspaceRoot: string, au
         })
         .join('');
 
-      const aiProviderName = aiProvider() === 'claude' ? 'Claude Code' : 'Copilot';
+      const aiProviderName = getAIProvider() === 'claude' ? 'Claude Code' : 'Copilot';
       const fileFixAllBtn = autoFixEnabled
         ? /* html */ `<button class="ai-fix-file-btn copilot-fix-file-btn" title="Auto Fix all ${fileleaks.length} leak${fileleaks.length !== 1 ? 's' : ''} in this file with ${aiProviderName}"
             data-command="aiFixFile"
             data-file="${absolutePath}"
-            data-issues="${escapeHtml(JSON.stringify(fileleaks.map((l) => ({
-              line: l.line,
-              kind: l.kind,
-              kindLabel: kindLabel[l.kind],
-              snippet: l.snippet,
-              description: kindDescription[l.kind],
-              fixHint: kindFixHint[l.kind],
-            }))))}"
+            data-issues="${escapeHtml(
+              JSON.stringify(
+                fileleaks.map((l) => ({
+                  line: l.line,
+                  kind: l.kind,
+                  kindLabel: kindLabel[l.kind],
+                  snippet: l.snippet,
+                  description: kindDescription[l.kind],
+                  fixHint: kindFixHint[l.kind],
+                })),
+              ),
+            )}"
           >${copilotIconSvg}<span>Fix all</span></button>`
         : '';
 
@@ -382,22 +416,34 @@ function buildWebviewHtml(leaks: MemoryLeakLocation[], workspaceRoot: string, au
   const destroySubjectCount = leaks.filter((l) => l.kind === 'incomplete-destroy-subject').length;
 
   const statsParts: string[] = [`${filesCount} file${filesCount !== 1 ? 's' : ''} affected`];
-  if (unguardedCount > 0) {statsParts.push(`${unguardedCount} unguarded`);}
-  if (nestedCount > 0) {statsParts.push(`${nestedCount} nested`);}
-  if (intervalCount > 0)
-    {statsParts.push(`${intervalCount} interval${intervalCount !== 1 ? 's' : ''}`);}
-  if (timeoutCount > 0) {statsParts.push(`${timeoutCount} timeout${timeoutCount !== 1 ? 's' : ''}`);}
-  if (listenerCount > 0)
-    {statsParts.push(`${listenerCount} event listener${listenerCount !== 1 ? 's' : ''}`);}
-  if (rendererListenerCount > 0)
-    {statsParts.push(
+  if (unguardedCount > 0) {
+    statsParts.push(`${unguardedCount} unguarded`);
+  }
+  if (nestedCount > 0) {
+    statsParts.push(`${nestedCount} nested`);
+  }
+  if (intervalCount > 0) {
+    statsParts.push(`${intervalCount} interval${intervalCount !== 1 ? 's' : ''}`);
+  }
+  if (timeoutCount > 0) {
+    statsParts.push(`${timeoutCount} timeout${timeoutCount !== 1 ? 's' : ''}`);
+  }
+  if (listenerCount > 0) {
+    statsParts.push(`${listenerCount} event listener${listenerCount !== 1 ? 's' : ''}`);
+  }
+  if (rendererListenerCount > 0) {
+    statsParts.push(
       `${rendererListenerCount} renderer listener${rendererListenerCount !== 1 ? 's' : ''}`,
-    );}
-  if (domRefCount > 0) {statsParts.push(`${domRefCount} DOM ref${domRefCount !== 1 ? 's' : ''}`);}
-  if (destroySubjectCount > 0)
-    {statsParts.push(
+    );
+  }
+  if (domRefCount > 0) {
+    statsParts.push(`${domRefCount} DOM ref${domRefCount !== 1 ? 's' : ''}`);
+  }
+  if (destroySubjectCount > 0) {
+    statsParts.push(
       `${destroySubjectCount} destroy subject${destroySubjectCount !== 1 ? 's' : ''}`,
-    );}
+    );
+  }
   const statsLabel = statsParts.join(' &middot; ');
 
   return /* html */ `<!DOCTYPE html>
@@ -1157,4 +1203,3 @@ function buildWebviewHtml(leaks: MemoryLeakLocation[], workspaceRoot: string, au
 </body>
 </html>`;
 }
-

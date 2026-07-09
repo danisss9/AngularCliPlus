@@ -11,7 +11,13 @@ import type { AngularProject } from './types';
 import { spawnCapture } from './dependencies';
 import { detectCliVersion } from './version';
 import { getBuildConfigFlag } from './version-adapter';
-import { sendCopilotAutoFix, sendCopilotAutoFixForFile, sendAIAutoFix, sendAIAutoFixForFile, getAIProvider } from './copilot-fix';
+import {
+  sendCopilotAutoFix,
+  sendCopilotAutoFixForFile,
+  sendAIAutoFix,
+  sendAIAutoFixForFile,
+  getAIProvider,
+} from './copilot-fix';
 import { createAnalysisPanel, escapeHtml, ANALYSIS_PANEL_CSP } from './webview-utils';
 
 const COMMAND_KEY = 'checkBuildErrors';
@@ -244,9 +250,7 @@ function createBuildErrorsPanel(
   projectDef: AngularProject,
 ): void {
   const autoFixEnabled = (): boolean =>
-    vscode.workspace
-      .getConfiguration('angularCliPlus')
-      .get<boolean>('ai.autoFixEnabled', true);
+    vscode.workspace.getConfiguration('angularCliPlus').get<boolean>('ai.autoFixEnabled', true);
 
   const aiProvider = (): string => getAIProvider();
 
@@ -266,7 +270,14 @@ function createBuildErrorsPanel(
       snippet?: string;
       description?: string;
       fixHint?: string;
-      issues?: Array<{ line: number; kind: string; kindLabel: string; snippet: string; description: string; fixHint: string }>;
+      issues?: Array<{
+        line: number;
+        kind: string;
+        kindLabel: string;
+        snippet: string;
+        description: string;
+        fixHint: string;
+      }>;
     }) => {
       if (message.command === 'openFile') {
         const uri = vscode.Uri.file(path.join(workspaceRoot, message.file));
@@ -290,7 +301,9 @@ function createBuildErrorsPanel(
             resolved.projects[projectName],
           );
           analysisPanel.setTitle(buildErrorsTitle(projectName, fresh.length));
-          analysisPanel.setHtml(buildWebviewHtml(fresh, workspaceRoot, projectName, autoFixEnabled()));
+          analysisPanel.setHtml(
+            buildWebviewHtml(fresh, workspaceRoot, projectName, autoFixEnabled()),
+          );
         }
       } else if (message.command === 'copilotFix' || message.command === 'aiFix') {
         const fixProvider = message.command === 'aiFix' ? aiProvider() : 'copilot';
@@ -306,7 +319,8 @@ function createBuildErrorsPanel(
         });
       } else if (message.command === 'copilotFixFile' || message.command === 'aiFixFile') {
         const fixProvider = message.command === 'aiFixFile' ? aiProvider() : 'copilot';
-        const sendFixFile = fixProvider === 'claude' ? sendAIAutoFixForFile : sendCopilotAutoFixForFile;
+        const sendFixFile =
+          fixProvider === 'claude' ? sendAIAutoFixForFile : sendCopilotAutoFixForFile;
         await sendFixFile({
           file: message.file,
           issues: message.issues ?? [],
@@ -427,7 +441,7 @@ function buildWebviewHtml(
             ? `Fix the Angular compiler error ${err.code}. Check https://angular.dev/errors/${err.code} for details.`
             : `Fix the TypeScript error ${err.code} at line ${err.line}, column ${err.col}.`;
 
-          const aiProviderName = aiProvider() === 'claude' ? 'Claude Code' : 'Copilot';
+          const aiProviderName = getAIProvider() === 'claude' ? 'Claude Code' : 'Copilot';
           const aiBtn = autoFixEnabled
             ? /* html */ `<button class="ai-fix-btn" title="Auto Fix with ${aiProviderName}"
                 data-command="aiFix"
@@ -440,7 +454,7 @@ function buildWebviewHtml(
                 data-fix-hint="${escapeHtml(fixHint)}"
               ><svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M8 1L9.5 5.5L14 7L9.5 8.5L8 13L6.5 8.5L2 7L6.5 5.5L8 1Z" fill="currentColor"/><path d="M13 1L13.75 3.25L16 4L13.75 4.75L13 7L12.25 4.75L10 4L12.25 3.25L13 1Z" fill="currentColor" opacity="0.7"/><path d="M3 10L3.5 11.5L5 12L3.5 12.5L3 14L2.5 12.5L1 12L2.5 11.5L3 10Z" fill="currentColor" opacity="0.7"/></svg></button>`
             : '';
-          
+
           // Keep backward compatibility
           const copilotBtn = aiBtn;
 
@@ -462,21 +476,25 @@ function buildWebviewHtml(
         })
         .join('');
 
-      const aiProviderName = aiProvider() === 'claude' ? 'Claude Code' : 'Copilot';
+      const aiProviderName = getAIProvider() === 'claude' ? 'Claude Code' : 'Copilot';
       const fileFixAllBtn = autoFixEnabled
         ? /* html */ `<button class="ai-fix-file-btn" title="Auto Fix all ${fileErrors.length} error${fileErrors.length !== 1 ? 's' : ''} in this file with ${aiProviderName}"
           data-command="aiFixFile"
           data-file="${escapeHtml(file)}"
-          data-issues="${escapeHtml(JSON.stringify(fileErrors.map((e) => ({
-            line: e.line,
-            kind: e.code,
-            kindLabel: e.code.startsWith('NG') ? `Angular ${e.code}` : `TypeScript ${e.code}`,
-            snippet: e.message.split(/\r?\n/)[0],
-            description: `Build error ${e.code}: ${e.message.split(/\r?\n/)[0]}`,
-            fixHint: e.code.startsWith('NG')
-              ? `Fix Angular compiler error ${e.code}. See https://angular.dev/errors/${e.code}`
-              : `Fix TypeScript error ${e.code} at line ${e.line}, column ${e.col}.`,
-          }))))}"
+          data-issues="${escapeHtml(
+            JSON.stringify(
+              fileErrors.map((e) => ({
+                line: e.line,
+                kind: e.code,
+                kindLabel: e.code.startsWith('NG') ? `Angular ${e.code}` : `TypeScript ${e.code}`,
+                snippet: e.message.split(/\r?\n/)[0],
+                description: `Build error ${e.code}: ${e.message.split(/\r?\n/)[0]}`,
+                fixHint: e.code.startsWith('NG')
+                  ? `Fix Angular compiler error ${e.code}. See https://angular.dev/errors/${e.code}`
+                  : `Fix TypeScript error ${e.code} at line ${e.line}, column ${e.col}.`,
+              })),
+            ),
+          )}"
         ><svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M8 1L9.5 5.5L14 7L9.5 8.5L8 13L6.5 8.5L2 7L6.5 5.5L8 1Z" fill="currentColor"/><path d="M13 1L13.75 3.25L16 4L13.75 4.75L13 7L12.25 4.75L10 4L12.25 3.25L13 1Z" fill="currentColor" opacity="0.7"/><path d="M3 10L3.5 11.5L5 12L3.5 12.5L3 14L2.5 12.5L1 12L2.5 11.5L3 10Z" fill="currentColor" opacity="0.7"/></svg><span>Fix all</span></button>`
         : '';
 

@@ -50,6 +50,7 @@ import { checkBuildErrors } from './build-errors';
 import { checkLint } from './lint-issues';
 import { showPackageUpdates } from './package-updates';
 import { manageJsonConfig } from './json-config';
+import { runAngularMigrations } from './migrations';
 
 export function activate(context: vscode.ExtensionContext) {
   setExtensionContext(context);
@@ -127,6 +128,7 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('angular-cli-plus.checkOptimizations', () => checkOptimizations()),
     vscode.commands.registerCommand('angular-cli-plus.checkBuildErrors', () => checkBuildErrors()),
     vscode.commands.registerCommand('angular-cli-plus.manageJsonConfig', () => manageJsonConfig()),
+    vscode.commands.registerCommand('angular-cli-plus.runMigrations', () => runAngularMigrations()),
     vscode.commands.registerCommand('angular-cli-plus.npmInstall', () => runNpmInstall(false)),
     vscode.commands.registerCommand('angular-cli-plus.npmCleanInstall', () => runNpmInstall(true)),
     vscode.commands.registerCommand('angular-cli-plus.checkDependencies', async () => {

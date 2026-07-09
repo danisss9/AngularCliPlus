@@ -127,7 +127,7 @@ Detection runs via `ng version` (preferring the workspace-local CLI from `node_m
 | ------------------------------ | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Angular: Serve Application     | `Ctrl+Shift+A S`   | Runs `ng serve` for a selected project                                                                                                                                                       |
 | Angular: Debug Application     | `Ctrl+Shift+A D`   | Starts `ng serve`, waits for the dev server, then attaches a browser debugger                                                                                                                |
-| Angular: Debug Storybook       | `Ctrl+Shift+A K`   | Starts Storybook, waits for it to be ready, then attaches a browser debugger                                                                                                                 |
+| Angular: Debug Storybook       | `Ctrl+Shift+A P`   | Starts Storybook, waits for it to be ready, then attaches a browser debugger                                                                                                                 |
 | Angular: Debug Build (Watch)   | `Ctrl+Shift+A H`   | Runs `ng build --watch` + a static file server, then attaches a browser debugger                                                                                                             |
 | Angular: Build Project         | `Ctrl+Shift+A B`   | Runs `ng build` with the configured build configuration                                                                                                                                      |
 | Angular: Build Project (Watch) | `Ctrl+Shift+A W`   | Runs `ng build --watch` with the configured watch configuration                                                                                                                              |
@@ -138,9 +138,10 @@ Detection runs via `ng version` (preferring the workspace-local CLI from `node_m
 | Angular: Switch Component File | `Ctrl+Shift+A Tab` | Quickly switch between a component's `.ts`, `.html`, `.scss`/`.css`, and `.spec.ts` files via a QuickPick                                                                                    |
 | Angular: Run npm Script        | `Ctrl+Shift+A N`   | Shows a searchable list of all npm scripts from `package.json` and runs the selected one in a terminal                                                                                       |
 | Angular: Close Terminals       | `Ctrl+Shift+A C`   | Opens a searchable multi-select list of all extension terminals with their state (running / terminated / errored / killed) — finished terminals are pre-selected; select which ones to close |
-| Angular: Check Memory Leaks    | `Ctrl+Shift+A M`   | Scans Angular source files for potential memory leaks using the TypeScript Compiler API and shows results in an interactive Webview panel with per-kind filters and a Reload button          |
+| Angular: Check Memory Leaks    | `Ctrl+Shift+A K`   | Scans Angular source files for potential memory leaks using the TypeScript Compiler API and shows results in an interactive Webview panel with per-kind filters and a Reload button          |
 | Angular: Show Signal Graph     | `Ctrl+Shift+A G`   | Analyses the open TypeScript file for Angular Signals and renders an interactive Mermaid dependency graph in a Webview panel; click any node to jump to its declaration                      |
 | Angular: Setup .npmrc Auth Tokens | `Ctrl+Shift+A A` | Detects registries in the workspace `.npmrc` file and configures authentication tokens in your global `~/.npmrc`                                                                          |
+| Angular: Run Migrations        | `Ctrl+Shift+A M`   | Shows a list of Angular migrations from angular.dev and runs the selected migration for a chosen project using `ng generate @angular/core:migration-name` |
 | Angular: Check Optimizations   | `Ctrl+Shift+A O`   | Scans Angular source files for common performance pitfalls and shows results in an interactive Webview panel                                                                                 |
 | Angular: Check Build Errors    | `Ctrl+Shift+A E`   | Runs an Angular build in the background, auto-detects the builder (Webpack/esbuild), parses output for errors, and presents them in an interactive, collapsible Webview panel                |
 
@@ -166,7 +167,7 @@ Analyses Angular source files in the workspace to detect common performance pitf
 
 Like the Memory Leaks checker, the panel features file-grouped results with clickable source links, per-kind pill filters, collapsible groups (with a **Collapse all / Expand all** toggle), a stats bar, and a **Reload** button to re-run the analysis. Each run opens its own tab, titled with the scope you picked (a project name or the current file).
 
-### Angular: Check Memory Leaks (`Ctrl+Shift+A M`)
+### Angular: Check Memory Leaks (`Ctrl+Shift+A K`)
 
 Analyses Angular source files in the workspace using the TypeScript Compiler API and reports potential memory leaks in an interactive Webview panel.
 
@@ -310,7 +311,7 @@ Use the keyboard shortcuts (`Ctrl+Shift+A` followed by a letter) or search for *
 
 - **Serve** (`Ctrl+Shift+A S`): select a project and start `ng serve` in a terminal
 - **Debug** (`Ctrl+Shift+A D`): start `ng serve`, wait for the server, then attach a browser debugger; the terminal is stopped when the debug session ends
-- **Debug Storybook** (`Ctrl+Shift+A K`): detects Storybook via `angular.json` architect targets or a `storybook` npm script, starts it, waits for the port (default `6006`), then attaches a browser debugger; configurable port via `angularCliPlus.storybook.port`
+- **Debug Storybook** (`Ctrl+Shift+A P`): detects Storybook via `angular.json` architect targets or a `storybook` npm script, starts it, waits for the port (default `6006`), then attaches a browser debugger; configurable port via `angularCliPlus.storybook.port`
 - **Debug Build Watch** (`Ctrl+Shift+A H`): runs `ng build --watch` and a static file server in parallel, waits for the server port, then attaches a browser debugger; both terminals are stopped when the session ends; fails fast when the configured serve port is already occupied; configurable via `angularCliPlus.buildWatch.servePort` and `angularCliPlus.buildWatch.staticServerCommand`
 - **Build** (`Ctrl+Shift+A B`): select a project and run `ng build` (configuration controlled by `angularCliPlus.build.configuration`)
 - **Build Watch** (`Ctrl+Shift+A W`): same as build but adds `--watch` (configuration controlled by `angularCliPlus.watch.configuration`)
@@ -321,9 +322,10 @@ Use the keyboard shortcuts (`Ctrl+Shift+A` followed by a letter) or search for *
 - **Switch Component File** (`Ctrl+Shift+A Tab`): switch between a component's related files (`.ts`, `.html`, `.scss`/`.css`/`.sass`/`.less`, `.spec.ts`) — shows a QuickPick with icons for each file type; the current file is pre-selected
 - **Run npm Script** (`Ctrl+Shift+A N`): shows a searchable list of all scripts from `package.json`; select one to run it in a dedicated terminal
 - **Close Terminals** (`Ctrl+Shift+A C`): opens a searchable multi-select QuickPick of all extension terminals; each entry shows the terminal name and state (`running`, `terminated`, `errored`, or `killed`); finished terminals are pre-selected and sorted to the top so pressing Enter clears them immediately; use the select-all checkbox or search to filter further
-- **Check Memory Leaks** (`Ctrl+Shift+A M`): prompts for scope (whole workspace, a single folder, or a custom glob), scans all matching Angular source files with the TypeScript Compiler API, and opens an interactive Webview panel showing eight categories of potential memory leaks — each finding is a clickable link that jumps to the source location; use the pill filters in the legend to show/hide specific kinds; click **Reload** to re-run the analysis and refresh the same panel in place
+- **Check Memory Leaks** (`Ctrl+Shift+A K`): prompts for scope (whole workspace, a single folder, or a custom glob), scans all matching Angular source files with the TypeScript Compiler API, and opens an interactive Webview panel showing eight categories of potential memory leaks — each finding is a clickable link that jumps to the source location; use the pill filters in the legend to show/hide specific kinds; click **Reload** to re-run the analysis and refresh the same panel in place
 - **Show Signal Graph** (`Ctrl+Shift+A G`): opens the current TypeScript file, extracts all Angular Signals (`signal`, `input`, `computed`, `effect`, `output`) and traces their dependencies up to 10 levels deep, then renders an interactive Mermaid flowchart in a side panel; click any node to navigate to that signal's declaration; Mermaid is bundled locally so the graph works fully offline
 - **Setup .npmrc Auth Tokens** (`Ctrl+Shift+A A`): detects registries in the workspace `.npmrc` file and prompts for a Personal Access Token for each one, saving them to your global user `~/.npmrc`
+- **Run Migrations** (`Ctrl+Shift+A M`): shows all available Angular migrations from [angular.dev/reference/migrations](https://angular.dev/reference/migrations), lets you select a migration and project, then runs `ng generate @angular/core:migration-name --project "project-name"` in a terminal
 
 ### Debugging
 

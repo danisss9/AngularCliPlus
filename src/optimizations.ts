@@ -6,8 +6,18 @@ import {
   getLastProject,
   setLastProject,
 } from './utils';
-import { findOptimizationsInFile, OptimizationLocation, OptimizationKind } from './optimizations-ast';
-import { sendCopilotAutoFix, sendCopilotAutoFixForFile, sendAIAutoFix, sendAIAutoFixForFile, getAIProvider } from './copilot-fix';
+import {
+  findOptimizationsInFile,
+  OptimizationLocation,
+  OptimizationKind,
+} from './optimizations-ast';
+import {
+  sendCopilotAutoFix,
+  sendCopilotAutoFixForFile,
+  sendAIAutoFix,
+  sendAIAutoFixForFile,
+  getAIProvider,
+} from './copilot-fix';
 import { createAnalysisPanel, escapeHtml, ANALYSIS_PANEL_CSP } from './webview-utils';
 
 const COMMAND_KEY = 'checkOptimizations';
@@ -154,9 +164,7 @@ function showOptimizationsWebview(
   scopeLabel: string,
 ): void {
   const autoFixEnabled = (): boolean =>
-    vscode.workspace
-      .getConfiguration('angularCliPlus')
-      .get<boolean>('ai.autoFixEnabled', true);
+    vscode.workspace.getConfiguration('angularCliPlus').get<boolean>('ai.autoFixEnabled', true);
 
   const aiProvider = (): string => getAIProvider();
 
@@ -176,7 +184,14 @@ function showOptimizationsWebview(
       snippet?: string;
       description?: string;
       fixHint?: string;
-      issues?: Array<{ line: number; kind: string; kindLabel: string; snippet: string; description: string; fixHint: string }>;
+      issues?: Array<{
+        line: number;
+        kind: string;
+        kindLabel: string;
+        snippet: string;
+        description: string;
+        fixHint: string;
+      }>;
     }) => {
       if (message.command === 'openFile') {
         const uri = vscode.Uri.file(message.file);
@@ -223,7 +238,8 @@ function showOptimizationsWebview(
         });
       } else if (message.command === 'copilotFixFile' || message.command === 'aiFixFile') {
         const fixFileProvider = message.command === 'aiFixFile' ? aiProvider() : 'copilot';
-        const sendFixFile = fixFileProvider === 'claude' ? sendAIAutoFixForFile : sendCopilotAutoFixForFile;
+        const sendFixFile =
+          fixFileProvider === 'claude' ? sendAIAutoFixForFile : sendCopilotAutoFixForFile;
         await sendFixFile({
           file: message.file,
           issues: message.issues ?? [],
@@ -234,7 +250,11 @@ function showOptimizationsWebview(
   );
 }
 
-function buildWebviewHtml(issues: OptimizationLocation[], workspaceRoot: string, autoFixEnabled: boolean): string {
+function buildWebviewHtml(
+  issues: OptimizationLocation[],
+  workspaceRoot: string,
+  autoFixEnabled: boolean,
+): string {
   // Group issues by relative file path
   const byFile = new Map<string, OptimizationLocation[]>();
   for (const issue of issues) {
@@ -273,16 +293,23 @@ function buildWebviewHtml(issues: OptimizationLocation[], workspaceRoot: string,
   };
 
   const kindFixHint: Record<OptimizationKind, string> = {
-    'missing-on-push': 'Add changeDetection: ChangeDetectionStrategy.OnPush to the @Component decorator.',
+    'missing-on-push':
+      'Add changeDetection: ChangeDetectionStrategy.OnPush to the @Component decorator.',
     'missing-track-by': 'Add trackBy: trackByFn to improve rendering performance.',
-    'function-in-template': 'Use a pure pipe or a signal instead to avoid evaluating the function on every change detection cycle.',
-    'unnecessary-zone-work': 'Wrap it inside this.ngZone.runOutsideAngular(() => ...) if it does not need to trigger change detection.',
-    'large-component': 'Consider splitting the component into smaller, more manageable sub-components.',
-    'getter-in-template': 'Use a pure pipe or signal, as getters evaluate on every change detection cycle.',
-    'heavy-lifecycle-hook': 'Move heavy logic out of ngDoCheck, ngAfterContentChecked, and ngAfterViewChecked.',
+    'function-in-template':
+      'Use a pure pipe or a signal instead to avoid evaluating the function on every change detection cycle.',
+    'unnecessary-zone-work':
+      'Wrap it inside this.ngZone.runOutsideAngular(() => ...) if it does not need to trigger change detection.',
+    'large-component':
+      'Consider splitting the component into smaller, more manageable sub-components.',
+    'getter-in-template':
+      'Use a pure pipe or signal, as getters evaluate on every change detection cycle.',
+    'heavy-lifecycle-hook':
+      'Move heavy logic out of ngDoCheck, ngAfterContentChecked, and ngAfterViewChecked.',
     'index-as-trackby': 'Track by a unique identifier (e.g., item.id) instead of the index.',
     'unshared-async-pipe': 'Add shareReplay(1) to the Observable to prevent redundant executions.',
-    'high-frequency-event': 'Use fromEvent outside the Angular zone for events like scroll or mousemove.',
+    'high-frequency-event':
+      'Use fromEvent outside the Angular zone for events like scroll or mousemove.',
     'complex-template': 'Extract parts of the template into smaller, targeted components.',
   };
 
@@ -313,7 +340,7 @@ function buildWebviewHtml(issues: OptimizationLocation[], workspaceRoot: string,
             .replace(/(get\s+)/g, '<mark>$1</mark>')
             .replace(/(scroll|mousemove|wheel|drag|dragover)/g, '<mark>$1</mark>');
 
-          const aiProviderName = aiProvider() === 'claude' ? 'Claude Code' : 'Copilot';
+          const aiProviderName = getAIProvider() === 'claude' ? 'Claude Code' : 'Copilot';
           const aiBtn = autoFixEnabled
             ? /* html */ `<button class="ai-fix-btn copilot-fix-btn" title="Auto Fix with ${aiProviderName}"
                 data-command="aiFix"
@@ -326,7 +353,7 @@ function buildWebviewHtml(issues: OptimizationLocation[], workspaceRoot: string,
                 data-fix-hint="${escapeHtml(kindFixHint[issue.kind])}"
               >${copilotIconSvg}</button>`
             : '';
-          
+
           // Keep backward compatibility
           const copilotBtn = aiBtn;
 
@@ -340,19 +367,23 @@ function buildWebviewHtml(issues: OptimizationLocation[], workspaceRoot: string,
         })
         .join('');
 
-      const aiProviderName = aiProvider() === 'claude' ? 'Claude Code' : 'Copilot';
+      const aiProviderName = getAIProvider() === 'claude' ? 'Claude Code' : 'Copilot';
       const fileFixAllBtn = autoFixEnabled
         ? /* html */ `<button class="ai-fix-file-btn copilot-fix-file-btn" title="Auto Fix all ${fileIssues.length} issue${fileIssues.length !== 1 ? 's' : ''} in this file with ${aiProviderName}"
             data-command="aiFixFile"
             data-file="${absolutePath}"
-            data-issues="${escapeHtml(JSON.stringify(fileIssues.map((i) => ({
-              line: i.line,
-              kind: i.kind,
-              kindLabel: kindLabel[i.kind],
-              snippet: i.snippet,
-              description: kindDescription[i.kind],
-              fixHint: kindFixHint[i.kind],
-            }))))}"
+            data-issues="${escapeHtml(
+              JSON.stringify(
+                fileIssues.map((i) => ({
+                  line: i.line,
+                  kind: i.kind,
+                  kindLabel: kindLabel[i.kind],
+                  snippet: i.snippet,
+                  description: kindDescription[i.kind],
+                  fixHint: kindFixHint[i.kind],
+                })),
+              ),
+            )}"
           >${copilotIconSvg}<span>Fix all</span></button>`
         : '';
 
@@ -391,18 +422,40 @@ function buildWebviewHtml(issues: OptimizationLocation[], workspaceRoot: string,
   const complexTemplateCount = issues.filter((i) => i.kind === 'complex-template').length;
 
   const statsParts: string[] = [`${filesCount} file${filesCount !== 1 ? 's' : ''} affected`];
-  if (onPushCount > 0) {statsParts.push(`${onPushCount} missing OnPush`);}
-  if (trackByCount > 0) {statsParts.push(`${trackByCount} missing trackBy`);}
-  if (fnTemplateCount > 0) {statsParts.push(`${fnTemplateCount} fn in template`);}
-  if (zoneWorkCount > 0) {statsParts.push(`${zoneWorkCount} zone.js work`);}
-  if (largeCompCount > 0) {statsParts.push(`${largeCompCount} large component`);}
-  if (getterCount > 0) {statsParts.push(`${getterCount} getter in template`);}
-  if (heavyHookCount > 0) {statsParts.push(`${heavyHookCount} heavy hook`);}
-  if (indexTrackByCount > 0) {statsParts.push(`${indexTrackByCount} index as trackBy`);}
-  if (unsharedAsyncCount > 0) {statsParts.push(`${unsharedAsyncCount} unshared async`);}
-  if (highFreqEventCount > 0) {statsParts.push(`${highFreqEventCount} high freq event`);}
-  if (complexTemplateCount > 0) {statsParts.push(`${complexTemplateCount} complex template`);}
-  
+  if (onPushCount > 0) {
+    statsParts.push(`${onPushCount} missing OnPush`);
+  }
+  if (trackByCount > 0) {
+    statsParts.push(`${trackByCount} missing trackBy`);
+  }
+  if (fnTemplateCount > 0) {
+    statsParts.push(`${fnTemplateCount} fn in template`);
+  }
+  if (zoneWorkCount > 0) {
+    statsParts.push(`${zoneWorkCount} zone.js work`);
+  }
+  if (largeCompCount > 0) {
+    statsParts.push(`${largeCompCount} large component`);
+  }
+  if (getterCount > 0) {
+    statsParts.push(`${getterCount} getter in template`);
+  }
+  if (heavyHookCount > 0) {
+    statsParts.push(`${heavyHookCount} heavy hook`);
+  }
+  if (indexTrackByCount > 0) {
+    statsParts.push(`${indexTrackByCount} index as trackBy`);
+  }
+  if (unsharedAsyncCount > 0) {
+    statsParts.push(`${unsharedAsyncCount} unshared async`);
+  }
+  if (highFreqEventCount > 0) {
+    statsParts.push(`${highFreqEventCount} high freq event`);
+  }
+  if (complexTemplateCount > 0) {
+    statsParts.push(`${complexTemplateCount} complex template`);
+  }
+
   const statsLabel = statsParts.join(' &middot; ');
 
   return /* html */ `<!DOCTYPE html>
@@ -1201,4 +1254,3 @@ function buildWebviewHtml(issues: OptimizationLocation[], workspaceRoot: string,
 </body>
 </html>`;
 }
-

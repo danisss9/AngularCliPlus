@@ -181,6 +181,11 @@
         "command": "angular-cli-plus.manageJsonConfig",
         "title": "Angular: Manage JSON Configs",
         "category": "Angular CLI Plus"
+      },
+      {
+        "command": "angular-cli-plus.runMigrations",
+        "title": "Angular: Run Migrations",
+        "category": "Angular CLI Plus"
       }
     ],
     "keybindings": [
@@ -190,7 +195,7 @@
       },
       {
         "command": "angular-cli-plus.debugStorybook",
-        "key": "ctrl+shift+a k"
+        "key": "ctrl+shift+a p"
       },
       {
         "command": "angular-cli-plus.debugBuildWatch",
@@ -238,7 +243,7 @@
       },
       {
         "command": "angular-cli-plus.checkMemoryLeaks",
-        "key": "ctrl+shift+a m"
+        "key": "ctrl+shift+a k"
       },
       {
         "command": "angular-cli-plus.showSignalGraph",
@@ -259,6 +264,10 @@
       {
         "command": "angular-cli-plus.manageJsonConfig",
         "key": "ctrl+shift+a j"
+      },
+      {
+        "command": "angular-cli-plus.runMigrations",
+        "key": "ctrl+shift+a m"
       }
     ],
     "submenus": [
