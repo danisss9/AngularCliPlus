@@ -4,6 +4,89 @@ A VS Code extension providing Angular CLI commands, schematics generation, and p
 
 ## Features
 
+### VS Code Code Snippets
+
+The extension provides **65 comprehensive Angular code snippets** to accelerate your development workflow in both TypeScript and HTML files.
+
+#### TypeScript Angular Snippets (33 snippets)
+
+Generate Angular TypeScript constructs with modern syntax and best practices:
+
+| Snippet | Description |
+|--------|-------------|
+| `a-component` | Component with OnPush change detection strategy |
+| `a-directive` | Directive with modern Signal inputs and outputs |
+| `a-guard-can-activate` | Functional CanActivate guard for routing |
+| `a-guard-can-activate-child` | Functional CanActivateChild guard for routing |
+| `a-guard-can-deactivate` | Functional CanDeactivate guard for routing |
+| `a-guard-can-match` | Functional CanMatch guard for routing |
+| `a-http-interceptor` | Class-based Angular HttpInterceptor |
+| `a-http-interceptor-fn` | Modern functional HttpInterceptor (HttpInterceptorFn) |
+| `a-bootstrap-app` | Angular app configuration with bootstrapApplication |
+| `a-pipe` | Angular pipe with PipeTransform interface |
+| `a-routes` | Route definition file with lazy loading support |
+| `a-service` | Service with injectable provided in root |
+| `a-service-scoped` | Service with injectable not provided in root |
+| `a-signal` | Standard writable Signal |
+| `a-computed` | Read-only computed Signal derivation |
+| `a-linked-signal` | Linked signal that resets based on source signal |
+| `a-effect` | Side-effect that tracks reactive dependencies |
+| `a-input-signal` | Modern read-only Signal input |
+| `a-input-required` | Strictly required Signal input |
+| `a-output-signal` | Modern output() emitter (replaces @Output()) |
+| `a-model-signal` | Mutable two-way model() signal input |
+| `a-to-signal` | Convert RxJS Observable into Signal (toSignal) |
+| `a-to-observable` | Convert Signal into RxJS Observable (toObservable) |
+| `a-resource` | Resource API for reactive data fetching |
+| `a-http-resource` | httpResource() for streamlined native HTTP signals |
+| `a-view-child` | Signal viewChild setup |
+| `a-view-children` | Signal viewChildren setup |
+| `a-content-child` | Signal contentChild setup |
+| `a-content-children` | Signal contentChildren setup |
+| `a-inject` | Functional inject() usage |
+| `a-test-signal-component` | Component test utilizing Signals and modern testing |
+| `a-test-harness` | Boilerplate for Angular Component Harness |
+
+#### HTML Angular Snippets (32 snippets)
+
+Generate Angular HTML templates with modern control flow and best practices:
+
+| Snippet | Description |
+|--------|-------------|
+| `a-class` | Angular class binding |
+| `a-style` | Angular style binding |
+| `a-event` | Standard event binding syntax |
+| `a-attr` | Attribute binding for accessibility or data attributes |
+| `a-banana-in-a-box` | Two-way binding syntax for custom components |
+| `a-for` | @for loop with track |
+| `a-for-empty` | @for loop with modern inline @empty fallback |
+| `a-form` | Form with ngSubmit and formGroup |
+| `a-formArrayName` | formArrayName directive |
+| `a-formControlName` | formControlName directive |
+| `a-formGroup` | formGroup directive |
+| `a-formGroupName` | formGroupName directive |
+| `a-formModel` | Form model for signal forms with ngModel |
+| `a-routerLink` | routerLink directive |
+| `a-routerLink-param` | routerLink with route parameter |
+| `a-if` | @if structural directive |
+| `a-if-else` | @if with @else block |
+| `a-if-elseif` | @if with @elseif and @else |
+| `a-switch` | @switch structural directive |
+| `a-switch-case` | @case and @default inside @switch |
+| `a-ng-container` | ng-container element for structural directives |
+| `a-ng-content` | ng-content element for content projection |
+| `a-ng-content-select` | ng-content with selector |
+| `a-ng-template` | ng-template for template references |
+| `a-router-outlet` | router-outlet for dynamic component rendering |
+| `a-component-outlet` | Dynamic component rendering via ngComponentOutlet |
+| `a-defer` | Full defer block with placeholder, loading, and error states |
+| `a-defer-trigger` | Defer with common trigger combinations |
+| `a-defer-simple` | Simple defer with viewport trigger |
+| `a-defer-time` | Defer with timer trigger |
+| `a-defer-idle` | Defer with idle trigger |
+
+**Usage:** Start typing the snippet prefix (e.g., `a-component`, `a-for`, `a-signal`) in any TypeScript or HTML file and VS Code will provide autocomplete suggestions.
+
 ### Automatic Angular CLI version detection
 
 The extension detects the Angular CLI version in each workspace and automatically adapts commands to use the correct flags:

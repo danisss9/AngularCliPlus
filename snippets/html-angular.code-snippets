@@ -1,0 +1,272 @@
+{
+  "HTML Angular Snippets": {
+    "prefix": "a-",
+    "body": [
+      "<!-- HTML Angular Snippets by Angular CLI Plus -->",
+      "<!-- Use the specific prefixes to generate Angular HTML code constructs -->"
+    ],
+    "description": "HTML Angular snippets collection"
+  },
+  "a-class": {
+    "prefix": "a-class",
+    "body": [
+      "[class.${1:class-name}]=\"${2:condition}\""
+    ],
+    "description": "Angular class binding"
+  },
+  "a-style": {
+    "prefix": "a-style",
+    "body": [
+      "[style.${1:property}]=\"${2:value}\""
+    ],
+    "description": "Angular style binding"
+  },
+  "a-event": {
+    "prefix": "a-event",
+    "body": [
+      "(${1:event})=\"${2:handler}($event)\""
+    ],
+    "description": "Standard Angular event binding syntax"
+  },
+  "a-attr": {
+    "prefix": "a-attr",
+    "body": [
+      "[attr.${1:attribute-name}]=\"${2:value}\""
+    ],
+    "description": "Angular attribute binding for accessibility or data attributes"
+  },
+  "a-banana-in-a-box": {
+    "prefix": "a-banana-in-a-box",
+    "body": [
+      "[(${1:value})]=\"${2:property}\""
+    ],
+    "description": "Two-way binding banana-in-a-box syntax for custom components"
+  },
+  "a-for": {
+    "prefix": "a-for",
+    "body": [
+      "@for (${1:item} of ${2:items}; track ${3:trackBy}) {",
+      "  <div>${4:content}</div>",
+      "}"
+    ],
+    "description": "Angular @for loop with track"
+  },
+  "a-for-empty": {
+    "prefix": "a-for-empty",
+    "body": [
+      "@for (${1:item} of ${2:items}; track ${3:trackBy}) {",
+      "  <div>${4:content}</div>",
+      "} @empty {",
+      "  <div>No ${1:items} found</div>",
+      "}"
+    ],
+    "description": "Angular @for loop with modern inline @empty block fallback"
+  },
+  "a-form": {
+    "prefix": "a-form",
+    "body": [
+      "<form [formGroup]=\"${1:formName}\" (ngSubmit)=\"${2:onSubmit}()\">",
+      "  ${3:form-content}",
+      "</form>"
+    ],
+    "description": "Create an Angular form with ngSubmit and formGroup"
+  },
+  "a-formArrayName": {
+    "prefix": "a-formArrayName",
+    "body": [
+      "formArrayName=\"${1:arrayName}\""
+    ],
+    "description": "Angular formArrayName directive"
+  },
+  "a-formControlName": {
+    "prefix": "a-formControlName",
+    "body": [
+      "formControlName=\"${1:controlName}\""
+    ],
+    "description": "Angular formControlName directive"
+  },
+  "a-formGroup": {
+    "prefix": "a-formGroup",
+    "body": [
+      "[formGroup]=\"${1:formGroupName}\""
+    ],
+    "description": "Angular formGroup directive"
+  },
+  "a-formGroupName": {
+    "prefix": "a-formGroupName",
+    "body": [
+      "formGroupName=\"${1:groupName}\""
+    ],
+    "description": "Angular formGroupName directive"
+  },
+  "a-if": {
+    "prefix": "a-if",
+    "body": [
+      "@if (${1:condition}) {",
+      "  <div>${2:content}</div>",
+      "}"
+    ],
+    "description": "Angular @if structural directive"
+  },
+  "a-if-else": {
+    "prefix": "a-if-else",
+    "body": [
+      "@if (${1:condition}) {",
+      "  <div>${2:then-content}</div>",
+      "} @else {",
+      "  <div>${3:else-content}</div>",
+      "}"
+    ],
+    "description": "Angular @if with @else block"
+  },
+  "a-if-elseif": {
+    "prefix": "a-if-elseif",
+    "body": [
+      "@if (${1:condition1}) {",
+      "  <div>${2:then-content}</div>",
+      "} @elseif (${3:condition2}) {",
+      "  <div>${4:elseif-content}</div>",
+      "} @else {",
+      "  <div>${5:else-content}</div>",
+      "}"
+    ],
+    "description": "Angular @if with @elseif and @else"
+  },
+  "a-formModel": {
+    "prefix": "a-formModel",
+    "body": [
+      "[(ngModel)]=\"${1:property}\" name=\"${2:name}\""
+    ],
+    "description": "Angular form model for signal forms with ngModel"
+  },
+  "a-routerLink": {
+    "prefix": "a-routerLink",
+    "body": [
+      "[routerLink]=\"${1:path}\""
+    ],
+    "description": "Angular routerLink directive"
+  },
+  "a-routerLink-param": {
+    "prefix": "a-routerLink-param",
+    "body": [
+      "[routerLink]=\"['/${1:path}', ${2:paramName}]\""
+    ],
+    "description": "Angular routerLink with route parameter"
+  },
+  "a-switch": {
+    "prefix": "a-switch",
+    "body": [
+      "@switch (${1:expression}) {",
+      "  ${2:cases}",
+      "}"
+    ],
+    "description": "Angular @switch structural directive"
+  },
+  "a-switch-case": {
+    "prefix": "a-switch-case",
+    "body": [
+      "@case (${1:value}) {",
+      "  <div>${2:case-content}</div>",
+      "}",
+      "@default {",
+      "  <div>${3:default-content}</div>",
+      "}"
+    ],
+    "description": "Angular @case and @default inside @switch"
+  },
+  "a-ng-container": {
+    "prefix": "a-ng-container",
+    "body": [
+      "<ng-container *${1:directive}>${2:content}</ng-container>"
+    ],
+    "description": "Angular ng-container element for structural directives"
+  },
+  "a-ng-content": {
+    "prefix": "a-ng-content",
+    "body": [
+      "<ng-content></ng-content>"
+    ],
+    "description": "Angular ng-content element for content projection"
+  },
+  "a-ng-content-select": {
+    "prefix": "a-ng-content-select",
+    "body": [
+      "<ng-content select=\"${1:selector}\"></ng-content>"
+    ],
+    "description": "Angular ng-content with selector"
+  },
+  "a-ng-template": {
+    "prefix": "a-ng-template",
+    "body": [
+      "<ng-template #${1:name}>",
+      "  ${2:content}",
+      "</ng-template>"
+    ],
+    "description": "Angular ng-template for template references, structural directives, or modals"
+  },
+  "a-router-outlet": {
+    "prefix": "a-router-outlet",
+    "body": [
+      "<router-outlet></router-outlet>"
+    ],
+    "description": "Angular router-outlet for dynamic component rendering"
+  },
+  "a-component-outlet": {
+    "prefix": "a-component-outlet",
+    "body": [
+      "<ng-template [ngComponentOutlet]=\"${1:component}\" [ngComponentOutletInjector]=\"${2:injector}\"></ng-template>"
+    ],
+    "description": "Dynamic component rendering via ngComponentOutlet"
+  },
+  "a-defer": {
+    "prefix": "a-defer",
+    "body": [
+      "@defer (on viewport; prefetch on idle) {",
+      "  ${1:content}",
+      "} @placeholder {",
+      "  <div>Loading...</div>",
+      "} @loading (after 100ms; minimum 500ms) {",
+      "  <div>Loading data...</div>",
+      "} @error {",
+      "  <div>Error loading component</div>",
+      "}"
+    ],
+    "description": "Full Angular defer block with placeholder, loading, and error states"
+  },
+  "a-defer-trigger": {
+    "prefix": "a-defer-trigger",
+    "body": [
+      "@defer (on interaction; prefetch on hover) {",
+      "  ${1:content}",
+      "}"
+    ],
+    "description": "Angular defer with common trigger combinations"
+  },
+  "a-defer-simple": {
+    "prefix": "a-defer-simple",
+    "body": [
+      "@defer (on viewport) {",
+      "  ${1:content}",
+      "}"
+    ],
+    "description": "Simple Angular defer with viewport trigger"
+  },
+  "a-defer-time": {
+    "prefix": "a-defer-time",
+    "body": [
+      "@defer (on timer(300ms)) {",
+      "  ${1:content}",
+      "}"
+    ],
+    "description": "Angular defer with timer trigger"
+  },
+  "a-defer-idle": {
+    "prefix": "a-defer-idle",
+    "body": [
+      "@defer (on idle) {",
+      "  ${1:content}",
+      "}"
+    ],
+    "description": "Angular defer with idle trigger"
+  }
+}
