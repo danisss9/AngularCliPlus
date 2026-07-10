@@ -4,7 +4,7 @@
   "description": "Angular CLI commands, schematics generator, and project tools for VS Code with AI-powered auto-fix support (GitHub Copilot & Claude Code)",
   "repository": "https://github.com/danisss9/AngularCliPlus",
   "publisher": "danisss9",
-  "version": "1.9.0",
+  "version": "1.9.1",
   "icon": "icon.png",
   "engines": {
     "vscode": "^1.107.0"

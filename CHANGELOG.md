@@ -4,6 +4,12 @@ All notable changes to the "angular-cli-plus" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.9.1]
+
+### Fixed
+
+- **Vitest UI opening in an external browser tab.** When `angularCliPlus.test.uiInVscode` is enabled, `ng test --ui` now passes a temporary `--runner-config` that sets `test.open = false`, so Vitest no longer also launches its UI in the system's default browser alongside the VS Code tab. The temp config file is written just before the test terminal starts and removed a few seconds after the UI is detected as running. Projects that already configure their own Vitest runner config (via `runnerConfig` in `angular.json` or a `vitest`/`vite` config file) are left untouched.
+
 ## [1.9.0]
 
 ### Added
