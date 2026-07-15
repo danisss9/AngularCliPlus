@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as net from 'net';
 import { spawnManaged } from './spawn';
 import { ngOutput, extensionTerminals } from './state';
 import { getTrackedTerminalState } from './state';
@@ -21,7 +20,6 @@ import {
 import { detectCliVersion } from './version';
 import { getBuildConfigFlag, supportsTestUiFlag } from './version-adapter';
 import { parseComponentFilePath, getComponentSiblingPaths } from './pure-utils';
-import type { AngularProject } from './types';
 
 // ── Component file switching ──────────────────────────────────────────────────
 
@@ -134,194 +132,6 @@ export async function serveAngularProject() {
 
 // ── Test ──────────────────────────────────────────────────────────────────────
 
-const VITEST_UI_DEFAULT_PORT = 51204;
-const VITEST_UI_START_TIMEOUT_MS = 60000;
-
-let vitestUiPanel: vscode.WebviewPanel | null = null;
-
-function createVitestUiWebview(port: number): void {
-  const url = `http://localhost:${port}/__vitest__/#/`;
-
-  if (vitestUiPanel) {
-    vitestUiPanel.reveal();
-    return;
-  }
-
-  vitestUiPanel = vscode.window.createWebviewPanel(
-    'angularCliPlus.vitestUi',
-    'Vitest UI',
-    vscode.ViewColumn.One,
-    {
-      enableScripts: true,
-      retainContextWhenHidden: true,
-      enableCommandUris: true,
-    },
-  );
-
-  vitestUiPanel.webview.html = `
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Vitest UI</title>
-      <style>
-        html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
-        iframe { width: 100%; height: 100%; border: none; }
-      </style>
-    </head>
-    <body>
-      <iframe src="${url}"></iframe>
-    </body>
-    </html>
-  `;
-
-  vitestUiPanel.onDidDispose(() => {
-    vitestUiPanel = null;
-  });
-}
-
-async function openVitestUiInVscode(port: number = VITEST_UI_DEFAULT_PORT): Promise<void> {
-  const url = `http://localhost:${port}/__vitest__/#/`;
-
-  try {
-    await vscode.commands.executeCommand('workbench.action.browser.open', url);
-  } catch {
-    createVitestUiWebview(port);
-  }
-}
-
-async function waitForVitestUi(
-  port: number = VITEST_UI_DEFAULT_PORT,
-  timeoutMs: number = VITEST_UI_START_TIMEOUT_MS,
-): Promise<boolean> {
-  const deadline = Date.now() + timeoutMs;
-
-  while (Date.now() < deadline) {
-    try {
-      const socket = net.createConnection({ port, host: 'localhost' });
-      await new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          socket.destroy();
-          reject(new Error('socket timeout'));
-        }, 1000);
-
-        socket.on('connect', () => {
-          clearTimeout(timeout);
-          socket.destroy();
-          resolve();
-        });
-
-        socket.on('error', () => {
-          clearTimeout(timeout);
-          socket.destroy();
-          reject(new Error('connection refused'));
-        });
-      });
-      return true;
-    } catch {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-    }
-  }
-
-  return false;
-}
-
-// Basename of the throwaway Vitest config we hand to `ng test --runner-config`.
-const TEMP_VITEST_CONFIG_BASENAME = 'angular-cli-plus.vitest-open.config.ts';
-
-// Config filenames the builder may auto-discover / a project may point at. If
-// any exists we stay hands-off rather than risk overriding a real config.
-const RUNNER_CONFIG_SEARCH_BASENAMES = [
-  'vitest-base.config.ts',
-  'vitest-base.config.mts',
-  'vitest-base.config.cts',
-  'vitest-base.config.js',
-  'vitest-base.config.mjs',
-  'vitest-base.config.cjs',
-  'vitest.config.ts',
-  'vitest.config.mts',
-  'vitest.config.cts',
-  'vitest.config.js',
-  'vitest.config.mjs',
-  'vitest.config.cjs',
-  'vite.config.ts',
-  'vite.config.mts',
-  'vite.config.cts',
-  'vite.config.js',
-  'vite.config.mjs',
-  'vite.config.cjs',
-];
-
-/**
- * True when the workspace already supplies its own Vitest runner config — either
- * a `runnerConfig` option on a project's `test` target in `angular.json`, or a
- * Vitest/Vite config file at the workspace root. In that case we must NOT inject
- * our own `--runner-config`, since the CLI flag would override (and thus
- * discard) the project's real config.
- */
-function hasExistingRunnerConfig(
-  workspaceRoot: string,
-  projects: { [name: string]: AngularProject },
-): boolean {
-  const configuredInAngularJson = Object.values(projects).some((project) => {
-    const options = (project.architect?.test as { options?: Record<string, unknown> } | undefined)
-      ?.options;
-    return options?.runnerConfig !== undefined;
-  });
-  if (configuredInAngularJson) {
-    return true;
-  }
-
-  return RUNNER_CONFIG_SEARCH_BASENAMES.some((name) =>
-    fs.existsSync(path.join(workspaceRoot, name)),
-  );
-}
-
-/**
- * Writes a throwaway Vitest config that disables Vitest's automatic
- * external-browser open (`test.open = false`). It is passed to the Angular
- * unit-test builder via `--runner-config`, which merges it into the builder's
- * generated config — so the UI no longer pops a system browser tab (the
- * extension surfaces it inside VS Code instead).
- *
- * A config file is required because `ng test` has no `--open` flag; the value
- * can only be supplied through the runner config. The file is removed again
- * once Vitest has started — it has read the config into memory by then (see the
- * caller and {@link deleteTempVitestOpenConfig}).
- *
- * Returns the path written, or `null` if the write failed.
- */
-function writeTempVitestOpenConfig(configPath: string): string | null {
-  const contents =
-    `import { defineConfig } from 'vitest/config';\n\n` +
-    `// Temporary config written by the Angular CLI Plus extension so the Vitest\n` +
-    `// UI is not opened in an external browser tab (it is shown inside VS Code).\n` +
-    `// It is removed automatically once Vitest has started.\n` +
-    `export default defineConfig({\n` +
-    `  test: { open: false },\n` +
-    `});\n`;
-
-  try {
-    fs.writeFileSync(configPath, contents, 'utf8');
-    return configPath;
-  } catch {
-    return null;
-  }
-}
-
-/** Removes the temp config written by {@link writeTempVitestOpenConfig}. */
-function deleteTempVitestOpenConfig(configPath: string | null): void {
-  if (!configPath) {
-    return;
-  }
-  try {
-    fs.rmSync(configPath, { force: true });
-  } catch {
-    // Best effort — a leftover temp config is harmless and overwritten next run.
-  }
-}
-
 export async function testAngularProject() {
   const resolved = await resolveWorkspaceAndAngularJson();
   if (!resolved) {
@@ -384,8 +194,6 @@ export async function testAngularProject() {
   const config = vscode.workspace.getConfiguration('angularCliPlus');
   const watchMode = config.get<boolean>('test.watch', false);
   const uiMode = config.get<boolean>('test.ui', false);
-  const uiInVscode = config.get<boolean>('test.uiInVscode', true);
-  const uiPort = config.get<number>('test.uiPort', VITEST_UI_DEFAULT_PORT);
 
   let watchFlag = '';
   let uiFlag = '';
@@ -395,18 +203,6 @@ export async function testAngularProject() {
     watchFlag = ' --watch';
   } else {
     watchFlag = watchMode ? ' --watch' : ' --watch=false';
-  }
-
-  // When showing the UI inside VS Code, hand the builder a temp runner config
-  // that disables Vitest's external-browser open — unless the project already
-  // supplies its own runner config, which we must not override.
-  const wantsVitestUi = uiMode && supportsUi && uiInVscode;
-  const tempVitestConfigPath =
-    wantsVitestUi && !hasExistingRunnerConfig(workspaceRoot, projects)
-      ? path.join(workspaceRoot, TEMP_VITEST_CONFIG_BASENAME)
-      : null;
-  if (tempVitestConfigPath) {
-    uiFlag += ` --runner-config "${tempVitestConfigPath}"`;
   }
 
   if (picked === CURRENT_FILE && activeFile) {
@@ -444,35 +240,10 @@ export async function testAngularProject() {
     terminalName = `ng test (${picked})`;
   }
 
-  // Write the temp runner config in place before the terminal boots Vitest; it
-  // is removed again once Vitest is up (see the finally block below).
-  const tempVitestConfig = tempVitestConfigPath
-    ? writeTempVitestOpenConfig(tempVitestConfigPath)
-    : null;
-
-  const terminalPromise = runInTerminal(terminalName, testCommand, workspaceRoot, {
+  void runInTerminal(terminalName, testCommand, workspaceRoot, {
     successMessage: watchMode ? undefined : `${terminalName} completed successfully.`,
     retryLabel: watchMode ? undefined : 'Retry',
   }).catch((err) => vscode.window.showErrorMessage(`Failed to start "${terminalName}": ${err}`));
-
-  if (wantsVitestUi) {
-    void terminalPromise.then(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-      try {
-        await waitForVitestUi(uiPort, VITEST_UI_START_TIMEOUT_MS);
-        await openVitestUiInVscode(uiPort);
-      } catch {
-        vscode.window.showWarningMessage(
-          `Vitest UI did not start within the expected time. Please try opening http://localhost:${uiPort} manually.`,
-        );
-      } finally {
-        // Give Vitest a 5s grace window to finish reading the config (it may
-        // re-read on an initial restart) before removing the temp file.
-        await new Promise((resolve) => setTimeout(resolve, 3000));
-        deleteTempVitestOpenConfig(tempVitestConfig);
-      }
-    });
-  }
 }
 
 // ── Build ─────────────────────────────────────────────────────────────────────

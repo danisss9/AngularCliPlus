@@ -4,6 +4,12 @@ All notable changes to the "angular-cli-plus" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.9.2]
+
+### Removed
+
+- **Vitest UI in VS Code Browser.** Removed the feature that opened the Vitest UI inside a VS Code browser tab (or fallback webview panel), along with the `angularCliPlus.test.uiInVscode` and `angularCliPlus.test.uiPort` settings and the temporary `--runner-config` it injected to suppress Vitest's own browser-opening behavior. `angularCliPlus.test.ui` (default: `false`) still adds the `--ui` flag to `ng test`; Vitest now opens its UI the normal way, in the system's default browser.
+
 ## [1.9.1]
 
 ### Fixed
