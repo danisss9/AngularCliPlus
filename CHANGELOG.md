@@ -6,6 +6,10 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ## [1.9.3]
 
+### Added
+
+- **Status bar button.** An "Angular CLI +" item now lives in the status bar. Clicking it opens the VS Code command palette pre-filled with `>Angular CLI Plus`, so every extension command is one click away.
+
 ### Fixed
 
 - **Claude Code auto-fix never sent the prompt.** The extension invoked `claude-code.open-chat`, a command that does not exist in the Claude Code extension, so every "Auto Fix with Claude Code" click failed and fell back to copying the prompt to the clipboard. It now invokes `claude-vscode.editor.open` with the fix prompt, which opens the Claude Code panel with the prompt pre-filled (press Enter to send).

@@ -125,7 +125,9 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('angular-cli-plus.checkMemoryLeaks', () => checkMemoryLeaks()),
     vscode.commands.registerCommand('angular-cli-plus.showSignalGraph', () => showSignalGraph()),
     vscode.commands.registerCommand('angular-cli-plus.setupNpmrc', () => setupNpmrcCommand()),
-    vscode.commands.registerCommand('angular-cli-plus.checkOptimizations', () => checkOptimizations()),
+    vscode.commands.registerCommand('angular-cli-plus.checkOptimizations', () =>
+      checkOptimizations(),
+    ),
     vscode.commands.registerCommand('angular-cli-plus.checkBuildErrors', () => checkBuildErrors()),
     vscode.commands.registerCommand('angular-cli-plus.manageJsonConfig', () => manageJsonConfig()),
     vscode.commands.registerCommand('angular-cli-plus.runMigrations', () => runAngularMigrations()),
@@ -143,7 +145,19 @@ export function activate(context: vscode.ExtensionContext) {
         await checkToolVersions(workspaceRoot);
       }
     }),
+    vscode.commands.registerCommand('angular-cli-plus.openCommandPalette', () =>
+      vscode.commands.executeCommand('workbench.action.quickOpen', '>Angular CLI Plus'),
+    ),
   );
+
+  // ── Status bar button: opens the command palette filtered to this extension ─
+  const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
+  statusBarItem.name = 'Angular CLI Plus';
+  statusBarItem.text = 'Angular CLI +';
+  statusBarItem.tooltip = 'Open the command palette with Angular CLI Plus commands';
+  statusBarItem.command = 'angular-cli-plus.openCommandPalette';
+  statusBarItem.show();
+  context.subscriptions.push(statusBarItem);
 
   for (const folder of vscode.workspace.workspaceFolders ?? []) {
     setupDependencyCheck(context, folder.uri.fsPath);
