@@ -1,494 +1,375 @@
 # Angular CLI Plus for VS Code
 
-A VS Code extension providing Angular CLI commands, schematics generation, and project tools directly from the VS Code interface.
-
-## Features
-
-### VS Code Code Snippets
-
-The extension provides **65 comprehensive Angular code snippets** to accelerate your development workflow in both TypeScript and HTML files.
-
-#### TypeScript Angular Snippets (33 snippets)
-
-Generate Angular TypeScript constructs with modern syntax and best practices:
-
-| Snippet | Description |
-|--------|-------------|
-| `a-component` | Component with OnPush change detection strategy |
-| `a-directive` | Directive with modern Signal inputs and outputs |
-| `a-guard-can-activate` | Functional CanActivate guard for routing |
-| `a-guard-can-activate-child` | Functional CanActivateChild guard for routing |
-| `a-guard-can-deactivate` | Functional CanDeactivate guard for routing |
-| `a-guard-can-match` | Functional CanMatch guard for routing |
-| `a-http-interceptor` | Class-based Angular HttpInterceptor |
-| `a-http-interceptor-fn` | Modern functional HttpInterceptor (HttpInterceptorFn) |
-| `a-bootstrap-app` | Angular app configuration with bootstrapApplication |
-| `a-pipe` | Angular pipe with PipeTransform interface |
-| `a-routes` | Route definition file with lazy loading support |
-| `a-service` | Service with injectable provided in root |
-| `a-service-scoped` | Service with injectable not provided in root |
-| `a-signal` | Standard writable Signal |
-| `a-computed` | Read-only computed Signal derivation |
-| `a-linked-signal` | Linked signal that resets based on source signal |
-| `a-effect` | Side-effect that tracks reactive dependencies |
-| `a-input-signal` | Modern read-only Signal input |
-| `a-input-required` | Strictly required Signal input |
-| `a-output-signal` | Modern output() emitter (replaces @Output()) |
-| `a-model-signal` | Mutable two-way model() signal input |
-| `a-to-signal` | Convert RxJS Observable into Signal (toSignal) |
-| `a-to-observable` | Convert Signal into RxJS Observable (toObservable) |
-| `a-resource` | Resource API for reactive data fetching |
-| `a-http-resource` | httpResource() for streamlined native HTTP signals |
-| `a-view-child` | Signal viewChild setup |
-| `a-view-children` | Signal viewChildren setup |
-| `a-content-child` | Signal contentChild setup |
-| `a-content-children` | Signal contentChildren setup |
-| `a-inject` | Functional inject() usage |
-| `a-test-signal-component` | Component test utilizing Signals and modern testing |
-| `a-test-harness` | Boilerplate for Angular Component Harness |
-
-#### HTML Angular Snippets (32 snippets)
-
-Generate Angular HTML templates with modern control flow and best practices:
-
-| Snippet | Description |
-|--------|-------------|
-| `a-class` | Angular class binding |
-| `a-style` | Angular style binding |
-| `a-event` | Standard event binding syntax |
-| `a-attr` | Attribute binding for accessibility or data attributes |
-| `a-banana-in-a-box` | Two-way binding syntax for custom components |
-| `a-for` | @for loop with track |
-| `a-for-empty` | @for loop with modern inline @empty fallback |
-| `a-form` | Form with ngSubmit and formGroup |
-| `a-formArrayName` | formArrayName directive |
-| `a-formControlName` | formControlName directive |
-| `a-formGroup` | formGroup directive |
-| `a-formGroupName` | formGroupName directive |
-| `a-formModel` | Form model for signal forms with ngModel |
-| `a-routerLink` | routerLink directive |
-| `a-routerLink-param` | routerLink with route parameter |
-| `a-if` | @if structural directive |
-| `a-if-else` | @if with @else block |
-| `a-if-elseif` | @if with @elseif and @else |
-| `a-switch` | @switch structural directive |
-| `a-switch-case` | @case and @default inside @switch |
-| `a-ng-container` | ng-container element for structural directives |
-| `a-ng-content` | ng-content element for content projection |
-| `a-ng-content-select` | ng-content with selector |
-| `a-ng-template` | ng-template for template references |
-| `a-router-outlet` | router-outlet for dynamic component rendering |
-| `a-component-outlet` | Dynamic component rendering via ngComponentOutlet |
-| `a-defer` | Full defer block with placeholder, loading, and error states |
-| `a-defer-trigger` | Defer with common trigger combinations |
-| `a-defer-simple` | Simple defer with viewport trigger |
-| `a-defer-time` | Defer with timer trigger |
-| `a-defer-idle` | Defer with idle trigger |
-
-**Usage:** Start typing the snippet prefix (e.g., `a-component`, `a-for`, `a-signal`) in any TypeScript or HTML file and VS Code will provide autocomplete suggestions.
-
-### Automatic Angular CLI version detection
-
-The extension detects the Angular CLI version in each workspace and automatically adapts commands to use the correct flags:
-
-| CLI Version | Build Flag                   | Standalone                     | Output Path               | Test UI |
-| ----------- | ---------------------------- | ------------------------------ | ------------------------- | ------- |
-| 8–11        | `--prod`                     | N/A                            | `dist/<project>/`         | N/A     |
-| 12–13       | `--configuration=production` | N/A                            | `dist/<project>/`         | N/A     |
-| 14–16       | `--configuration=production` | `--standalone` (default false) | `dist/<project>/`         | N/A     |
-| 17+         | `--configuration=production` | default true                   | `dist/<project>/browser/` | `--ui`  |
-
-Detection runs via `ng version` (preferring the workspace-local CLI from `node_modules/.bin`, with a `node_modules/@angular/cli` package fallback), is cached per workspace root, and refreshes automatically when `package.json` changes. When the version cannot be determined, the extension falls back to modern defaults.
-
-### Schematics generator
-
-- **Explorer and Command Palette support**: Generate Angular schematics from a folder in the Explorer or directly from the Command Palette
-- **Organized submenu**: All generate commands in a single "Ng Generate" submenu
-- **Configurable defaults**: Set default options for all generate commands in VS Code settings
-- **Simple workflow**: Only prompts for the name; all other options use configured defaults
-- **Smart target-folder detection**: Uses the selected Explorer folder, the active editor's folder, or a workspace-folder pick as the generation target
-- **Smart project detection**: Automatically detects the Angular project from `angular.json` based on the resolved target folder
-- **Supports all major Angular schematics**:
-  - Component
-  - Service
-  - Module
-  - Directive
-  - Pipe
-  - Guard
-  - Interceptor
-  - Class
-  - Interface
-  - Enum
-  - Resolver
-
-### Angular CLI commands (Command Palette & keyboard shortcuts)
-
-| Command                        | Shortcut           | Description                                                                                                                                                                                  |
-| ------------------------------ | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Angular: Serve Application     | `Ctrl+Shift+A S`   | Runs `ng serve` for a selected project                                                                                                                                                       |
-| Angular: Debug Application     | `Ctrl+Shift+A D`   | Starts `ng serve`, waits for the dev server, then attaches a browser debugger                                                                                                                |
-| Angular: Debug Storybook       | `Ctrl+Shift+A P`   | Starts Storybook, waits for it to be ready, then attaches a browser debugger                                                                                                                 |
-| Angular: Debug Build (Watch)   | `Ctrl+Shift+A H`   | Runs `ng build --watch` + a static file server, then attaches a browser debugger                                                                                                             |
-| Angular: Build Project         | `Ctrl+Shift+A B`   | Runs `ng build` with the configured build configuration                                                                                                                                      |
-| Angular: Build Project (Watch) | `Ctrl+Shift+A W`   | Runs `ng build --watch` with the configured watch configuration                                                                                                                              |
-| Angular: Test Project          | `Ctrl+Shift+A T`   | Runs `ng test` for a project, all projects, or the currently open spec file; when `angularCliPlus.test.ui` is enabled, adds the `--ui` flag with `--watch` mode enabled |
-| Angular: Restart Serve         | `Ctrl+Shift+A R`   | Restarts any active serve/build-watch terminal; re-attaches the debugger if a debug session was running                                                                                      |
-| Angular: Lint Project          | `Ctrl+Shift+A L`   | Runs `ng lint --format json` for a selected project (or all projects) and shows the results in an interactive Webview panel with sort-by-file/sort-by-rule grouping, severity/fixability filters, collapsible groups, and native `eslint --fix` + AI auto-fix buttons |
-| Angular: Update Packages       | `Ctrl+Shift+A U`   | Checks for updates with `ng update` and `npm-check-updates` and shows them in an interactive Webview panel with separate tables for Angular and other packages, each with selective update buttons |
-| Angular: Switch Component File | `Ctrl+Shift+A Tab` | Quickly switch between a component's `.ts`, `.html`, `.scss`/`.css`, and `.spec.ts` files via a QuickPick                                                                                    |
-| Angular: Run npm Script        | `Ctrl+Shift+A N`   | Shows a searchable list of all npm scripts from `package.json` and runs the selected one in a terminal                                                                                       |
-| Angular: Close Terminals       | `Ctrl+Shift+A C`   | Opens a searchable multi-select list of all extension terminals with their state (running / terminated / errored / killed) — finished terminals are pre-selected; select which ones to close |
-| Angular: Check Memory Leaks    | `Ctrl+Shift+A K`   | Scans Angular source files for potential memory leaks using the TypeScript Compiler API and shows results in an interactive Webview panel with per-kind filters and a Reload button          |
-| Angular: Show Signal Graph     | `Ctrl+Shift+A G`   | Analyses the open TypeScript file for Angular Signals and renders an interactive Mermaid dependency graph in a Webview panel; click any node to jump to its declaration                      |
-| Angular: Setup .npmrc Auth Tokens | `Ctrl+Shift+A A` | Detects registries in the workspace `.npmrc` file and configures authentication tokens in your global `~/.npmrc`                                                                          |
-| Angular: Run Migrations        | `Ctrl+Shift+A M`   | Shows a list of Angular migrations from angular.dev and runs the selected migration for a chosen project using `ng generate @angular/core:migration-name` |
-| Angular: Check Optimizations   | `Ctrl+Shift+A O`   | Scans Angular source files for common performance pitfalls and shows results in an interactive Webview panel                                                                                 |
-| Angular: Check Build Errors    | `Ctrl+Shift+A E`   | Runs an Angular build in the background, auto-detects the builder (Webpack/esbuild), parses output for errors, and presents them in an interactive, collapsible Webview panel                |
-
-### Angular: Check Optimizations (`Ctrl+Shift+A O`)
-
-Analyses Angular source files in the workspace to detect common performance pitfalls and presents them in an interactive Webview panel.
-
-**Detected optimization issues:**
-
-| Kind                       | Description                                                                                                      |
-| -------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| Missing OnPush             | Components without `ChangeDetectionStrategy.OnPush`                                                              |
-| Missing trackBy            | `*ngFor` loops lacking a `trackBy` function                                                                      |
-| Function in Template       | Function calls inside template interpolations or bindings (intelligently excludes `signal`, `computed`, etc.)    |
-| Unnecessary Zone.js Work   | `setTimeout`, `setInterval`, or `requestAnimationFrame` not wrapped in `runOutsideAngular`                       |
-| Large Component            | Components whose combined TS and HTML line count exceeds 300 lines                                               |
-| Getter in Template         | Class getters called from template bindings                                                                      |
-| Heavy Lifecycle Hook       | Loops or heavy array operations inside high-frequency lifecycle hooks                                            |
-| Index as trackBy           | Loop index used directly as the `trackBy` identifier (also supports `@for ... track $index`)                     |
-| Unshared Async Pipe        | Multiple `async` pipes subscribing to the same unshared Observable                                               |
-| High Frequency Event       | High-frequency DOM events (`scroll`, `mousemove`, etc.) bound directly in the template                           |
-| Complex Template           | Templates exceeding a high number of bindings and directives                                                     |
-
-Like the Memory Leaks checker, the panel features file-grouped results with clickable source links, per-kind pill filters, collapsible groups (with a **Collapse all / Expand all** toggle), a stats bar, and a **Reload** button to re-run the analysis. Each run opens its own tab, titled with the scope you picked (a project name or the current file).
-
-### Angular: Check Memory Leaks (`Ctrl+Shift+A K`)
-
-Analyses Angular source files in the workspace using the TypeScript Compiler API and reports potential memory leaks in an interactive Webview panel.
-
-**Detected leak kinds:**
-
-| Kind                        | Description                                                                                                    |
-| --------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| Unguarded subscribe         | `subscribe()` not protected by `untilDestroyed()` or `takeUntilDestroyed()`                                    |
-| Nested subscribe            | `subscribe()` inside another `subscribe()` callback (inter-procedural, up to 10 levels)                        |
-| Uncleared interval          | `setInterval()` return value not passed to `clearInterval()` from `ngOnDestroy`                                |
-| Uncleared timeout           | `setTimeout()` return value stored on `this` and not passed to `clearTimeout()` from `ngOnDestroy`             |
-| Unremoved event listener    | `addEventListener()` with no matching `removeEventListener()` reachable from `ngOnDestroy`                     |
-| Unremoved Renderer listener | `Renderer2.listen()` cleanup function stored on `this` and not called in `ngOnDestroy`                         |
-| Retained DOM reference      | `document.getElementById()` / `querySelector()` / etc. result stored on `this` and not nulled in `ngOnDestroy` |
-| Incomplete destroy subject  | A `Subject` used in `takeUntil()` that is never `.next()`-ed and `.complete()`-ed in `ngOnDestroy`             |
-
-**Panel features:** file-grouped results with clickable source links, colour-coded kind badges, per-kind pill filters, collapsible groups (with a **Collapse all / Expand all** toggle), a stats bar, and a **Reload** button that re-runs the analysis and refreshes that tab in place. Each run opens its own tab, titled with the scope you picked (a project name or the current file).
-
-On launch a QuickPick lets you choose the scope: the whole workspace, a single workspace folder, or a custom glob pattern.
-
-### Angular: Show Signal Graph (`Ctrl+Shift+A G`)
-
-Analyses the currently open TypeScript file and renders a live dependency graph of all Angular Signals inside its first class declaration.
-
-**Detected signal kinds:**
-
-| Kind       | Mermaid shape        | Colour | Description                              |
-| ---------- | -------------------- | ------ | ---------------------------------------- |
-| `signal`   | Pill / stadium       | Blue   | Writable signal created with `signal()`  |
-| `input`    | Parallelogram        | Green  | Component input created with `input()`   |
-| `computed` | Subroutine rectangle | Purple | Derived value created with `computed()`  |
-| `effect`   | Hexagon              | Orange | Side-effect created with `effect()`      |
-| `output`   | Asymmetric flag      | Red    | Component output created with `output()` |
-
-**How dependencies are traced:**
-
-- `computed()` and `effect()` factory callbacks are walked recursively up to **10 levels deep** to find all signals they read (`this.signalName()` or bare `signalName()`).
-- Inline `effect()` calls inside the constructor or class methods are discovered automatically.
-- `output()` signals get an edge labelled `emit` pointing to every method that calls `this.outputName.emit()`.
-
-**Interactivity:** Click any node in the rendered graph to jump to that signal's declaration line in the editor.
-
-### Angular: Check Build Errors (`Ctrl+Shift+A E`)
-
-Runs a full Angular build in the background and parses the output for TypeScript and Angular CLI errors. Results are presented in an interactive Webview panel.
-
-**Key features:**
-- **Builder Detection**: Automatically detects whether the project uses the new `esbuild`-based application builder or the classic `webpack`-based browser builder and adjusts parsing logic.
-- **Deep Links**: Click any error to jump directly to the source file and line. Angular-specific error codes (e.g., `NG8001`) are clickable links to the official Angular documentation.
-- **Collapsible UI**: Large error messages and stack traces are collapsed by default to keep the view clean. Expand individual errors or use the "Expand All" toggle in the file header.
-- **Background execution**: The build runs in a separate process, so you can continue working while the check completes.
-
-### Angular: Lint Project (`Ctrl+Shift+A L`)
-
-Runs `ng lint --format json` for a selected project, parses the ESLint results, and presents every problem in an interactive Webview panel.
-
-**Key features:**
-- **Project scope, including all projects**: pick a single project, or choose **All projects** (shown when the workspace has more than one) to run `ng lint` with no `--project` and review every project's problems in one panel.
-- **Sort by file or by problem type**: toggle the header between **Group by file** and **Group by rule**. Switching re-renders the panel instantly from the cached results — no re-lint required.
-- **Filter by severity & fixability**: the **Show:** bar has toggle pills for **errors** / **warnings** and **fixable** / **manual** problems. The dimensions combine (e.g. hide *Warnings* and *Manual* to see only auto-fixable errors), and a pill pair only appears when it actually splits the list.
-- **Collapse/expand groups**: click any file/rule header (or its chevron) to collapse that group, or use **Collapse all / Expand all** in the header.
-- **Hybrid auto-fix**: ESLint reports which problems are auto-fixable, so the panel adapts:
-  - Auto-fixable problems show a native **Fix** button that runs `eslint --fix`. Fix a single issue, a whole file ("Fix file" / per-rule "Fix"), or the entire project with **Fix all auto-fixable** (`ng lint --fix`). After every fix the panel re-lints automatically so resolved problems disappear.
-  - Problems that can't be auto-fixed show an **Auto Fix** (✨) button that opens your configured AI assistant (GitHub Copilot or Claude Code) with a context-aware prompt.
-- **Deep links & details**: each row shows its severity (error/warning) and rule id, with a clickable link that jumps straight to the source location. A **Reload** button re-runs the lint in place, and each run opens its own tab (titled with the scope) so you can compare projects side by side.
-- **Guided setup**: if the selected project has no lint target, the panel offers a one-click **Add angular-eslint** button that runs `ng add angular-eslint`.
-
-### Angular: Update Packages (`Ctrl+Shift+A U`)
-
-Checks for outdated dependencies and presents them in an interactive Webview panel with two separate tables.
-
-**Key features:**
-- **Angular packages**: detected with `ng update`, which understands the Angular ecosystem and its migration schematics.
-- **Other packages**: detected with [npm-check-updates](https://www.npmjs.com/package/npm-check-updates) (run via `npx`), excluding any packages already listed in the Angular table. Each row shows the current → latest version.
-- **Selective updates**: every row has a checkbox (with a select-all header checkbox). Pick what you want and click **Update**:
-  - Angular packages run `ng update <packages>` (honours `angularCliPlus.update.allowDirty` and offers `--force` on failure).
-  - Other packages run `npm-check-updates -u` for the selected packages to bump `package.json`, then `npm install`.
-- **Reload**: re-runs both checks and refreshes the panel in place. When nothing is outdated, an "all up to date" message is shown.
-
-### AI Auto-Fix Integration (✨)
-
-The `Memory Leaks`, `Optimizations`, `Build Errors`, and `Lint` panels feature deep integration with AI assistants to help you fix issues with one click.
-
-- **AI Provider Selection**: Choose between **GitHub Copilot** or **Claude Code** as your preferred AI assistant in the settings.
-- **Auto Fix**: Click the sparkle icon (✨) next to any diagnostic to open your configured AI assistant with a pre-filled, context-aware prompt. The prompt includes the code snippet, the error description, and a concrete fix hint.
-- **Bulk Fix (Fix All)**: Every file group in the diagnostic panels includes a **Fix all** button. This sends all issues identified in that file to your AI assistant in a single batch, allowing it to refactor the entire file at once.
-
-*Note: Requires the selected AI assistant extension to be installed and active (GitHub Copilot + GitHub Copilot Chat, or Claude Code).*
-
-
-### Failure notifications and retry
-
-All terminal-based commands detect the exit code when the terminal closes:
-
-- **Success** (exit code 0): brief info notification
-- **Failure** (non-zero exit code): warning notification with a **Retry** button for build and test commands; Retry re-runs the exact same command without re-prompting
-
-### Last used project memory
-
-Every command that shows a project picker remembers the last selection per command, persisted across VS Code sessions. The picker shows:
-
-1. `$(file) Current project (…)` — if the active editor file belongs to a project
-2. `$(history) Last used (…)` — the last picked project, if different from the above
-3. Full project list
-
-### npm helpers
-
-- **npm: Install**: runs `npm install` (or a custom command via `angularCliPlus.npm.installCommand`) and streams output to the "Angular CLI Plus: npm" output channel; automatically offers a clean install on failure when using the default command
-- **npm: Clean Install**: removes `node_modules` and `package-lock.json` then runs `npm install` (or runs a custom command via `angularCliPlus.npm.cleanInstallCommand`); offers `--force` as a last resort on failure when using the default command
-- **Dependency check**: on startup and on every git branch switch the extension verifies that `node_modules` exists and installed package versions satisfy `package.json` ranges, prompting to run `npm install` when needed; can be disabled via `angularCliPlus.checkDependencies.enabled`; also available as **Angular CLI Plus: Check Dependencies** in the Command Palette
-- **Tool version check**: on startup the extension reads the `engines` field from `package.json` and checks that the installed versions of Node.js, npm, yarn, and pnpm satisfy the declared ranges; missing tools that can be installed via npm are installed automatically, version mismatches offer an "Update" button or a link to the tool's download page; can be disabled via `angularCliPlus.checkToolVersions.enabled`; also available as **Angular CLI Plus: Check Tool Versions** in the Command Palette
-
-## Usage
-
-### Generating schematics
-
-1. Start from either of these entry points:
-
-- Right-click any folder in the VS Code Explorer and open **Ng Generate**
-- Run an **Angular CLI Plus** generate command from the Command Palette
-
-2. Choose the type of schematic you want to generate (Component, Service, etc.)
-3. Enter the name for the item you want to generate
-4. The extension resolves the target folder in this order:
-
-- The Explorer folder you clicked
-- The folder of the active editor
-- A workspace-folder pick if there is no active editor and multiple workspace folders are open
-
-5. The extension automatically detects the Angular project from `angular.json`:
-
-- If one project matches the resolved folder it is used automatically
-- If multiple projects match you will be prompted to choose from a list
-- If no projects match you can type the project name manually (leave empty for the default project)
-
-6. The extension runs the Angular CLI command with your configured default options in the resolved target folder
-
-### Running Angular CLI commands
-
-Use the keyboard shortcuts (`Ctrl+Shift+A` followed by a letter) or search for **Angular CLI Plus** commands in the Command Palette (`Ctrl+Shift+P`). When `@angular/cli` is installed in the workspace, the extension uses that local CLI automatically instead of requiring a global `ng` on `PATH`:
-
-- **Serve** (`Ctrl+Shift+A S`): select a project and start `ng serve` in a terminal
-- **Debug** (`Ctrl+Shift+A D`): start `ng serve`, wait for the server, then attach a browser debugger; the terminal is stopped when the debug session ends
-- **Debug Storybook** (`Ctrl+Shift+A P`): detects Storybook via `angular.json` architect targets or a `storybook` npm script, starts it, waits for the port (default `6006`), then attaches a browser debugger; configurable port via `angularCliPlus.storybook.port`
-- **Debug Build Watch** (`Ctrl+Shift+A H`): runs `ng build --watch` and a static file server in parallel, waits for the server port, then attaches a browser debugger; both terminals are stopped when the session ends; fails fast when the configured serve port is already occupied; configurable via `angularCliPlus.buildWatch.servePort` and `angularCliPlus.buildWatch.staticServerCommand`
-- **Build** (`Ctrl+Shift+A B`): select a project and run `ng build` (configuration controlled by `angularCliPlus.build.configuration`)
-- **Build Watch** (`Ctrl+Shift+A W`): same as build but adds `--watch` (configuration controlled by `angularCliPlus.watch.configuration`)
-- **Test** (`Ctrl+Shift+A T`): select a project, all projects at once, or the `.spec.ts` file you have open; when a spec file belongs to a detected Angular project, the owning project is passed explicitly to `ng test`
-- **Restart Serve** (`Ctrl+Shift+A R`): restart any active `ng serve`, `ng build --watch`, Storybook, or static server terminal; if a debug session is attached it is stopped first and re-attached after the restart
-- **Lint** (`Ctrl+Shift+A L`): select a project, run `ng lint --format json`, and review the results in an interactive Webview panel — group issues by file or by ESLint rule, jump to any problem, and fix them with native `eslint --fix` or AI auto-fix (see [Angular: Lint Project](#angular-lint-project-ctrlshifta-l) below)
-- **Update** (`Ctrl+Shift+A U`): checks for updates with `ng update` (Angular packages) and `npm-check-updates` (everything else) and shows both in an interactive Webview panel with separate tables; tick the packages you want and update them in place (see [Angular: Update Packages](#angular-update-packages-ctrlshifta-u) below)
-- **Switch Component File** (`Ctrl+Shift+A Tab`): switch between a component's related files (`.ts`, `.html`, `.scss`/`.css`/`.sass`/`.less`, `.spec.ts`) — shows a QuickPick with icons for each file type; the current file is pre-selected
-- **Run npm Script** (`Ctrl+Shift+A N`): shows a searchable list of all scripts from `package.json`; select one to run it in a dedicated terminal
-- **Close Terminals** (`Ctrl+Shift+A C`): opens a searchable multi-select QuickPick of all extension terminals; each entry shows the terminal name and state (`running`, `terminated`, `errored`, or `killed`); finished terminals are pre-selected and sorted to the top so pressing Enter clears them immediately; use the select-all checkbox or search to filter further
-- **Check Memory Leaks** (`Ctrl+Shift+A K`): prompts for scope (whole workspace, a single folder, or a custom glob), scans all matching Angular source files with the TypeScript Compiler API, and opens an interactive Webview panel showing eight categories of potential memory leaks — each finding is a clickable link that jumps to the source location; use the pill filters in the legend to show/hide specific kinds; click **Reload** to re-run the analysis and refresh the same panel in place
-- **Show Signal Graph** (`Ctrl+Shift+A G`): opens the current TypeScript file, extracts all Angular Signals (`signal`, `input`, `computed`, `effect`, `output`) and traces their dependencies up to 10 levels deep, then renders an interactive Mermaid flowchart in a side panel; click any node to navigate to that signal's declaration; Mermaid is bundled locally so the graph works fully offline
-- **Setup .npmrc Auth Tokens** (`Ctrl+Shift+A A`): detects registries in the workspace `.npmrc` file and prompts for a Personal Access Token for each one, saving them to your global user `~/.npmrc`
-- **Run Migrations** (`Ctrl+Shift+A M`): shows all available Angular migrations from [angular.dev/reference/migrations](https://angular.dev/reference/migrations), lets you select a migration and project, then runs `ng generate @angular/core:migration-name --project "project-name"` in a terminal
-
-### Debugging
-
-The extension supports attaching a browser debugger to any dev server it starts. Configure the browser with `angularCliPlus.debug.browser`:
-
-| Value      | Browser        | Notes                                                            |
-| ---------- | -------------- | ---------------------------------------------------------------- |
-| `chrome`   | Google Chrome  | Built-in, no extra extension needed                              |
-| `edge`     | Microsoft Edge | Built-in, no extra extension needed                              |
-| `brave`    | Brave          | Auto-detected from standard install paths                        |
-| `opera`    | Opera          | Auto-detected from standard install paths                        |
-| `opera-gx` | Opera GX       | Auto-detected from standard install paths                        |
-| `firefox`  | Firefox        | Requires the **"Debugger for Firefox"** VS Code extension        |
-| `safari`   | Safari         | Requires the **"Safari Debugger"** VS Code extension; macOS only |
-
-For a browser not in the list, or for a non-standard install path, set `angularCliPlus.debug.browserExecutablePath` to the full path of the browser executable. Any Chromium-based browser (Vivaldi, Arc, etc.) works this way.
-
-### npm helpers
-
-Run **Angular CLI Plus: npm: Install** or **Angular CLI Plus: npm: Clean Install** from the Command Palette. Output is streamed to the **Angular CLI Plus: npm** output channel. The extension also automatically prompts you to run `npm install` when it detects missing or outdated packages on startup or after a git branch switch.
-
-## Troubleshooting
-
-### Commands don't appear in the Command Palette
-
-Make sure the workspace contains an `angular.json` file. The extension activates automatically when VS Code opens.
-
-### Debug session fails to start
-
-- Verify the selected browser is installed. Brave, Opera, and Opera GX require installation at the standard path; set `angularCliPlus.debug.browserExecutablePath` for non-standard locations.
-- For Firefox, install the **Debugger for Firefox** VS Code extension.
-- For Safari, install the **Safari Debugger** VS Code extension and use macOS.
-- For **Debug Build Watch**, make sure `angularCliPlus.buildWatch.servePort` is free before starting the session. If another process is already listening on that port, the extension now stops immediately instead of attaching to the wrong server.
-
-### Dependency check triggers too often / not at all
-
-- Toggle `angularCliPlus.checkDependencies.enabled` in VS Code settings.
-- The check fires on startup, on every `git checkout` (branch switch), and whenever `package.json` is saved.
-- Diagnostic logs are available in the **Angular CLI Plus: diagnostics** output channel (`View › Output`, then select the channel from the dropdown).
-
-### `ng` / `npm` command not found
-
-- Ensure Node.js and npm are on your `PATH`. For Angular commands, the extension prefers the workspace-local CLI from `node_modules/.bin` when available, so a global `ng` install is optional.
-- The **Angular CLI Plus: npm** output channel shows the full output of every npm operation.
-
-### Custom install command is rejected
-
-Commands containing dangerous patterns (`; rm`, `&& rm`, `| del`, `$()`, backtick substitution, etc.) are blocked as a safety measure. Use a plain package-manager invocation (e.g. `pnpm install --frozen-lockfile`).
-
-### Custom static server command is rejected
-
-`angularCliPlus.buildWatch.staticServerCommand` is validated with the same safety rules as custom npm commands. Keep it to a plain server invocation such as `npx serve {outputPath} -l {port}` and avoid chained shell commands or shell substitution.
+Angular CLI commands, schematics generator, and project tools for VS Code — with AI-powered auto-fix support (GitHub Copilot & Claude Code).
+
+Angular CLI Plus brings the full power of the Angular CLI into your editor: generate schematics from the Explorer context menu, serve/build/test/lint with a single keystroke, debug your app (plus Storybook and build-watch sessions) in any major browser, and analyze your codebase for memory leaks, performance pitfalls, and build errors — all without leaving VS Code.
+
+## Table of Contents
+
+- [Requirements](#requirements)
+- [Schematics Generator (ng generate)](#schematics-generator-ng-generate)
+- [CLI Commands](#cli-commands)
+- [Debugging](#debugging)
+- [Code Analysis Tools](#code-analysis-tools)
+- [AI-Powered Auto-Fix](#ai-powered-auto-fix)
+- [JSON Config Manager](#json-config-manager)
+- [Angular Migrations](#angular-migrations)
+- [Package Management](#package-management)
+- [Productivity Tools](#productivity-tools)
+- [Code Snippets](#code-snippets)
+- [Keyboard Shortcuts](#keyboard-shortcuts)
+- [Extension Settings](#extension-settings)
+- [Recommended Extensions](#recommended-extensions)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## Requirements
 
-- Node.js and npm must be installed
-- Angular CLI must be installed in your project or globally (`@angular/cli`)
-- Your workspace must be an Angular project
-- Supports Angular CLI version 8 and above
+- VS Code `1.107.0` or newer
+- An Angular workspace with an `angular.json` (Angular CLI 8+ is supported; commands adapt to the detected CLI version)
+- Node.js and npm installed
 
-## Recommended Extensions
+The extension prefers the workspace-local Angular CLI from `node_modules/.bin`, so a global `ng` install is not required when `@angular/cli` is installed in the project.
 
-This extension recommends installing the following VS Code extensions for the best experience:
+## Schematics Generator (ng generate)
 
-- **[Angular Language Service](https://marketplace.visualstudio.com/items?itemName=angular.ng-template)** - Provides enhanced Angular template editing support, including autocompletion, navigation, and diagnostic messages for Angular templates
+Right-click any folder in the Explorer and open the **Ng Generate** submenu (or run a generate command from the Command Palette) to scaffold Angular artifacts with `ng generate`. The target folder is resolved from the clicked folder, the active editor, or a workspace-folder picker.
+
+Available schematics:
+
+| Schematic   | Group      |
+| ----------- | ---------- |
+| Component   | Common     |
+| Service     | Common     |
+| Module      | Common     |
+| Directive   | Structural |
+| Pipe        | Structural |
+| Guard       | Routing    |
+| Interceptor | Routing    |
+| Resolver    | Routing    |
+| Class       | Types      |
+| Interface   | Types      |
+| Enum        | Types      |
+
+Each schematic honors dedicated settings (standalone, skip tests, flat, style preprocessor, change detection, functional guards/interceptors/resolvers, routing modules, …) — see [Extension Settings](#extension-settings). Generated flags automatically adapt to the detected Angular CLI version (e.g. `--standalone` is stripped for CLI <14 and omitted as redundant on CLI 17+).
+
+## CLI Commands
+
+All commands remember the last used project per command, offer a "Current project" shortcut when an editor tab is open, and auto-detect the project from `angular.json` when possible.
+
+| Command                            | Shortcut         | Description                                                                                                                                                                                        |
+| ---------------------------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Angular: Serve Application**     | `Ctrl+Shift+A S` | Runs `ng serve` for a selected project in a dedicated terminal                                                                                                                                     |
+| **Angular: Build Project**         | `Ctrl+Shift+A B` | Runs `ng build` with a configurable configuration                                                                                                                                                  |
+| **Angular: Build Project (Watch)** | `Ctrl+Shift+A W` | Runs `ng build --watch` with its own configuration setting (which can inherit from the build setting)                                                                                              |
+| **Angular: Test Project**          | `Ctrl+Shift+A T` | Runs `ng test`; supports an "All projects" option, a "Run current test file" shortcut when a `.spec.ts` is active, watch mode, and the Vitest UI (`--ui`, CLI 17+)                                 |
+| **Angular: Lint Project**          | `Ctrl+Shift+A L` | Runs `ng lint` and presents the results in a rich interactive Webview panel (see [Lint Panel](#lint-panel))                                                                                        |
+| **Angular: Update Packages**       | `Ctrl+Shift+A U` | Interactive Webview showing Angular package updates (via `ng update`) and other package updates (via [npm-check-updates](https://www.npmjs.com/package/npm-check-updates)), with selective updates |
+| **Angular: Restart Serve**         | `Ctrl+Shift+A R` | Gracefully restarts any active `ng serve` / `ng build --watch` terminal tracked by the extension, re-attaching the debugger if a debug session was live                                            |
+| **npm: Install**                   | —                | Runs `npm install` (or a custom command) and streams output to the "Angular CLI Plus: npm" output channel                                                                                          |
+| **npm: Clean Install**             | —                | Removes `node_modules` and `package-lock.json`, then runs a fresh install; offers a `--force` retry on failure                                                                                     |
+| **Angular: Run npm Script**        | `Ctrl+Shift+A N` | Searchable QuickPick of all scripts in `package.json`; runs the selected one in a dedicated terminal                                                                                               |
+
+Terminal commands detect their exit code: on success a brief info notification is shown; on failure a warning appears with a **Retry** button that re-runs the exact same command.
+
+## Debugging
+
+| Command                          | Shortcut         | Description                                                                                                                                                                                  |
+| -------------------------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Angular: Debug Application**   | `Ctrl+Shift+A D` | Starts `ng serve`, waits for the dev server to be ready, then automatically attaches a browser debugger                                                                                      |
+| **Angular: Debug Storybook**     | `Ctrl+Shift+A P` | Detects Storybook from `angular.json` architect targets or the `storybook` npm script, starts it, waits for the port, and attaches a browser debugger                                        |
+| **Angular: Debug Build (Watch)** | `Ctrl+Shift+A H` | Runs `ng build --watch` alongside a configurable static file server (default: `npx serve`), waits for the server, and attaches a browser debugger; both terminals stop when the session ends |
+
+Supported debug browsers (`angularCliPlus.debug.browser`): **Chrome**, **Edge**, **Brave**, **Opera**, **Opera GX**, **Firefox** (requires the "Debugger for Firefox" extension), and **Safari** (macOS only, requires the "Safari Debugger" extension). A custom executable path can be supplied via `angularCliPlus.debug.browserExecutablePath` — useful for other Chromium browsers such as Vivaldi or Arc.
+
+## Code Analysis Tools
+
+### Memory Leak Detection
+
+**Angular: Check Memory Leaks** (`Ctrl+Shift+A K`) analyzes every `.component.ts`, `.service.ts`, `.directive.ts`, `.pipe.ts`, and `.guard.ts` file using the TypeScript Compiler API and reports eight categories of potential leaks in an interactive Webview panel:
+
+- **Unguarded subscribe** — `subscribe()` calls not protected by `untilDestroyed()` / `takeUntilDestroyed()`
+- **Nested subscribe** — `subscribe()` inside another `subscribe()` callback (inter-procedural, up to 10 call levels)
+- **Uncleared interval** — `setInterval()` not cleared in `ngOnDestroy`
+- **Uncleared timeout** — `setTimeout()` stored on `this` and not cleared in `ngOnDestroy`
+- **Unremoved event listener** — `addEventListener()` not matched by a `removeEventListener()` reachable from `ngOnDestroy`
+- **Unremoved Renderer listener** — `Renderer2.listen()` cleanup not called in `ngOnDestroy`
+- **Retained DOM reference** — `document.getElementById()` / `querySelector()` results stored on `this` and not nulled
+- **Incomplete destroy subject** — a `Subject` used in `takeUntil()` that is never completed in `ngOnDestroy`
+
+The panel groups leaks by file with clickable source links, colour-coded kind badges, per-kind pill filters, a stats bar, and a **Reload** button. A scope QuickPick lets you analyze the whole workspace, a single folder, or a custom glob pattern.
+
+### Performance Optimizations
+
+**Angular: Check Optimizations** (`Ctrl+Shift+A O`) scans Angular source files for common performance pitfalls and presents them in an interactive Webview panel:
+
+- **Missing OnPush** — components without `ChangeDetectionStrategy.OnPush`
+- **Missing trackBy** — `*ngFor` loops lacking a `trackBy` function
+- **Function in Template** — function calls inside template bindings (intelligently excludes Signals: `signal`, `computed`, `input`, `model`)
+- **Unnecessary Zone.js Work** — async tasks (`setTimeout`, `setInterval`, `requestAnimationFrame`) not wrapped in `runOutsideAngular`
+- **Large Component** — combined TS + HTML size over 300 lines
+- **Getter in Template** — class getters called from template bindings
+- **Heavy Lifecycle Hook** — loops or heavy array operations inside high-frequency hooks
+- **Index as trackBy** — loop index used as the `trackBy` identifier (also `@for ... track $index`)
+- **Unshared Async Pipe** — multiple `async` pipes subscribing to the same unshared Observable
+- **High Frequency Event** — high-frequency DOM events (`scroll`, `mousemove`, …) bound directly in the template
+- **Complex Template** — templates exceeding a high number of bindings and directives
+
+### Build Errors
+
+**Angular: Check Build Errors** (`Ctrl+Shift+A E`) runs an Angular build in the background, parses the output for TypeScript and Angular CLI errors, and presents them in an interactive Webview panel with clickable source links, direct links to the official Angular error reference for NG error codes, and collapsible stack traces. Parsing adapts to the detected builder (Webpack vs ESBuild) and handles ANSI colors and Unicode symbols.
+
+### Lint Panel
+
+**Angular: Lint Project** (`Ctrl+Shift+A L`) runs `ng lint --format json` and presents every problem in a rich UI:
+
+- **Sort by file or by problem type** — toggle between grouping by source file or ESLint rule, instantly re-rendered from cached results
+- **Hybrid auto-fix buttons** — auto-fixable problems get a native **Fix** button (per issue, per file, or project-wide **Fix all auto-fixable**) that runs `eslint --fix` and automatically re-lints; non-fixable problems get an AI fix button
+- **Severity & fixability filters** — toggle pills for errors/warnings and fixable/manual problems
+- **Per-issue details** — severity and rule pills, rule messages, and clickable line links
+- **All projects** option to lint every project in the workspace and merge the results
+- One-click **Add angular-eslint** when a project has no lint target configured
+
+### Signal Graph
+
+**Angular: Show Signal Graph** (`Ctrl+Shift+A G`) analyzes the currently open TypeScript file with the TypeScript Compiler API, discovers all Angular Signals (`signal()`, `input()`, `computed()`, `effect()`, `output()`), traces their dependencies up to 10 call levels deep, and renders an interactive dependency graph powered by [Mermaid.js](https://mermaid.js.org/) (bundled locally — no network required). Nodes are colour-coded and shaped by kind, edges are drawn from every signal read inside a `computed()`/`effect()` factory and from `output()` signals to their `.emit()` call sites, and clicking a node jumps straight to its declaration.
+
+## AI-Powered Auto-Fix
+
+Every diagnostic row in the **Memory Leaks**, **Optimizations**, **Build Errors**, and **Lint** panels includes a sparkle (✨) button that opens your AI assistant with a fix prompt tailored to the specific code snippet and issue type. File-level "fix all" buttons let the AI process every issue in a file at once.
+
+Two providers are supported:
+
+- **GitHub Copilot** (default) — opens Copilot Chat with the prompt
+- **Claude Code** — opens the Claude Code panel with the prompt pre-filled
+
+Configure via `angularCliPlus.ai.provider` and `angularCliPlus.ai.autoFixEnabled`.
+
+## JSON Config Manager
+
+**Angular: Manage JSON Configs** (`Ctrl+Shift+A J`) lets you edit configuration files in a dedicated Webview. The picker only lists files that actually exist, and all edits are written back with [jsonc-parser](https://www.npmjs.com/package/jsonc-parser), preserving comments, key order, and formatting.
+
+- **ESLint** (`eslint.config.json`, `.eslintrc.json`, `eslint.config.js`/`.mjs`/`.cjs`/`.ts`, `.eslintrc.js`/`.cjs`) — rules grouped by package (`eslint` core, `@typescript-eslint`, `@angular-eslint`, …), with the full rule catalog discovered from your installed plugins and current severities read from `eslint --print-config`. A per-rule **off / warn / error** dropdown writes the change back, preserving rule options. JS/TS configs are edited with a surgical TypeScript-AST splice that preserves comments and formatting.
+- **TypeScript** (`tsconfig.json`, `tsconfig.app.json`, `tsconfig.spec.json`) — curated `compilerOptions` and `angularCompilerOptions` rendered as typed controls (toggles, dropdowns, text/number inputs) with presence toggles and an **Add option** row for arbitrary keys.
+- **angular.json** — split by project, architect target, and scope (options or a named configuration). The option catalog adapts to the detected Angular version and builder, and any uncovered keys are still rendered so nothing is hidden.
+
+## Angular Migrations
+
+**Angular: Run Migrations** (`Ctrl+Shift+A M`) provides integrated support for all official Angular migrations from [angular.dev/reference/migrations](https://angular.dev/reference/migrations). A categorized QuickPick lists the 13 available migrations (Standalone, Control Flow Syntax, `inject()` Function, Lazy-loaded Routes, Signal Inputs/Outputs/Queries, Clean Up Unused Imports, Self-closing Tags, NgClass to Class, NgStyle to Style, Router Testing Module, CommonModule to Standalone), lets you select a target project, and runs `ng generate @angular/core:migration-name --project "project-name"` in a terminal with success notifications and retry support.
+
+## Package Management
+
+- **Dependency check** — on startup and on every git branch change, the extension verifies that `node_modules` is present and that installed versions satisfy the `package.json` ranges, prompting to run `npm install` when problems are found. Disable with `angularCliPlus.checkDependencies.enabled`.
+- **Tool version check** — on startup, the `engines` field in `package.json` is verified against the installed Node.js, npm, yarn, and pnpm versions, with update offers and download links when a mismatch is found. Disable with `angularCliPlus.checkToolVersions.enabled`.
+- **Angular: Update Packages** — see [CLI Commands](#cli-commands).
+- **Angular: Setup .npmrc Auth Tokens** (`Ctrl+Shift+A A`) — extracts registry URLs from your workspace `.npmrc`, prompts for Personal Access Tokens for missing registries, and securely configures your global `~/.npmrc`.
+
+## Productivity Tools
+
+- **Angular: Switch Component File** (`Ctrl+Shift+A Tab`) — quickly switch between a component's related files (`.component.ts`, `.component.html`, styles, `.spec.ts`) via a QuickPick with descriptive icons; the current file is pre-selected.
+- **Close Terminals** (`Ctrl+Shift+A C`) — a searchable, multi-select QuickPick of all extension-managed terminals showing their state (`running`, `terminated`, `errored`, `killed`); finished terminals are pre-selected so pressing Enter clears them immediately.
+- **Angular CLI version detection** — the extension detects the Angular CLI version per workspace (via `ng version`, cached and invalidated on `package.json` changes) and adapts commands: `--prod` vs `--configuration=production`, standalone flag handling, Vitest UI availability, and `dist/<project>/` vs `dist/<project>/browser/` output paths.
+- **Terminal management** — terminals are reused for the same command (offering Restart / Show for running serve/watch terminals), re-adopted after a VS Code reload, and tracked with their exit state.
+
+## Code Snippets
+
+The extension bundles 65 snippets for Angular development — 33 for TypeScript and 32 for HTML.
+
+<details>
+<summary><strong>TypeScript snippets (33)</strong></summary>
+
+| Prefix                       | Description                       |
+| ---------------------------- | --------------------------------- |
+| `a`                          | Angular starter                   |
+| `a-component`                | Component with OnPush             |
+| `a-directive`                | Attribute directive               |
+| `a-guard-can-activate`       | `CanActivateFn` guard             |
+| `a-guard-can-activate-child` | `CanActivateChildFn` guard        |
+| `a-guard-can-deactivate`     | `CanDeactivateFn` guard           |
+| `a-guard-can-match`          | `CanMatchFn` guard                |
+| `a-http-interceptor`         | Class-based `HttpInterceptor`     |
+| `a-http-interceptor-fn`      | Functional `HttpInterceptorFn`    |
+| `a-bootstrap-app`            | `bootstrapApplication` app config |
+| `a-pipe`                     | Pipe                              |
+| `a-routes`                   | Routes array                      |
+| `a-service`                  | Root-provided service             |
+| `a-service-scoped`           | Scoped service                    |
+| `a-signal`                   | `signal()`                        |
+| `a-computed`                 | `computed()`                      |
+| `a-linked-signal`            | `linkedSignal()`                  |
+| `a-effect`                   | `effect()`                        |
+| `a-input-signal`             | `input()`                         |
+| `a-input-required`           | `input.required()`                |
+| `a-output-signal`            | `output()`                        |
+| `a-model-signal`             | `model()`                         |
+| `a-to-signal`                | `toSignal()`                      |
+| `a-to-observable`            | `toObservable()`                  |
+| `a-resource`                 | `resource()`                      |
+| `a-http-resource`            | `httpResource()`                  |
+| `a-view-child`               | `viewChild()` query               |
+| `a-view-children`            | `viewChildren()` query            |
+| `a-content-child`            | `contentChild()` query            |
+| `a-content-children`         | `contentChildren()` query         |
+| `a-inject`                   | `inject()`                        |
+| `a-test-signal-component`    | Signal component test             |
+| `a-test-harness`             | Component harness boilerplate     |
+
+</details>
+
+<details>
+<summary><strong>HTML snippets (32)</strong></summary>
+
+| Prefix                | Description                             |
+| --------------------- | --------------------------------------- |
+| `a-`                  | Angular starter                         |
+| `a-class`             | Class binding                           |
+| `a-style`             | Style binding                           |
+| `a-event`             | Event binding                           |
+| `a-attr`              | Attribute binding                       |
+| `a-banana-in-a-box`   | Two-way binding `[(ngModel)]`           |
+| `a-for`               | `@for` with track                       |
+| `a-for-empty`         | `@for` with `@empty`                    |
+| `a-form`              | Reactive form                           |
+| `a-formArrayName`     | `formArrayName`                         |
+| `a-formControlName`   | `formControlName`                       |
+| `a-formGroup`         | `formGroup`                             |
+| `a-formGroupName`     | `formGroupName`                         |
+| `a-if`                | `@if`                                   |
+| `a-if-else`           | `@if` / `@else`                         |
+| `a-if-elseif`         | `@if` / `@else if` / `@else`            |
+| `a-formModel`         | `ngModel` form                          |
+| `a-routerLink`        | `routerLink`                            |
+| `a-routerLink-param`  | `routerLink` with params                |
+| `a-switch`            | `@switch`                               |
+| `a-switch-case`       | `@case` / `@default`                    |
+| `a-ng-container`      | `ng-container`                          |
+| `a-ng-content`        | `ng-content`                            |
+| `a-ng-content-select` | `ng-content` with select                |
+| `a-ng-template`       | `ng-template`                           |
+| `a-router-outlet`     | `router-outlet`                         |
+| `a-component-outlet`  | `ng-component-outlet`                   |
+| `a-defer`             | `@defer` with placeholder/loading/error |
+| `a-defer-trigger`     | `@defer` with triggers                  |
+| `a-defer-simple`      | Simple `@defer`                         |
+| `a-defer-time`        | `@defer` with timer                     |
+| `a-defer-idle`        | `@defer` on idle                        |
+
+</details>
+
+## Keyboard Shortcuts
+
+All shortcuts use the `Ctrl+Shift+A` chord (use `Cmd+Shift+A` on macOS):
+
+| Shortcut           | Command                           |
+| ------------------ | --------------------------------- |
+| `Ctrl+Shift+A D`   | Angular: Debug Application        |
+| `Ctrl+Shift+A P`   | Angular: Debug Storybook          |
+| `Ctrl+Shift+A H`   | Angular: Debug Build (Watch)      |
+| `Ctrl+Shift+A S`   | Angular: Serve Application        |
+| `Ctrl+Shift+A B`   | Angular: Build Project            |
+| `Ctrl+Shift+A R`   | Angular: Restart Serve            |
+| `Ctrl+Shift+A W`   | Angular: Build Project (Watch)    |
+| `Ctrl+Shift+A T`   | Angular: Test Project             |
+| `Ctrl+Shift+A L`   | Angular: Lint Project             |
+| `Ctrl+Shift+A U`   | Angular: Update Packages          |
+| `Ctrl+Shift+A C`   | Close Terminals                   |
+| `Ctrl+Shift+A Tab` | Angular: Switch Component File    |
+| `Ctrl+Shift+A N`   | Angular: Run npm Script           |
+| `Ctrl+Shift+A K`   | Angular: Check Memory Leaks       |
+| `Ctrl+Shift+A G`   | Angular: Show Signal Graph        |
+| `Ctrl+Shift+A A`   | Angular: Setup .npmrc Auth Tokens |
+| `Ctrl+Shift+A O`   | Angular: Check Optimizations      |
+| `Ctrl+Shift+A E`   | Angular: Check Build Errors       |
+| `Ctrl+Shift+A J`   | Angular: Manage JSON Configs      |
+| `Ctrl+Shift+A M`   | Angular: Run Migrations           |
 
 ## Extension Settings
 
-This extension contributes the following settings:
+### Schematic defaults
 
-### Component Options
+| Setting                                    | Default   | Description                                                     |
+| ------------------------------------------ | --------- | --------------------------------------------------------------- |
+| `angularCliPlus.component.standalone`      | `true`    | Whether generated components should be standalone               |
+| `angularCliPlus.component.skipTests`       | `false`   | Skip creating spec.ts test files for components                 |
+| `angularCliPlus.component.inlineStyle`     | `false`   | Include styles inline in the component.ts file                  |
+| `angularCliPlus.component.inlineTemplate`  | `false`   | Include template inline in the component.ts file                |
+| `angularCliPlus.component.style`           | `css`     | Style file extension: `css`, `scss`, `sass`, `less`, `none`     |
+| `angularCliPlus.component.changeDetection` | `Default` | Change detection strategy: `Default` or `OnPush`                |
+| `angularCliPlus.component.flat`            | `false`   | Create component files at the top level of the current folder   |
+| `angularCliPlus.service.skipTests`         | `false`   | Skip creating spec.ts test files for services                   |
+| `angularCliPlus.service.flat`              | `true`    | Create service files at the top level of the current folder     |
+| `angularCliPlus.module.flat`               | `false`   | Create module files at the top level of the current folder      |
+| `angularCliPlus.module.routing`            | `false`   | Create a routing module                                         |
+| `angularCliPlus.directive.standalone`      | `true`    | Whether generated directives should be standalone               |
+| `angularCliPlus.directive.skipTests`       | `false`   | Skip creating spec.ts test files for directives                 |
+| `angularCliPlus.directive.flat`            | `true`    | Create directive files at the top level of the current folder   |
+| `angularCliPlus.pipe.standalone`           | `true`    | Whether generated pipes should be standalone                    |
+| `angularCliPlus.pipe.skipTests`            | `false`   | Skip creating spec.ts test files for pipes                      |
+| `angularCliPlus.pipe.flat`                 | `true`    | Create pipe files at the top level of the current folder        |
+| `angularCliPlus.guard.functional`          | `true`    | Generate the guard as a function                                |
+| `angularCliPlus.guard.skipTests`           | `false`   | Skip creating spec.ts test files for guards                     |
+| `angularCliPlus.guard.flat`                | `true`    | Create guard files at the top level of the current folder       |
+| `angularCliPlus.interceptor.functional`    | `true`    | Create the interceptor as an `HttpInterceptorFn`                |
+| `angularCliPlus.interceptor.skipTests`     | `false`   | Skip creating spec.ts test files for interceptors               |
+| `angularCliPlus.interceptor.flat`          | `true`    | Create interceptor files at the top level of the current folder |
+| `angularCliPlus.class.skipTests`           | `false`   | Skip creating spec.ts test files for classes                    |
+| `angularCliPlus.resolver.functional`       | `true`    | Create the resolver as a `ResolveFn`                            |
+| `angularCliPlus.resolver.skipTests`        | `false`   | Skip creating spec.ts test files for resolvers                  |
+| `angularCliPlus.resolver.flat`             | `true`    | Create resolver files at the top level of the current folder    |
 
-- `angularCliPlus.component.standalone`: Whether generated components should be standalone (default: `true`)
-- `angularCliPlus.component.skipTests`: Skip creating spec.ts test files (default: `false`)
-- `angularCliPlus.component.inlineStyle`: Include styles inline in the component.ts file (default: `false`)
-- `angularCliPlus.component.inlineTemplate`: Include template inline in the component.ts file (default: `false`)
-- `angularCliPlus.component.style`: The file extension or preprocessor to use (`css`, `scss`, `sass`, `less`, `none`) (default: `css`)
-- `angularCliPlus.component.changeDetection`: The change detection strategy (`Default`, `OnPush`) (default: `Default`)
-- `angularCliPlus.component.flat`: Create files at the top level of the current folder (default: `false`)
+### Debugging
 
-### Service Options
+| Setting                                         | Default                            | Description                                                                                     |
+| ----------------------------------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `angularCliPlus.debug.browser`                  | `chrome`                           | Browser for debug sessions: `chrome`, `edge`, `brave`, `opera`, `opera-gx`, `firefox`, `safari` |
+| `angularCliPlus.debug.browserExecutablePath`    | `""`                               | Optional path to the browser executable; overrides automatic detection                          |
+| `angularCliPlus.storybook.port`                 | `0`                                | Port Storybook runs on; `0` auto-detects from angular.json or uses 6006                         |
+| `angularCliPlus.buildWatch.servePort`           | `4201`                             | Port the static file server listens on during a debug build watch session                       |
+| `angularCliPlus.buildWatch.staticServerCommand` | `npx serve {outputPath} -l {port}` | Static server command; use `{outputPath}` and `{port}` as placeholders                          |
 
-- `angularCliPlus.service.skipTests`: Skip creating spec.ts test files (default: `false`)
-- `angularCliPlus.service.flat`: Create files at the top level of the current folder (default: `true`)
+### Build, watch & test
 
-### Module Options
+| Setting                              | Default       | Description                                                                             |
+| ------------------------------------ | ------------- | --------------------------------------------------------------------------------------- |
+| `angularCliPlus.build.configuration` | `production`  | Configuration for `ng build`: `default`, `production`, `development`                    |
+| `angularCliPlus.watch.configuration` | `development` | Configuration for `ng build --watch`: `default`, `inherit`, `production`, `development` |
+| `angularCliPlus.test.watch`          | `false`       | Run `ng test` in watch mode                                                             |
+| `angularCliPlus.test.ui`             | `false`       | Enable the Vitest UI for interactive test execution (Vitest runner only)                |
 
-- `angularCliPlus.module.flat`: Create files at the top level of the current folder (default: `false`)
-- `angularCliPlus.module.routing`: Create a routing module (default: `false`)
+### Checks & updates
 
-### Directive Options
+| Setting                                    | Default | Description                                                                     |
+| ------------------------------------------ | ------- | ------------------------------------------------------------------------------- |
+| `angularCliPlus.checkDependencies.enabled` | `true`  | Check npm dependencies on open and on git branch change                         |
+| `angularCliPlus.checkToolVersions.enabled` | `true`  | Check Node.js/npm/yarn/pnpm versions against `engines` on startup               |
+| `angularCliPlus.update.allowDirty`         | `false` | Allow `ng update` with uncommitted changes (`--allow-dirty`)                    |
+| `angularCliPlus.npm.installCommand`        | `""`    | Custom command for npm: Install (e.g. `yarn install`); empty uses `npm install` |
+| `angularCliPlus.npm.cleanInstallCommand`   | `""`    | Custom command for npm: Clean Install; empty uses the default clean flow        |
 
-- `angularCliPlus.directive.standalone`: Whether generated directives should be standalone (default: `true`)
-- `angularCliPlus.directive.skipTests`: Skip creating spec.ts test files (default: `false`)
-- `angularCliPlus.directive.flat`: Create files at the top level of the current folder (default: `true`)
+### AI
 
-### Pipe Options
+| Setting                            | Default   | Description                                      |
+| ---------------------------------- | --------- | ------------------------------------------------ |
+| `angularCliPlus.ai.provider`       | `copilot` | AI assistant for auto-fix: `copilot` or `claude` |
+| `angularCliPlus.ai.autoFixEnabled` | `true`    | Show "Auto Fix" buttons in the analysis webviews |
 
-- `angularCliPlus.pipe.standalone`: Whether generated pipes should be standalone (default: `true`)
-- `angularCliPlus.pipe.skipTests`: Skip creating spec.ts test files (default: `false`)
-- `angularCliPlus.pipe.flat`: Create files at the top level of the current folder (default: `true`)
+## Recommended Extensions
 
-### Guard Options
+- [GitHub Copilot](https://marketplace.visualstudio.com/items?itemName=GitHub.copilot) — for AI-powered auto-fix
+- [Claude Code](https://marketplace.visualstudio.com/items?itemName=anthropic.claude-code) — alternative AI provider for auto-fix
+- [Angular Language Service](https://marketplace.visualstudio.com/items?itemName=angular.ng-template) — enhanced Angular template editing
 
-- `angularCliPlus.guard.functional`: Specifies whether to generate a guard as a function (default: `true`)
-- `angularCliPlus.guard.skipTests`: Skip creating spec.ts test files (default: `false`)
-- `angularCliPlus.guard.flat`: Create files at the top level of the current folder (default: `true`)
+## Contributing
 
-### Interceptor Options
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-- `angularCliPlus.interceptor.functional`: Creates the interceptor as a HttpInterceptorFn (default: `true`)
-- `angularCliPlus.interceptor.skipTests`: Skip creating spec.ts test files (default: `false`)
-- `angularCliPlus.interceptor.flat`: Create files at the top level of the current folder (default: `true`)
+```bash
+npm install
+npm run watch      # compile + typecheck + lint in watch mode
+npm run test       # run the extension test suite
+npm run package    # production build
+```
 
-### Class Options
+## License
 
-- `angularCliPlus.class.skipTests`: Skip creating spec.ts test files (default: `false`)
-
-### Resolver Options
-
-- `angularCliPlus.resolver.functional`: Creates the resolver as a ResolveFn (default: `true`)
-- `angularCliPlus.resolver.skipTests`: Skip creating spec.ts test files (default: `false`)
-- `angularCliPlus.resolver.flat`: Create files at the top level of the current folder (default: `true`)
-
-### Debug Options
-
-- `angularCliPlus.debug.browser`: Browser to use when launching a debug session (`chrome`, `edge`, `brave`, `opera`, `opera-gx`, `firefox`, `safari`) (default: `chrome`)
-- `angularCliPlus.debug.browserExecutablePath`: Optional path to the browser executable; overrides automatic detection (default: `""`)
-
-### Build Options
-
-- `angularCliPlus.build.configuration`: Configuration flag passed to `ng build` (`default`, `production`, `development`) (default: `production`)
-- `angularCliPlus.watch.configuration`: Configuration flag passed to `ng build --watch` (`default`, `inherit`, `production`, `development`) — `inherit` copies the value from `angularCliPlus.build.configuration` (default: `development`)
-
-### Test Options
-
-- `angularCliPlus.test.watch`: Run `ng test` in watch mode (default: `false`)
-- `angularCliPlus.test.ui`: Enable the Vitest UI for interactive test execution — only available for the Vitest runner (default: `false`)
-
-### Storybook Options
-
-- `angularCliPlus.storybook.port`: Port Storybook runs on; `0` means auto-detect from `angular.json` or use the default `6006` (default: `0`)
-
-### Debug Build Watch Options
-
-- `angularCliPlus.buildWatch.servePort`: Port the static file server listens on during a Debug Build Watch session (default: `4201`)
-- `angularCliPlus.buildWatch.staticServerCommand`: Command used to serve the build output; use `{outputPath}` and `{port}` as placeholders (default: `npx serve {outputPath} -l {port}`)
-
-### Dependency Check Options
-
-- `angularCliPlus.checkDependencies.enabled`: Check if npm dependencies are installed and match `package.json` on startup and on git branch changes (default: `true`)
-- `angularCliPlus.checkToolVersions.enabled`: Check if Node.js, npm, yarn, and pnpm versions satisfy the `engines` field in `package.json` on startup (default: `true`)
-
-### Update Options
-
-- `angularCliPlus.update.allowDirty`: Pass `--allow-dirty` to `ng update`, allowing updates when the working tree has uncommitted changes (default: `false`)
-
-### npm Command Options
-
-- `angularCliPlus.npm.installCommand`: Custom command used by **npm: Install** (e.g. `yarn install`, `pnpm install`). Leave empty to use the default `npm install` with automatic clean/force fallbacks (default: `""`)
-- `angularCliPlus.npm.cleanInstallCommand`: Custom command used by **npm: Clean Install** (e.g. `yarn install --frozen-lockfile`). Leave empty to use the default behaviour — removes `node_modules` and `package-lock.json` then runs `npm install` (default: `""`)
-
-### AI Options
-
-- `angularCliPlus.ai.provider`: Choose AI assistant for auto-fix functionality — `"copilot"` (default) or `"claude"`
-- `angularCliPlus.ai.autoFixEnabled`: Show "Auto Fix" buttons in diagnostic webviews (default: `true`)
+This project is licensed under the terms of the [LICENSE](LICENSE) file.
