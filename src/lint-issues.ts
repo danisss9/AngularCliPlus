@@ -12,7 +12,13 @@ import {
   buildAngularCliTerminalCommand,
 } from './utils';
 import { spawnCapture } from './dependencies';
-import { sendCopilotAutoFix, sendCopilotAutoFixForFile, sendAIAutoFix, sendAIAutoFixForFile, getAIProvider } from './copilot-fix';
+import {
+  sendCopilotAutoFix,
+  sendCopilotAutoFixForFile,
+  sendAIAutoFix,
+  sendAIAutoFixForFile,
+  getAIProvider,
+} from './copilot-fix';
 import { createAnalysisPanel, escapeHtml, ANALYSIS_PANEL_CSP } from './webview-utils';
 import type { AnalysisPanel } from './webview-utils';
 
@@ -404,7 +410,8 @@ async function handleMessage(state: LintPanel, message: WebviewMessage): Promise
     case 'copilotFixFile':
     case 'aiFixFile':
       const fixFileProvider = message.command === 'aiFixFile' ? getAIProvider() : 'copilot';
-      const sendFixFile = fixFileProvider === 'claude' ? sendAIAutoFixForFile : sendCopilotAutoFixForFile;
+      const sendFixFile =
+        fixFileProvider === 'claude' ? sendAIAutoFixForFile : sendCopilotAutoFixForFile;
       await sendFixFile({
         file: message.file ?? '',
         issues: message.issues ?? [],
@@ -505,7 +512,9 @@ function issueButtons(issue: LintIssue, snippet: string, autoFixEnabled: boolean
   }
   if (autoFixEnabled) {
     const d = copilotIssueData(issue, snippet);
-    return /* html */ `<button class="copilot-fix-btn" title="Auto Fix with Copilot"
+    const aiProviderName = getAIProvider() === 'claude' ? 'Claude Code' : 'Copilot';
+    return /* html */ `<button class="copilot-fix-btn" title="Auto Fix with ${aiProviderName}"
+        data-command="aiFix"
         data-file="${escapeHtml(issue.file)}"
         data-line="${issue.line}"
         data-kind="${escapeHtml(d.kind)}"
@@ -551,10 +560,12 @@ function fixFilesButton(files: string[], label: string, title: string): string {
 
 function copilotFileButton(file: string, issues: LintIssue[], getLine: LineGetter): string {
   const data = issues.map((i) => copilotIssueData(i, getLine(i.file, i.line)));
-  return /* html */ `<button class="copilot-fix-file-btn" title="Auto Fix the manual problems in this file with Copilot"
+  const aiProviderName = getAIProvider() === 'claude' ? 'Claude Code' : 'Copilot';
+  return /* html */ `<button class="copilot-fix-file-btn" title="Auto Fix the manual problems in this file with ${aiProviderName}"
+      data-command="aiFixFile"
       data-file="${escapeHtml(file)}"
       data-issues="${escapeHtml(JSON.stringify(data))}"
-    >${COPILOT_SVG}<span>Copilot fix</span></button>`;
+    >${COPILOT_SVG}<span>AI fix</span></button>`;
 }
 
 function renderByFile(
@@ -578,7 +589,9 @@ function renderByFile(
       const countLabel = `${fileIssues.length} problem${fileIssues.length !== 1 ? 's' : ''}`;
 
       const rows = fileIssues
-        .map((issue) => issueRow(issue, getLine(issue.file, issue.line), autoFixEnabled, 'file', workspaceRoot))
+        .map((issue) =>
+          issueRow(issue, getLine(issue.file, issue.line), autoFixEnabled, 'file', workspaceRoot),
+        )
         .join('');
 
       const hasFixable = fileIssues.some((i) => i.fixable);
@@ -587,7 +600,9 @@ function renderByFile(
         : '';
       const manualIssues = fileIssues.filter((i) => !i.fixable);
       const copilotBtn =
-        autoFixEnabled && manualIssues.length > 0 ? copilotFileButton(file, manualIssues, getLine) : '';
+        autoFixEnabled && manualIssues.length > 0
+          ? copilotFileButton(file, manualIssues, getLine)
+          : '';
 
       return /* html */ `
     <div class="file-group" data-group-key="${escapeHtml(file)}">
@@ -631,7 +646,9 @@ function renderByRule(
       const countLabel = `${ruleIssues.length} problem${ruleIssues.length !== 1 ? 's' : ''}`;
 
       const rows = ruleIssues
-        .map((issue) => issueRow(issue, getLine(issue.file, issue.line), autoFixEnabled, 'rule', workspaceRoot))
+        .map((issue) =>
+          issueRow(issue, getLine(issue.file, issue.line), autoFixEnabled, 'rule', workspaceRoot),
+        )
         .join('');
 
       const filesWithFixable = Array.from(
@@ -703,8 +720,16 @@ function buildWebviewHtml(
   const filterPill = (value: string, cls: string, label: string): string =>
     `<button class="filter-pill ${cls}" data-value="${value}" title="Toggle ${label}">${label}</button>`;
   const sevFilters = [
-    errorCount > 0 ? filterPill('error', 'flt-error', `${errorCount} error${errorCount !== 1 ? 's' : ''}`) : '',
-    warningCount > 0 ? filterPill('warning', 'flt-warning', `${warningCount} warning${warningCount !== 1 ? 's' : ''}`) : '',
+    errorCount > 0
+      ? filterPill('error', 'flt-error', `${errorCount} error${errorCount !== 1 ? 's' : ''}`)
+      : '',
+    warningCount > 0
+      ? filterPill(
+          'warning',
+          'flt-warning',
+          `${warningCount} warning${warningCount !== 1 ? 's' : ''}`,
+        )
+      : '',
   ].join('');
   const fixFilters = [
     fixableCount > 0 ? filterPill('fixable', 'flt-fixable', `${fixableCount} fixable`) : '',
@@ -1069,7 +1094,7 @@ function buildWebviewHtml(
           e.preventDefault();
           e.stopPropagation();
           vscode.postMessage({
-            command: 'copilotFix',
+            command: btn.getAttribute('data-command') || 'copilotFix',
             file: btn.getAttribute('data-file'),
             line: parseInt(btn.getAttribute('data-line'), 10),
             kind: btn.getAttribute('data-kind'),
@@ -1085,7 +1110,7 @@ function buildWebviewHtml(
           e.preventDefault();
           e.stopPropagation();
           vscode.postMessage({
-            command: 'copilotFixFile',
+            command: btn.getAttribute('data-command') || 'copilotFixFile',
             file: btn.getAttribute('data-file'),
             issues: JSON.parse(btn.getAttribute('data-issues') || '[]')
           });
@@ -1100,7 +1125,7 @@ function emptyStateHtml(projectName: string): string {
   const messages = [
     '0 lint problems! Clean as a whistle. ✨',
     '0 lint problems! Your linter is bored. 😴',
-    '0 lint problems! Pristine code, chef\'s kiss. 👨‍🍳',
+    "0 lint problems! Pristine code, chef's kiss. 👨‍🍳",
     '0 lint problems! Not a single nit to pick. 🐛',
     '0 lint problems! The style guide approves. 📐',
   ];

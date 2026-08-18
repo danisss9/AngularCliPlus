@@ -4,7 +4,7 @@
   "description": "Angular CLI commands, schematics generator, and project tools for VS Code with AI-powered auto-fix support (GitHub Copilot & Claude Code)",
   "repository": "https://github.com/danisss9/AngularCliPlus",
   "publisher": "danisss9",
-  "version": "1.9.2",
+  "version": "1.9.3",
   "icon": "icon.png",
   "engines": {
     "vscode": "^1.107.0"
@@ -18,7 +18,7 @@
   "main": "./dist/extension.js",
   "recommendations": [
     "github.copilot",
-    "claudecode.claude-code",
+    "anthropic.claude-code",
     "angular.ng-template"
   ],
   "contributes": {
@@ -601,7 +601,7 @@
             "Use GitHub Copilot for AI-powered fixes",
             "Use Claude Code for AI-powered fixes"
           ],
-          "description": "Choose which AI assistant to use for auto-fix functionality. GitHub Copilot uses 'workbench.action.chat.open', Claude Code uses 'claude-code.open-chat'."
+          "description": "Choose which AI assistant to use for auto-fix functionality. GitHub Copilot uses 'workbench.action.chat.open', Claude Code uses 'claude-vscode.editor.open'."
         },
         "angularCliPlus.ai.autoFixEnabled": {
           "type": "boolean",

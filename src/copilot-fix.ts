@@ -39,7 +39,6 @@ export interface AIFixFileOptions {
 export type CopilotFixOptions = AIFixOptions;
 export type CopilotFixFileOptions = AIFixFileOptions;
 
-
 /**
  * Gets the configured AI provider from settings.
  */
@@ -78,17 +77,28 @@ export async function sendCopilotAutoFixForFile(opts: CopilotFixFileOptions): Pr
 
 async function openAIChatWithPrompt(prompt: string, provider: AIProvider): Promise<void> {
   const providerName = provider === 'claude' ? 'Claude Code' : 'GitHub Copilot';
-  const command = provider === 'claude' ? 'claude-code.open-chat' : 'workbench.action.chat.open';
 
   try {
-    await vscode.commands.executeCommand(command, {
-      query: prompt,
-    });
+    if (provider === 'claude') {
+      // The Claude Code extension contributes `claude-vscode.editor.open`, which
+      // accepts (sessionId, initialPrompt, viewColumn) and pre-fills the prompt
+      // box in the Claude Code panel.
+      await vscode.commands.executeCommand(
+        'claude-vscode.editor.open',
+        undefined,
+        prompt,
+        vscode.ViewColumn.Active,
+      );
+    } else {
+      await vscode.commands.executeCommand('workbench.action.chat.open', {
+        query: prompt,
+      });
+    }
   } catch {
     // AI Chat not available — copy to clipboard as fallback
     await vscode.env.clipboard.writeText(prompt);
     vscode.window.showWarningMessage(
-      `${providerName} Chat does not appear to be available. The fix prompt has been copied to your clipboard.`,
+      `${providerName} does not appear to be available. The fix prompt has been copied to your clipboard.`,
     );
   }
 }

@@ -443,7 +443,7 @@ function buildWebviewHtml(
 
           const aiProviderName = getAIProvider() === 'claude' ? 'Claude Code' : 'Copilot';
           const aiBtn = autoFixEnabled
-            ? /* html */ `<button class="ai-fix-btn" title="Auto Fix with ${aiProviderName}"
+            ? /* html */ `<button class="ai-fix-btn copilot-fix-btn" title="Auto Fix with ${aiProviderName}"
                 data-command="aiFix"
                 data-file="${escapeHtml(err.file)}"
                 data-line="${err.line}"
@@ -478,7 +478,7 @@ function buildWebviewHtml(
 
       const aiProviderName = getAIProvider() === 'claude' ? 'Claude Code' : 'Copilot';
       const fileFixAllBtn = autoFixEnabled
-        ? /* html */ `<button class="ai-fix-file-btn" title="Auto Fix all ${fileErrors.length} error${fileErrors.length !== 1 ? 's' : ''} in this file with ${aiProviderName}"
+        ? /* html */ `<button class="ai-fix-file-btn copilot-fix-file-btn" title="Auto Fix all ${fileErrors.length} error${fileErrors.length !== 1 ? 's' : ''} in this file with ${aiProviderName}"
           data-command="aiFixFile"
           data-file="${escapeHtml(file)}"
           data-issues="${escapeHtml(

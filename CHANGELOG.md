@@ -4,6 +4,15 @@ All notable changes to the "angular-cli-plus" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.9.3]
+
+### Fixed
+
+- **Claude Code auto-fix never sent the prompt.** The extension invoked `claude-code.open-chat`, a command that does not exist in the Claude Code extension, so every "Auto Fix with Claude Code" click failed and fell back to copying the prompt to the clipboard. It now invokes `claude-vscode.editor.open` with the fix prompt, which opens the Claude Code panel with the prompt pre-filled (press Enter to send).
+- **AI auto-fix buttons in the Build Errors panel were unstyled.** They rendered as default white browser buttons because they were missing the `copilot-fix-btn` / `copilot-fix-file-btn` CSS classes that carry the styling. They now match the Memory Leaks and Optimizations panels.
+- **The Lint panel ignored the `angularCliPlus.ai.provider` setting.** Its AI buttons always sent the fix prompt to Copilot regardless of the configured provider. They now respect the setting, show the current provider name in their tooltips, and the file-level button is labeled "AI fix" instead of "Copilot fix".
+- **Wrong Claude Code extension ID in recommendations.** The extension recommended `claudecode.claude-code` instead of the actual marketplace ID `anthropic.claude-code`.
+
 ## [1.9.2]
 
 ### Removed
