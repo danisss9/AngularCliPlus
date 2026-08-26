@@ -353,6 +353,14 @@ All shortcuts use the `Ctrl+Shift+A` chord (use `Cmd+Shift+A` on macOS):
 | `angularCliPlus.ai.provider`       | `copilot` | AI assistant for auto-fix: `copilot` or `claude` |
 | `angularCliPlus.ai.autoFixEnabled` | `true`    | Show "Auto Fix" buttons in the analysis webviews |
 
+### On-save
+
+| Setting                                  | Default | Description                                                                                                              |
+| ---------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `angularCliPlus.autoCleanImports.enabled` | `false` | Remove unused entries from the `imports` array of standalone `@Component`/`@Directive`/`@Pipe` decorators when saving `.ts` files |
+
+Entries are only removed when the identifier is unused elsewhere in the file and its resolved `selector`/pipe name does not appear in any of the file's templates (inline or `templateUrl`). Anything that cannot be confidently resolved — non-relative specifiers like `@angular/common`, NgModule barrels, exotic selectors, spread elements — is always kept.
+
 ## Recommended Extensions
 
 - [GitHub Copilot](https://marketplace.visualstudio.com/items?itemName=GitHub.copilot) — for AI-powered auto-fix

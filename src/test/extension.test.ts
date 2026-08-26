@@ -23,6 +23,281 @@ import {
   supportsTestUiFlag,
 } from '../version-adapter';
 import type { AngularProject } from '../types';
+import {
+  computeUnusedImportsRemovals,
+  extractTokensFromSelector,
+} from '../clean-imports';
+import type { FileContentsReader, UnusedImportRemoval } from '../clean-imports';
+
+// ── clean-imports helpers ─────────────────────────────────────────────────────
+
+/** Normalises a path for virtual-FS key comparison across platforms. */
+function normalizeVirtualPath(absolutePath: string): string {
+  return absolutePath.replace(/\\/g, '/').replace(/^[A-Za-z]:/, '');
+}
+
+function createVirtualReader(files: Record<string, string>): FileContentsReader {
+  return (absolutePath) => {
+    const key = normalizeVirtualPath(absolutePath);
+    return Object.prototype.hasOwnProperty.call(files, key) ? files[key] : null;
+  };
+}
+
+function applyRemovals(source: string, removals: UnusedImportRemoval[]): string {
+  let result = source;
+  for (const removal of [...removals].sort((a, b) => b.start - a.start)) {
+    result = result.slice(0, removal.start) + result.slice(removal.end);
+  }
+  return result;
+}
+
+const CHILD_COMPONENT_FILE = `
+import { Component } from '@angular/core';
+@Component({
+  selector: 'app-child',
+  template: '',
+})
+export class ChildComponent {}
+`;
+
+const MAIN_WITH_SINGLE_IMPORT = `import { ChildComponent } from './child.component';
+
+@Component({
+  selector: 'app-root',
+  imports: [ChildComponent],
+  template: '<span>hello</span>',
+})
+export class AppComponent {}
+`;
+
+// ── extractTokensFromSelector ─────────────────────────────────────────────────
+
+suite('extractTokensFromSelector', () => {
+  test('plain tag selector → tokens', () =>
+    assert.deepStrictEqual(extractTokensFromSelector('app-hero'), ['app-hero']));
+  test('compound class selector → class tokens', () =>
+    assert.deepStrictEqual(extractTokensFromSelector('.card.active'), ['card', 'active']));
+  test('attribute selector → attr token', () =>
+    assert.deepStrictEqual(extractTokensFromSelector('[appHighlight]'), ['appHighlight']));
+  test('comma-separated parts combine tokens', () =>
+    assert.deepStrictEqual(extractTokensFromSelector('a-one, .two, [three]'), [
+      'a-one',
+      'two',
+      'three',
+    ]));
+  test('pseudo selectors are unresolvable → null', () => {
+    assert.strictEqual(extractTokensFromSelector(':host'), null);
+    assert.strictEqual(extractTokensFromSelector('input:not([type=checkbox])'), null);
+  });
+  test('attribute values are unresolvable → null', () =>
+    assert.strictEqual(extractTokensFromSelector('input[type=text]'), null));
+  test('empty selector → null', () => assert.strictEqual(extractTokensFromSelector(''), null));
+});
+
+// ── computeUnusedImportsRemovals ──────────────────────────────────────────────
+
+suite('computeUnusedImportsRemovals', () => {
+  test('removes a component import whose selector is not in the template', () => {
+    const removals = computeUnusedImportsRemovals(
+      MAIN_WITH_SINGLE_IMPORT,
+      '/proj/main.ts',
+      createVirtualReader({ '/proj/child.component.ts': CHILD_COMPONENT_FILE }),
+    );
+    assert.strictEqual(removals.length, 1);
+    assert.strictEqual(removals[0].name, 'ChildComponent');
+    const cleaned = applyRemovals(MAIN_WITH_SINGLE_IMPORT, removals);
+    assert.ok(cleaned.includes('imports: [],'), cleaned);
+  });
+
+  test('keeps the import when the selector is used in an inline template', () => {
+    const source = MAIN_WITH_SINGLE_IMPORT.replace(
+      "'<span>hello</span>'",
+      "'<app-child></app-child>'",
+    );
+    const removals = computeUnusedImportsRemovals(
+      source,
+      '/proj/main.ts',
+      createVirtualReader({ '/proj/child.component.ts': CHILD_COMPONENT_FILE }),
+    );
+    assert.strictEqual(removals.length, 0);
+  });
+
+  test('keeps the import when the selector is used in the external templateUrl', () => {
+    const files = {
+      '/proj/child.component.ts': CHILD_COMPONENT_FILE,
+      '/proj/app-root.html': '<div><app-child></app-child></div>',
+    };
+    const source = MAIN_WITH_SINGLE_IMPORT.replace(
+      "template: '<span>hello</span>',",
+      "templateUrl: './app-root.html',",
+    );
+    const removals = computeUnusedImportsRemovals(source, '/proj/main.ts', createVirtualReader(files));
+    assert.strictEqual(removals.length, 0);
+  });
+
+  test('keeps non-relative (library/NgModule) specifiers', () => {
+    const source = `import { CommonModule } from '@angular/common';
+
+@Component({
+  selector: 'app-root',
+  imports: [CommonModule],
+  template: '<span>x</span>',
+})
+export class AppComponent {}
+`;
+    const removals = computeUnusedImportsRemovals(source, '/proj/main.ts', createVirtualReader({}));
+    assert.strictEqual(removals.length, 0);
+  });
+
+  test('keeps entries referenced elsewhere in the file', () => {
+    const source = `import { ChildComponent } from './child.component';
+
+@Component({
+  selector: 'app-root',
+  imports: [ChildComponent],
+  template: '<span>hello</span>',
+})
+export class AppComponent {
+  readonly ctorToken = ChildComponent;
+}
+`;
+    const removals = computeUnusedImportsRemovals(
+      source,
+      '/proj/main.ts',
+      createVirtualReader({ '/proj/child.component.ts': CHILD_COMPONENT_FILE }),
+    );
+    assert.strictEqual(removals.length, 0);
+  });
+
+  test('removes an unused pipe and keeps it when its name is piped in the template', () => {
+    const pipeFile = `import { Pipe, PipeTransform } from '@angular/core';
+@Pipe({ name: 'myPipe' })
+export class MyPipe implements PipeTransform {}
+`;
+    const removedSource = `import { MyPipe } from './my-pipe.pipe';
+
+@Component({
+  selector: 'app-root',
+  imports: [MyPipe],
+  template: '{{ value }}',
+})
+export class AppComponent {}
+`;
+    const keptSource = removedSource.replace('{{ value }}', '{{ value | myPipe }}');
+
+    const removed = computeUnusedImportsRemovals(
+      removedSource,
+      '/proj/main.ts',
+      createVirtualReader({ '/proj/my-pipe.pipe.ts': pipeFile }),
+    );
+    assert.strictEqual(removed.length, 1);
+    assert.strictEqual(removed[0].name, 'MyPipe');
+
+    const kept = computeUnusedImportsRemovals(
+      keptSource,
+      '/proj/main.ts',
+      createVirtualReader({ '/proj/my-pipe.pipe.ts': pipeFile }),
+    );
+    assert.strictEqual(kept.length, 0);
+  });
+
+  test('interior unused entry collapses separators cleanly', () => {
+    const files = {
+      '/proj/one.ts': "@Component({ selector: 'one' }) export class OneComponent {}",
+      '/proj/two.ts': "@Component({ selector: 'two' }) export class TwoComponent {}",
+      '/proj/three.ts': "@Component({ selector: 'three' }) export class ThreeComponent {}",
+      '/proj/four.ts': "@Component({ selector: 'four' }) export class FourComponent {}",
+    };
+    const source = `import { OneComponent } from './one';
+import { TwoComponent } from './two';
+import { ThreeComponent } from './three';
+import { FourComponent } from './four';
+
+@Component({
+  selector: 'app-root',
+  imports: [OneComponent, TwoComponent, ThreeComponent, FourComponent],
+  template: '<one></one><four></four>',
+})
+export class AppComponent {}
+`;
+    const removals = computeUnusedImportsRemovals(source, '/proj/main.ts', createVirtualReader(files));
+    // Consecutive unused siblings are merged into one grouped edit span
+    assert.strictEqual(removals.length, 1);
+    assert.strictEqual(removals[0].name, 'TwoComponent');
+    const cleaned = applyRemovals(source, removals);
+    assert.ok(cleaned.includes('imports: [OneComponent, FourComponent],'), cleaned);
+  });
+
+  test('whole-array removal empties the imports array', () => {
+    const files = {
+      '/proj/a.component.ts':
+        "@Component({ selector: 'alpha' }) export class AlphaComponent {}",
+      '/proj/b.component.ts':
+        "@Component({ selector: 'beta' }) export class BetaComponent {}",
+    };
+    const source = `import { AlphaComponent } from './a.component';
+import { BetaComponent } from './b.component';
+
+@Component({
+  selector: 'app-root',
+  imports: [AlphaComponent, BetaComponent],
+  template: '<p>none used</p>',
+})
+export class AppComponent {}
+`;
+    const removals = computeUnusedImportsRemovals(source, '/proj/main.ts', createVirtualReader(files));
+    // Both unused entries are removed through a single grouped edit span
+    assert.strictEqual(removals.length, 1);
+    assert.strictEqual(removals[0].name, 'AlphaComponent');
+    const cleaned = applyRemovals(source, removals);
+    assert.ok(cleaned.includes('imports: [],'), cleaned);
+  });
+
+  test('multi-line arrays are handled without corrupting surrounding code', () => {
+    const files = {
+      '/proj/child.component.ts': CHILD_COMPONENT_FILE,
+    };
+    const source = `import { Component } from '@angular/core';
+import { ChildComponent } from './child.component';
+
+@Component({
+  selector: 'app-root',
+  imports: [
+    ChildComponent,
+  ],
+  template: '<span>hello</span>',
+})
+export class AppComponent {}
+`;
+    const removals = computeUnusedImportsRemovals(source, '/proj/main.ts', createVirtualReader(files));
+    assert.strictEqual(removals.length, 1);
+    const cleaned = applyRemovals(source, removals);
+    assert.ok(cleaned.includes('imports: [],'), cleaned);
+  });
+
+  test('files without decorated classes produce no removals', () => {
+    const removals = computeUnusedImportsRemovals(
+      'export function foo() { return 1; }\n',
+      '/proj/plain.ts',
+      createVirtualReader({}),
+    );
+    assert.strictEqual(removals.length, 0);
+  });
+
+  test('spread elements and missing target files are left untouched', () => {
+    const source = `import { MissingComponent } from './missing';
+
+@Component({
+  selector: 'app-root',
+  imports: [...[MissingComponent]],
+  template: '<span>x</span>',
+})
+export class AppComponent {}
+`;
+    const removals = computeUnusedImportsRemovals(source, '/proj/main.ts', createVirtualReader({}));
+    assert.strictEqual(removals.length, 0);
+  });
+});
 
 // ── semverSatisfies ───────────────────────────────────────────────────────────
 

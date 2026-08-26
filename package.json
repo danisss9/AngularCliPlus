@@ -4,7 +4,7 @@
   "description": "Angular CLI commands, schematics generator, and project tools for VS Code with AI-powered auto-fix support (GitHub Copilot & Claude Code)",
   "repository": "https://github.com/danisss9/AngularCliPlus",
   "publisher": "danisss9",
-  "version": "1.9.3",
+  "version": "1.10.0",
   "icon": "icon.png",
   "engines": {
     "vscode": "^1.107.0"
@@ -607,6 +607,11 @@
           "type": "boolean",
           "default": true,
           "description": "Show 'Auto Fix' buttons in the Memory Leaks, Optimizations, and Build Errors webviews. Requires the selected AI assistant to be installed."
+        },
+        "angularCliPlus.autoCleanImports.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically remove unused entries from the `imports` array of standalone @Component, @Directive and @Pipe decorators when saving TypeScript files"
         }
       }
     }

@@ -4,6 +4,16 @@ All notable changes to the "angular-cli-plus" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.10.0]
+
+### Added
+
+- **Auto-clean unused standalone imports on save** (opt-in, disabled by default). When `angularCliPlus.autoCleanImports.enabled` is turned on, saving a TypeScript file automatically removes entries that are no longer used from the `imports: []` array of its standalone `@Component`, `@Directive`, and `@Pipe` decorators:
+  - Entries are only removed when their identifier appears nowhere else in the file and their resolved declaration's selector (or pipe name) is not referenced by any of the file's templates — inline `template:` or external `templateUrl` HTML
+  - Anything that cannot be confidently resolved stays untouched: non-relative specifiers like `@angular/common`, NgModule-style re-export barrels without readable selectors, exotic selectors (`:host`, attribute values), spread elements, aliased usages elsewhere in the file, etc.
+  - The analysis follows relative imports to the declaring file (including named re-export chains) to read each symbol's actual `selector` / pipe `name`
+  - Only files inside workspace folders containing an `angular.json` are processed; removals are logged to the **Angular CLI Plus: diagnostics** output channel
+
 ## [1.9.3]
 
 ### Added

@@ -51,9 +51,13 @@ import { checkLint } from './lint-issues';
 import { showPackageUpdates } from './package-updates';
 import { manageJsonConfig } from './json-config';
 import { runAngularMigrations } from './migrations';
+import { setupAutoCleanImports } from './clean-imports';
 
 export function activate(context: vscode.ExtensionContext) {
   setExtensionContext(context);
+
+  // ── Auto-clean unused standalone imports on save (opt-in) ──────────────────
+  setupAutoCleanImports(context);
 
   // ── Clear stale terminal entries from previous sessions ───────────────────
   const persisted = loadPersistedTerminalEntries();
