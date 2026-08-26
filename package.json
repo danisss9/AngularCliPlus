@@ -186,6 +186,11 @@
         "command": "angular-cli-plus.runMigrations",
         "title": "Angular: Run Migrations",
         "category": "Angular CLI Plus"
+      },
+      {
+        "command": "angular-cli-plus.autoImport",
+        "title": "Angular: Auto Import Missing Imports",
+        "category": "Angular CLI Plus"
       }
     ],
     "keybindings": [
@@ -268,6 +273,10 @@
       {
         "command": "angular-cli-plus.runMigrations",
         "key": "ctrl+shift+a m"
+      },
+      {
+        "command": "angular-cli-plus.autoImport",
+        "key": "ctrl+shift+a i"
       }
     ],
     "submenus": [

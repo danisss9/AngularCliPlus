@@ -13,6 +13,12 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
   - Anything that cannot be confidently resolved stays untouched: non-relative specifiers like `@angular/common`, NgModule-style re-export barrels without readable selectors, exotic selectors (`:host`, attribute values), spread elements, aliased usages elsewhere in the file, etc.
   - The analysis follows relative imports to the declaring file (including named re-export chains) to read each symbol's actual `selector` / pipe `name`
   - Only files inside workspace folders containing an `angular.json` are processed; removals are logged to the **Angular CLI Plus: diagnostics** output channel
+- **Angular: Auto Import Missing Imports** (`Ctrl+Shift+A I`). Run it from a `.ts` or `.html` editor and the command scans that file's template corpus (inline `template:` plus external `templateUrl` HTML) for element tags, attribute/structural directives, and pipes that are not covered by any entry of the decorators' `imports: [...]` array, then adds everything in one edit pass:
+  - Inserts missing `import { Symbol } from '...';` statements after the last existing import
+  - Appends identifiers into each component's existing `imports` array (matching its multiline/single-line formatting), and creates the array on decorators that don't have one yet
+  - Symbols are resolved against a workspace index of exported `@Component`/`@Directive`/`@Pipe` classes (following relative imports and barrel re-export chains) and a built-in map of common Angular exports (`NgIf`, `NgFor`, `CommonModule`, `FormsModule`, `RouterLink`, `RouterOutlet`, `AsyncPipe`, `DatePipe`, …)
+  - Works from the template too — when invoked on an `.html` file, the owning component is located via `templateUrl` across the workspace (or the sibling `.component.ts`) and edits are applied there, opening it afterwards
+  - Conservative by design: non-standalone components, classes whose existing `imports` entries cannot be confidently resolved (e.g. unresolvable NgModule barrels), ambiguous selector matches, native HTML/SVG tags, DOM events, and control-flow keywords are skipped; every skip is logged to the **Angular CLI Plus: diagnostics** output channel
 
 ## [1.9.3]
 

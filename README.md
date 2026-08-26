@@ -157,6 +157,10 @@ Configure via `angularCliPlus.ai.provider` and `angularCliPlus.ai.autoFixEnabled
 
 **Angular: Run Migrations** (`Ctrl+Shift+A M`) provides integrated support for all official Angular migrations from [angular.dev/reference/migrations](https://angular.dev/reference/migrations). A categorized QuickPick lists the 13 available migrations (Standalone, Control Flow Syntax, `inject()` Function, Lazy-loaded Routes, Signal Inputs/Outputs/Queries, Clean Up Unused Imports, Self-closing Tags, NgClass to Class, NgStyle to Style, Router Testing Module, CommonModule to Standalone), lets you select a target project, and runs `ng generate @angular/core:migration-name --project "project-name"` in a terminal with success notifications and retry support.
 
+## Auto Import Missing Imports
+
+**Angular: Auto Import Missing Imports** (`Ctrl+Shift+A I`) scans the active file's template corpus (inline `template:` plus external `templateUrl` HTML) for element tags, attribute/structural directives, and pipes that are not covered by any entry of the decorators' `imports: [...]` array, and adds everything in one edit pass: new `import { Symbol } from '...';` statements after the last import, identifiers appended into each component's existing array (formatting-aware), and a freshly created array on decorators that don't have one yet. Symbols are resolved against a workspace index of exported `@Component`/`@Directive`/`@Pipe` classes (relative imports and barrels are followed) plus a built-in map of common Angular exports (`NgIf`, `NgFor`, `CommonModule`, `FormsModule`, `RouterLink`, `RouterOutlet`, `AsyncPipe`, `DatePipe`, …). When invoked on an `.html` template, edits target its owning component file, which is opened afterwards. Anything that cannot be confidently resolved — non-standalone components, unresolvable NgModule entries, ambiguous selectors, native HTML/SVG tags, DOM events, control-flow keywords — is skipped, with skips logged to the diagnostics output channel.
+
 ## Package Management
 
 - **Dependency check** — on startup and on every git branch change, the extension verifies that `node_modules` is present and that installed versions satisfy the `package.json` ranges, prompting to run `npm install` when problems are found. Disable with `angularCliPlus.checkDependencies.enabled`.
@@ -167,6 +171,7 @@ Configure via `angularCliPlus.ai.provider` and `angularCliPlus.ai.autoFixEnabled
 ## Productivity Tools
 
 - **Angular: Switch Component File** (`Ctrl+Shift+A Tab`) — quickly switch between a component's related files (`.component.ts`, `.component.html`, styles, `.spec.ts`) via a QuickPick with descriptive icons; the current file is pre-selected.
+- **Angular: Auto Import Missing Imports** (`Ctrl+Shift+A I`) — one-shot fix for missing standalone imports; see [Auto Import Missing Imports](#auto-import-missing-imports).
 - **Close Terminals** (`Ctrl+Shift+A C`) — a searchable, multi-select QuickPick of all extension-managed terminals showing their state (`running`, `terminated`, `errored`, `killed`); finished terminals are pre-selected so pressing Enter clears them immediately.
 - **Angular CLI version detection** — the extension detects the Angular CLI version per workspace (via `ng version`, cached and invalidated on `package.json` changes) and adapts commands: `--prod` vs `--configuration=production`, standalone flag handling, Vitest UI availability, and `dist/<project>/` vs `dist/<project>/browser/` output paths.
 - **Terminal management** — terminals are reused for the same command (offering Restart / Show for running serve/watch terminals), re-adopted after a VS Code reload, and tracked with their exit state.
@@ -282,6 +287,7 @@ All shortcuts use the `Ctrl+Shift+A` chord (use `Cmd+Shift+A` on macOS):
 | `Ctrl+Shift+A E`   | Angular: Check Build Errors       |
 | `Ctrl+Shift+A J`   | Angular: Manage JSON Configs      |
 | `Ctrl+Shift+A M`   | Angular: Run Migrations           |
+| `Ctrl+Shift+A I`   | Angular: Auto Import Missing Imports |
 
 ## Extension Settings
 

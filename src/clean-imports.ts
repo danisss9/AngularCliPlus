@@ -303,6 +303,26 @@ function resolveTokensFromFile(
   return null;
 }
 
+/**
+ * Reads selector / pipe-name tokens for one exported symbol declared in the
+ * given file, following named re-export chains through barrels (bounded
+ * depth). Returns null whenever nothing confident can be determined.
+ */
+export function resolveImportedSymbolTokens(
+  absolutePath: string,
+  propertyName: string,
+  readFile: FileContentsReader,
+  visited?: ReadonlySet<string>,
+): string[] | null {
+  const found = resolveTokensFromFile(
+    absolutePath,
+    propertyName,
+    readFile,
+    visited ? new Set(visited) : new Set(),
+  );
+  return found === null ? null : found.tokens;
+}
+
 /** Reads selector/pipe tokens directly off one class declaration. */
 function extractDecoratedMetadataForClass(classNode: ts.ClassDeclaration): string[] | null {
   const tokens: string[] = [];
