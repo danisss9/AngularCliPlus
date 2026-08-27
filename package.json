@@ -4,7 +4,7 @@
   "description": "Angular CLI commands, schematics generator, and project tools for VS Code with AI-powered auto-fix support (GitHub Copilot & Claude Code)",
   "repository": "https://github.com/danisss9/AngularCliPlus",
   "publisher": "danisss9",
-  "version": "1.10.0",
+  "version": "1.11.0",
   "icon": "icon.png",
   "engines": {
     "vscode": "^1.107.0"
@@ -620,7 +620,22 @@
         "angularCliPlus.autoCleanImports.enabled": {
           "type": "boolean",
           "default": false,
-          "description": "Automatically remove unused entries from the `imports` array of standalone @Component, @Directive and @Pipe decorators when saving TypeScript files"
+          "description": "Remove unused imports when saving a TypeScript file. What gets removed is controlled by the three settings below."
+        },
+        "angularCliPlus.autoCleanImports.unusedTypeScriptImports": {
+          "type": "boolean",
+          "default": true,
+          "description": "When cleaning on save, remove `import` statements and named bindings that nothing in the file references"
+        },
+        "angularCliPlus.autoCleanImports.unusedStandaloneImports": {
+          "type": "boolean",
+          "default": true,
+          "description": "When cleaning on save, remove entries from the `imports` array of standalone @Component decorators whose selector or pipe name the template does not use"
+        },
+        "angularCliPlus.autoCleanImports.removeUnusedModules": {
+          "type": "boolean",
+          "default": false,
+          "description": "Also remove unused NgModule entries (MatButtonModule, ReactiveFormsModule, ...) from `imports` arrays on save. Off by default because a module may be there for the services it provides rather than for its directives."
         }
       }
     }

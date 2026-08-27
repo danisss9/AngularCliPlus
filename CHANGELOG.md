@@ -4,6 +4,39 @@ All notable changes to the "angular-cli-plus" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.11.0]
+
+### Changed
+
+- **Auto Import Missing Imports is now interactive, and much faster.** `Ctrl+Shift+A I` no longer guesses silently: it collects everything the file references but does not import and shows a single multi-select QuickPick listing **every** candidate for each one — grouped per missing token, with the best option pre-selected — so nothing is written until you confirm.
+  - **Missing TypeScript imports are detected too.** In a `.ts` file, identifiers the TypeScript language server reports as unresolved are offered alongside the template ones, with the module choices it proposes (workspace files, `node_modules`, path aliases).
+  - **Unused imports are offered for removal in the same pick.** Entries of `imports: [...]` the template no longer uses and `import` statements nothing references appear as `Remove …` items — declarations and plain unused imports ticked by default, NgModules listed unticked with a warning that a module may carry providers.
+  - **Library symbols are resolved from `node_modules`.** Selectors, pipe names, standalone flags and NgModule export lists are read from the metadata the Angular compiler embeds in `.d.ts` files, including the mangled chunk re-exports of modern Angular packages. `<mat-icon>` now offers `MatIcon` and `MatIconModule` from `@angular/material/icon`; a directive that is not standalone is only offered through the NgModule that exports it.
+  - **Options are ranked by fit.** A symbol whose whole selector is the token wins over one that merely mentions it among others — `[(ngModel)]` now suggests `FormsModule` rather than an unrelated component that also reacts to `ngModel` — then workspace before library, and declarations before the modules that export them.
+  - **The index is cached and incremental.** It is built once per workspace, warmed in the background a few seconds after startup, and refreshed only for the files a `FileSystemWatcher` reports as changed; a regex pre-filter skips the TypeScript parse for files without decorators. Previously every invocation re-parsed every `.ts` file in the workspace with the compiler API; scanning now reports its progress in the status bar instead of a blocking notification.
+  - **Adding and cleaning cost one pass.** Each existing entry is resolved once and the result feeds both halves of the analysis — what the template already has, and what it no longer needs (~20ms on a real component once the index is warm).
+- **Templates are read from the editor buffer** when they are open with unsaved changes, so cleaning a component judges usage by what is on screen rather than by what is on disk.
+- Import-statement and `imports: [...]` rewriting moved into a shared planner used by both features: one span per statement and per array, which is what lets additions and removals coexist in a single `WorkspaceEdit` without conflicting.
+
+### Added
+
+- **Attribute directives without bindings are now detected** in templates (`<button mat-raised-button>`, `<div appHighlight>`), along with input, output and two-way bindings (`[matTooltip]`, `(valueChange)`, `[(ngModel)]`). Template scanning now parses tags and their attributes instead of matching loose patterns, so commented-out markup, `<script>`/`<style>` bodies, `class.`/`style.`/`attr.` bindings, template references and native DOM events are no longer mistaken for directives.
+- **Existing `imports: [...]` entries are understood far more widely**, which is what stops already-covered tokens from being suggested again and what makes cleaning them safe: entries coming from library NgModules (`MatButtonModule`, `ReactiveFormsModule`), from tsconfig `paths` aliases (`@shared/…`), from barrels, and from workspace NgModules are all resolved to the tokens they provide.
+- **Workspace NgModules are offered as options**, so a standalone component can import the module of a declaration that is not standalone itself.
+- **Auto-clean now removes unused TypeScript imports too**, not just `imports: [...]` entries: named, default and namespace bindings that nothing in the file references. A statement that loses every binding is deleted with its line; one that keeps some is rewritten in place. Side-effect imports and `reflect-metadata` / `zone.js` are never touched. Controlled by `angularCliPlus.autoCleanImports.unusedTypeScriptImports`.
+- **The two cleanups compose**: removing the `imports: [...]` entry that was a symbol's last use also removes its `import` statement, in the same edit.
+- New `import` statements are **merged into an existing import of the same module** instead of adding a second one.
+- **New settings**: `angularCliPlus.autoCleanImports.unusedTypeScriptImports` (default `true`), `angularCliPlus.autoCleanImports.unusedStandaloneImports` (default `true`) and `angularCliPlus.autoCleanImports.removeUnusedModules` (default `false`, since an unused-looking module may exist for its providers).
+
+### Fixed
+
+- **Auto-clean unused imports on save never applied anything.** The save handler computed its removals and then called `workspace.applyEdit` from inside `onWillSaveTextDocument`, which races the save in progress and is dropped. The edits are now returned through `event.waitUntil(TextEdit[])`, the supported contract, so they land as part of the save itself.
+- **Auto-clean could barely resolve anything.** Only relative import specifiers were followed, so an entry coming from a library (`MatButtonModule`), a tsconfig path alias (`@shared/…`) or a workspace NgModule was always treated as unresolvable and kept. It now uses the same resolution as auto-import.
+- **Template usage was matched by a word search over the raw template.** A component whose selector happened to be a word in the text ("date", "card") counted as used. Usage is now decided against the parsed set of tags, attributes, bindings and pipes the template actually uses.
+- **A single unresolvable entry no longer disabled the whole component.** When any entry of an `imports: [...]` array could not be resolved — which was the case for every library NgModule, since `node_modules` was not read — the command skipped that component entirely and reported "no missing imports". Unresolvable entries are now logged and analysis continues.
+- **Ambiguous tokens are no longer dropped.** When several symbols matched a selector the token was silently skipped; every match is now offered in the QuickPick.
+- **Invoking the command on an `.html` file** now attributes the template to the component that actually declares it via `templateUrl` (files with several components included) and only falls back to the sibling `.ts` when it exists.
+
 ## [1.10.0]
 
 ### Added

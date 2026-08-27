@@ -159,7 +159,39 @@ Configure via `angularCliPlus.ai.provider` and `angularCliPlus.ai.autoFixEnabled
 
 ## Auto Import Missing Imports
 
-**Angular: Auto Import Missing Imports** (`Ctrl+Shift+A I`) scans the active file's template corpus (inline `template:` plus external `templateUrl` HTML) for element tags, attribute/structural directives, and pipes that are not covered by any entry of the decorators' `imports: [...]` array, and adds everything in one edit pass: new `import { Symbol } from '...';` statements after the last import, identifiers appended into each component's existing array (formatting-aware), and a freshly created array on decorators that don't have one yet. Symbols are resolved against a workspace index of exported `@Component`/`@Directive`/`@Pipe` classes (relative imports and barrels are followed) plus a built-in map of common Angular exports (`NgIf`, `NgFor`, `CommonModule`, `FormsModule`, `RouterLink`, `RouterOutlet`, `AsyncPipe`, `DatePipe`, …). When invoked on an `.html` template, edits target its owning component file, which is opened afterwards. Anything that cannot be confidently resolved — non-standalone components, unresolvable NgModule entries, ambiguous selectors, native HTML/SVG tags, DOM events, control-flow keywords — is skipped, with skips logged to the diagnostics output channel.
+**Angular: Auto Import Missing Imports** (`Ctrl+Shift+A I`) finds everything the current file references but does not import, then shows a single multi-select QuickPick with **every** way of resolving each one, best option pre-selected — nothing is applied until you confirm.
+
+**What it detects**
+
+- **Templates** — inline `template:` strings, external `templateUrl` HTML, or the `.html` file you invoked it from: custom element tags (`<app-card>`, `<mat-icon>`), plain attribute directives (`mat-raised-button`, `appHighlight`), structural directives (`*ngIf`), input/two-way/output bindings (`[matTooltip]`, `[(ngModel)]`), and pipes (`| date`). Native HTML/SVG tags, DOM events, standard attributes, `@if`/`@for` blocks and commented-out markup are never candidates.
+- **TypeScript** — identifiers the TypeScript language server reports as unresolved in the open `.ts` file, offered with the module choices it proposes (workspace files, `node_modules`, path aliases).
+
+**Where candidates come from**
+
+- A **workspace index** of every exported `@Component`/`@Directive`/`@Pipe`/`@NgModule`, resolved through relative imports, barrels and tsconfig `paths` aliases.
+- The **Angular packages in `node_modules`** — selectors, pipe names, standalone flags and NgModule export lists are read from the metadata the Angular compiler embeds in `.d.ts` files, so `<mat-icon>` offers `MatIcon` *and* `MatIconModule` from `@angular/material/icon`, and a directive that is not standalone is only ever offered through the module that exports it.
+- A built-in fallback map of common Angular exports (`NgIf`, `CommonModule`, `FormsModule`, `RouterLink`, `AsyncPipe`, …) for when `node_modules` cannot be read.
+
+Options are ordered by how well they fit: a symbol whose whole selector is the token beats one that merely mentions it (so `[(ngModel)]` suggests `FormsModule`, not an unrelated component that also reacts to `ngModel`), workspace symbols come before library ones, and plain declarations before the NgModules that export them.
+
+**What it also removes** — the same run reports what the component no longer needs: `imports: [...]` entries whose selector or pipe name the template stopped using, and `import` statements nothing in the file references any more. Both appear in the quick pick as `Remove …` entries. Declarations and plain unused imports are ticked by default; NgModules are listed unticked, because a module may be there for the services it provides rather than for its directives. Removing an entry that was the symbol's last use drops its `import` statement too.
+
+**What it applies** — one atomic edit: `import { Symbol } from '...';` statements (merged into an existing import of the same module when there is one), identifiers added to (and removed from) each component's `imports: [...]` array respecting its multiline/single-line formatting, and a freshly created array on decorators that don't have one. Additions and removals that touch the same array or the same import statement are merged into a single edit, so they can never conflict. Tokens already provided by an existing entry are never re-suggested — including entries that come from a library NgModule, a path alias or a barrel. When invoked on an `.html` template, the owning component is located via `templateUrl` (or the sibling `.ts`) and opened after the edit.
+
+**Speed** — the index is built once per workspace, warmed in the background shortly after VS Code starts, and refreshed only for files that actually change, so repeat runs are instant. Name clashes and unresolvable entries are logged to the **Angular CLI Plus: diagnostics** output channel.
+
+## Auto-Clean Unused Imports
+
+The same analysis runs on save when `angularCliPlus.autoCleanImports.enabled` is turned on, for `.ts` files inside a workspace folder that has an `angular.json`. Two independent cleanups:
+
+- **`import` statements** whose local binding nothing in the file references — named, default and namespace bindings alike. A statement that loses all of its bindings is deleted with its line; one that keeps some is rewritten in place, preserving its layout. Side-effect imports (`import './polyfills'`) and `reflect-metadata` / `zone.js` are never touched. Toggle with `angularCliPlus.autoCleanImports.unusedTypeScriptImports`.
+- **`imports: [...]` entries** of standalone `@Component`s whose selector or pipe name does not appear in the component's template. Entries are resolved the same way as for auto-import — through relative paths, tsconfig aliases, barrels, workspace NgModules and the metadata of Angular packages in `node_modules` — and anything that cannot be resolved is kept. Toggle with `angularCliPlus.autoCleanImports.unusedStandaloneImports`.
+
+The two compose: removing an entry that was a symbol's last use also removes its `import` statement, in the same edit.
+
+Unused NgModules are left alone unless `angularCliPlus.autoCleanImports.removeUnusedModules` is on, because a module is often imported for the services it provides (`HttpClientModule`) rather than for its directives. Modules that expose no template tokens at all are never removed, whatever that setting says.
+
+Edits are handed to VS Code as save participants, so they land as part of the save rather than as a second, competing write. Templates are read from the editor buffer when they are open with unsaved changes, and the `imports: [...]` half is skipped (never waited for) while the symbol index is still building, so a save is never held up. Every removal is logged to the **Angular CLI Plus: diagnostics** output channel.
 
 ## Package Management
 
@@ -171,7 +203,7 @@ Configure via `angularCliPlus.ai.provider` and `angularCliPlus.ai.autoFixEnabled
 ## Productivity Tools
 
 - **Angular: Switch Component File** (`Ctrl+Shift+A Tab`) — quickly switch between a component's related files (`.component.ts`, `.component.html`, styles, `.spec.ts`) via a QuickPick with descriptive icons; the current file is pre-selected.
-- **Angular: Auto Import Missing Imports** (`Ctrl+Shift+A I`) — one-shot fix for missing standalone imports; see [Auto Import Missing Imports](#auto-import-missing-imports).
+- **Angular: Auto Import Missing Imports** (`Ctrl+Shift+A I`) — pick the missing template and TypeScript imports from a QuickPick; see [Auto Import Missing Imports](#auto-import-missing-imports).
 - **Close Terminals** (`Ctrl+Shift+A C`) — a searchable, multi-select QuickPick of all extension-managed terminals showing their state (`running`, `terminated`, `errored`, `killed`); finished terminals are pre-selected so pressing Enter clears them immediately.
 - **Angular CLI version detection** — the extension detects the Angular CLI version per workspace (via `ng version`, cached and invalidated on `package.json` changes) and adapts commands: `--prod` vs `--configuration=production`, standalone flag handling, Vitest UI availability, and `dist/<project>/` vs `dist/<project>/browser/` output paths.
 - **Terminal management** — terminals are reused for the same command (offering Restart / Show for running serve/watch terminals), re-adopted after a VS Code reload, and tracked with their exit state.
@@ -363,7 +395,10 @@ All shortcuts use the `Ctrl+Shift+A` chord (use `Cmd+Shift+A` on macOS):
 
 | Setting                                  | Default | Description                                                                                                              |
 | ---------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `angularCliPlus.autoCleanImports.enabled` | `false` | Remove unused entries from the `imports` array of standalone `@Component`/`@Directive`/`@Pipe` decorators when saving `.ts` files |
+| `angularCliPlus.autoCleanImports.enabled` | `false` | Remove unused imports when saving a `.ts` file; the three settings below choose what gets removed |
+| `angularCliPlus.autoCleanImports.unusedTypeScriptImports` | `true` | On save, remove `import` statements and named bindings nothing in the file references |
+| `angularCliPlus.autoCleanImports.unusedStandaloneImports` | `true` | On save, remove `imports: [...]` entries whose selector or pipe name the template does not use |
+| `angularCliPlus.autoCleanImports.removeUnusedModules` | `false` | On save, also remove unused NgModule entries — off by default, since a module may be there for the services it provides |
 
 Entries are only removed when the identifier is unused elsewhere in the file and its resolved `selector`/pipe name does not appear in any of the file's templates (inline or `templateUrl`). Anything that cannot be confidently resolved — non-relative specifiers like `@angular/common`, NgModule barrels, exotic selectors, spread elements — is always kept.
 

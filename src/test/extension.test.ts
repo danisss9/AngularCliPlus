@@ -1,5 +1,7 @@
 import * as assert from 'assert';
 import * as path from 'path';
+import * as fs from 'fs';
+import * as os from 'os';
 import {
   semverSatisfies,
   validateCustomCommand,
@@ -23,281 +25,25 @@ import {
   supportsTestUiFlag,
 } from '../version-adapter';
 import type { AngularProject } from '../types';
+import * as ts from 'typescript';
 import {
-  computeUnusedImportsRemovals,
-  extractTokensFromSelector,
-} from '../clean-imports';
-import type { FileContentsReader, UnusedImportRemoval } from '../clean-imports';
-
-// ── clean-imports helpers ─────────────────────────────────────────────────────
-
-/** Normalises a path for virtual-FS key comparison across platforms. */
-function normalizeVirtualPath(absolutePath: string): string {
-  return absolutePath.replace(/\\/g, '/').replace(/^[A-Za-z]:/, '');
-}
-
-function createVirtualReader(files: Record<string, string>): FileContentsReader {
-  return (absolutePath) => {
-    const key = normalizeVirtualPath(absolutePath);
-    return Object.prototype.hasOwnProperty.call(files, key) ? files[key] : null;
-  };
-}
-
-function applyRemovals(source: string, removals: UnusedImportRemoval[]): string {
-  let result = source;
-  for (const removal of [...removals].sort((a, b) => b.start - a.start)) {
-    result = result.slice(0, removal.start) + result.slice(removal.end);
-  }
-  return result;
-}
-
-const CHILD_COMPONENT_FILE = `
-import { Component } from '@angular/core';
-@Component({
-  selector: 'app-child',
-  template: '',
-})
-export class ChildComponent {}
-`;
-
-const MAIN_WITH_SINGLE_IMPORT = `import { ChildComponent } from './child.component';
-
-@Component({
-  selector: 'app-root',
-  imports: [ChildComponent],
-  template: '<span>hello</span>',
-})
-export class AppComponent {}
-`;
-
-// ── extractTokensFromSelector ─────────────────────────────────────────────────
-
-suite('extractTokensFromSelector', () => {
-  test('plain tag selector → tokens', () =>
-    assert.deepStrictEqual(extractTokensFromSelector('app-hero'), ['app-hero']));
-  test('compound class selector → class tokens', () =>
-    assert.deepStrictEqual(extractTokensFromSelector('.card.active'), ['card', 'active']));
-  test('attribute selector → attr token', () =>
-    assert.deepStrictEqual(extractTokensFromSelector('[appHighlight]'), ['appHighlight']));
-  test('comma-separated parts combine tokens', () =>
-    assert.deepStrictEqual(extractTokensFromSelector('a-one, .two, [three]'), [
-      'a-one',
-      'two',
-      'three',
-    ]));
-  test('pseudo selectors are unresolvable → null', () => {
-    assert.strictEqual(extractTokensFromSelector(':host'), null);
-    assert.strictEqual(extractTokensFromSelector('input:not([type=checkbox])'), null);
-  });
-  test('attribute values are unresolvable → null', () =>
-    assert.strictEqual(extractTokensFromSelector('input[type=text]'), null));
-  test('empty selector → null', () => assert.strictEqual(extractTokensFromSelector(''), null));
-});
-
-// ── computeUnusedImportsRemovals ──────────────────────────────────────────────
-
-suite('computeUnusedImportsRemovals', () => {
-  test('removes a component import whose selector is not in the template', () => {
-    const removals = computeUnusedImportsRemovals(
-      MAIN_WITH_SINGLE_IMPORT,
-      '/proj/main.ts',
-      createVirtualReader({ '/proj/child.component.ts': CHILD_COMPONENT_FILE }),
-    );
-    assert.strictEqual(removals.length, 1);
-    assert.strictEqual(removals[0].name, 'ChildComponent');
-    const cleaned = applyRemovals(MAIN_WITH_SINGLE_IMPORT, removals);
-    assert.ok(cleaned.includes('imports: [],'), cleaned);
-  });
-
-  test('keeps the import when the selector is used in an inline template', () => {
-    const source = MAIN_WITH_SINGLE_IMPORT.replace(
-      "'<span>hello</span>'",
-      "'<app-child></app-child>'",
-    );
-    const removals = computeUnusedImportsRemovals(
-      source,
-      '/proj/main.ts',
-      createVirtualReader({ '/proj/child.component.ts': CHILD_COMPONENT_FILE }),
-    );
-    assert.strictEqual(removals.length, 0);
-  });
-
-  test('keeps the import when the selector is used in the external templateUrl', () => {
-    const files = {
-      '/proj/child.component.ts': CHILD_COMPONENT_FILE,
-      '/proj/app-root.html': '<div><app-child></app-child></div>',
-    };
-    const source = MAIN_WITH_SINGLE_IMPORT.replace(
-      "template: '<span>hello</span>',",
-      "templateUrl: './app-root.html',",
-    );
-    const removals = computeUnusedImportsRemovals(source, '/proj/main.ts', createVirtualReader(files));
-    assert.strictEqual(removals.length, 0);
-  });
-
-  test('keeps non-relative (library/NgModule) specifiers', () => {
-    const source = `import { CommonModule } from '@angular/common';
-
-@Component({
-  selector: 'app-root',
-  imports: [CommonModule],
-  template: '<span>x</span>',
-})
-export class AppComponent {}
-`;
-    const removals = computeUnusedImportsRemovals(source, '/proj/main.ts', createVirtualReader({}));
-    assert.strictEqual(removals.length, 0);
-  });
-
-  test('keeps entries referenced elsewhere in the file', () => {
-    const source = `import { ChildComponent } from './child.component';
-
-@Component({
-  selector: 'app-root',
-  imports: [ChildComponent],
-  template: '<span>hello</span>',
-})
-export class AppComponent {
-  readonly ctorToken = ChildComponent;
-}
-`;
-    const removals = computeUnusedImportsRemovals(
-      source,
-      '/proj/main.ts',
-      createVirtualReader({ '/proj/child.component.ts': CHILD_COMPONENT_FILE }),
-    );
-    assert.strictEqual(removals.length, 0);
-  });
-
-  test('removes an unused pipe and keeps it when its name is piped in the template', () => {
-    const pipeFile = `import { Pipe, PipeTransform } from '@angular/core';
-@Pipe({ name: 'myPipe' })
-export class MyPipe implements PipeTransform {}
-`;
-    const removedSource = `import { MyPipe } from './my-pipe.pipe';
-
-@Component({
-  selector: 'app-root',
-  imports: [MyPipe],
-  template: '{{ value }}',
-})
-export class AppComponent {}
-`;
-    const keptSource = removedSource.replace('{{ value }}', '{{ value | myPipe }}');
-
-    const removed = computeUnusedImportsRemovals(
-      removedSource,
-      '/proj/main.ts',
-      createVirtualReader({ '/proj/my-pipe.pipe.ts': pipeFile }),
-    );
-    assert.strictEqual(removed.length, 1);
-    assert.strictEqual(removed[0].name, 'MyPipe');
-
-    const kept = computeUnusedImportsRemovals(
-      keptSource,
-      '/proj/main.ts',
-      createVirtualReader({ '/proj/my-pipe.pipe.ts': pipeFile }),
-    );
-    assert.strictEqual(kept.length, 0);
-  });
-
-  test('interior unused entry collapses separators cleanly', () => {
-    const files = {
-      '/proj/one.ts': "@Component({ selector: 'one' }) export class OneComponent {}",
-      '/proj/two.ts': "@Component({ selector: 'two' }) export class TwoComponent {}",
-      '/proj/three.ts': "@Component({ selector: 'three' }) export class ThreeComponent {}",
-      '/proj/four.ts': "@Component({ selector: 'four' }) export class FourComponent {}",
-    };
-    const source = `import { OneComponent } from './one';
-import { TwoComponent } from './two';
-import { ThreeComponent } from './three';
-import { FourComponent } from './four';
-
-@Component({
-  selector: 'app-root',
-  imports: [OneComponent, TwoComponent, ThreeComponent, FourComponent],
-  template: '<one></one><four></four>',
-})
-export class AppComponent {}
-`;
-    const removals = computeUnusedImportsRemovals(source, '/proj/main.ts', createVirtualReader(files));
-    // Consecutive unused siblings are merged into one grouped edit span
-    assert.strictEqual(removals.length, 1);
-    assert.strictEqual(removals[0].name, 'TwoComponent');
-    const cleaned = applyRemovals(source, removals);
-    assert.ok(cleaned.includes('imports: [OneComponent, FourComponent],'), cleaned);
-  });
-
-  test('whole-array removal empties the imports array', () => {
-    const files = {
-      '/proj/a.component.ts':
-        "@Component({ selector: 'alpha' }) export class AlphaComponent {}",
-      '/proj/b.component.ts':
-        "@Component({ selector: 'beta' }) export class BetaComponent {}",
-    };
-    const source = `import { AlphaComponent } from './a.component';
-import { BetaComponent } from './b.component';
-
-@Component({
-  selector: 'app-root',
-  imports: [AlphaComponent, BetaComponent],
-  template: '<p>none used</p>',
-})
-export class AppComponent {}
-`;
-    const removals = computeUnusedImportsRemovals(source, '/proj/main.ts', createVirtualReader(files));
-    // Both unused entries are removed through a single grouped edit span
-    assert.strictEqual(removals.length, 1);
-    assert.strictEqual(removals[0].name, 'AlphaComponent');
-    const cleaned = applyRemovals(source, removals);
-    assert.ok(cleaned.includes('imports: [],'), cleaned);
-  });
-
-  test('multi-line arrays are handled without corrupting surrounding code', () => {
-    const files = {
-      '/proj/child.component.ts': CHILD_COMPONENT_FILE,
-    };
-    const source = `import { Component } from '@angular/core';
-import { ChildComponent } from './child.component';
-
-@Component({
-  selector: 'app-root',
-  imports: [
-    ChildComponent,
-  ],
-  template: '<span>hello</span>',
-})
-export class AppComponent {}
-`;
-    const removals = computeUnusedImportsRemovals(source, '/proj/main.ts', createVirtualReader(files));
-    assert.strictEqual(removals.length, 1);
-    const cleaned = applyRemovals(source, removals);
-    assert.ok(cleaned.includes('imports: [],'), cleaned);
-  });
-
-  test('files without decorated classes produce no removals', () => {
-    const removals = computeUnusedImportsRemovals(
-      'export function foo() { return 1; }\n',
-      '/proj/plain.ts',
-      createVirtualReader({}),
-    );
-    assert.strictEqual(removals.length, 0);
-  });
-
-  test('spread elements and missing target files are left untouched', () => {
-    const source = `import { MissingComponent } from './missing';
-
-@Component({
-  selector: 'app-root',
-  imports: [...[MissingComponent]],
-  template: '<span>x</span>',
-})
-export class AppComponent {}
-`;
-    const removals = computeUnusedImportsRemovals(source, '/proj/main.ts', createVirtualReader({}));
-    assert.strictEqual(removals.length, 0);
-  });
-});
+  collectTemplateCandidates,
+  extractSelectorTokens,
+  extractSelectorTokenWeights,
+  parseDtsModule,
+} from '../auto-imports-scan';
+import { buildEditsForSelection, cleanupSuggestions } from '../auto-imports';
+import type { ImportOption } from '../auto-imports';
+import {
+  applySpans,
+  countReferences,
+  parseDecoratedOwners,
+  planImportStatements,
+  planImportsArray,
+} from '../import-edits';
+import { buildCleanupSpans, computeCleanupEdits, computeCleanupPlan } from '../clean-imports';
+import * as vscode from 'vscode';
+import type { AutoImportIndex, AutoImportSymbol } from '../auto-imports-index';
 
 // ── semverSatisfies ───────────────────────────────────────────────────────────
 
@@ -1001,4 +747,742 @@ suite('supportsTestUiFlag', () => {
   test('CLI 17 → true', () => assert.strictEqual(supportsTestUiFlag(17), true));
   test('CLI 19 → true', () => assert.strictEqual(supportsTestUiFlag(19), true));
   test('null → true (assume modern)', () => assert.strictEqual(supportsTestUiFlag(null), true));
+});
+
+// ── auto-import: template candidates ──────────────────────────────────────────
+
+suite('collectTemplateCandidates', () => {
+  function tokensOf(html: string): string[] {
+    return [...collectTemplateCandidates(html).keys()].sort();
+  }
+
+  test('finds custom elements but not standard tags', () => {
+    const tokens = tokensOf('<div><app-card></app-card><ng-container></ng-container></div>');
+    assert.deepStrictEqual(tokens, ['app-card']);
+  });
+
+  test('finds plain attribute directives', () => {
+    const tokens = tokensOf('<button mat-raised-button type="submit">go</button>');
+    assert.ok(tokens.includes('mat-raised-button'));
+    assert.ok(!tokens.includes('type'), 'standard attributes are not candidates');
+  });
+
+  test('finds structural directives and skips control flow blocks', () => {
+    const tokens = tokensOf('<div *ngIf="a"><span *ngFor="let x of y"></span></div>@if (a) {<i></i>}');
+    assert.ok(tokens.includes('ngif'));
+    assert.ok(tokens.includes('ngfor'));
+    assert.ok(!tokens.includes('if'));
+  });
+
+  test('finds two-way, input and non-native output bindings', () => {
+    const tokens = tokensOf('<input [(ngModel)]="v" [matAutosize]="true" (valueChange)="f()" (click)="g()">');
+    assert.ok(tokens.includes('ngmodel'));
+    assert.ok(tokens.includes('matautosize'));
+    assert.ok(tokens.includes('valuechange'));
+    assert.ok(!tokens.includes('click'), 'native events are not candidates');
+  });
+
+  test('ignores DOM namespaces, standard attributes and template refs', () => {
+    const tokens = tokensOf(
+      '<img #ref [class.on]="a" [style.width.px]="w" [attr.data-id]="i" src="x" alt="y" width="1">',
+    );
+    assert.deepStrictEqual(tokens, []);
+  });
+
+  test('finds pipes but not the logical OR operator', () => {
+    const tokens = tokensOf('{{ a | date:"short" }} {{ b || c }} {{ d | truncate }}');
+    assert.ok(tokens.includes('date'));
+    assert.ok(tokens.includes('truncate'));
+    assert.strictEqual(tokens.includes('c'), false);
+  });
+
+  test('ignores commented-out markup', () => {
+    assert.deepStrictEqual(tokensOf('<!-- <app-card></app-card> -->'), []);
+  });
+
+  test('records how a token was used', () => {
+    const candidates = collectTemplateCandidates('<app-card *ngIf="a">{{ b | json }}</app-card>');
+    assert.strictEqual(candidates.get('app-card')?.kind, 'element');
+    assert.strictEqual(candidates.get('ngif')?.kind, 'structural');
+    assert.strictEqual(candidates.get('json')?.kind, 'pipe');
+  });
+});
+
+// ── auto-import: selector tokens ──────────────────────────────────────────────
+
+suite('extractSelectorTokenWeights', () => {
+  test('a whole-selector token weighs 1', () => {
+    assert.strictEqual(extractSelectorTokenWeights('[ngModel]').get('ngmodel'), 1);
+    assert.strictEqual(extractSelectorTokenWeights('app-card').get('app-card'), 1);
+  });
+
+  test('a token combined with others weighs less', () => {
+    const weights = extractSelectorTokenWeights('mat-checkbox[required][ngModel]');
+    assert.ok((weights.get('ngmodel') ?? 1) < 0.5);
+  });
+
+  test('pseudo selectors and attribute values are stripped', () => {
+    const tokens = extractSelectorTokens('button[mat-button]:not([disabled]), a[mat-button]');
+    assert.deepStrictEqual(tokens.sort(), ['a', 'button', 'mat-button']);
+    assert.deepStrictEqual(extractSelectorTokens('input[type="text"]').sort(), ['input', 'type']);
+  });
+
+  test('the best weight of several selector parts wins', () => {
+    const weights = extractSelectorTokenWeights('div[appHighlight], [appHighlight]');
+    assert.strictEqual(weights.get('apphighlight'), 1);
+  });
+});
+
+// ── auto-import: compiled library metadata ────────────────────────────────────
+
+suite('parseDtsModule', () => {
+  const dts = `
+import * as i0 from '@angular/core';
+declare class NgIf<T = unknown> {
+    static ɵdir: i0.ɵɵDirectiveDeclaration<NgIf<any>, "[ngIf]", never, {}, {}, never, never, true, never>;
+}
+declare class AsyncPipe {
+    static ɵpipe: i0.ɵɵPipeDeclaration<AsyncPipe, "async", true>;
+}
+declare class MatButton {
+    static ɵcmp: i0.ɵɵComponentDeclaration<MatButton, "button[mat-button]", never, {}, {}, never, ["*"], false, never>;
+}
+declare class MatButtonModule {
+    static ɵmod: i0.ɵɵNgModuleDeclaration<MatButtonModule, [typeof i1.MatButton], never, [typeof i1.MatButton]>;
+}
+export { MatButtonModule as M, NgIf, AsyncPipe, MatButton as f };
+export type { SomeOptions as a } from './options.js';
+export { b as MatIcon } from '../icon.d-XYZ.js';
+export * from './extra.js';
+`;
+
+  test('reads selectors, pipe names and the standalone flag', () => {
+    const parsed = parseDtsModule(dts);
+    assert.deepStrictEqual(parsed.declarations.get('NgIf')?.tokens, ['ngif']);
+    assert.strictEqual(parsed.declarations.get('NgIf')?.standalone, true);
+    assert.deepStrictEqual(parsed.declarations.get('AsyncPipe')?.tokens, ['async']);
+    assert.strictEqual(parsed.declarations.get('AsyncPipe')?.kind, 'Pipe');
+    assert.strictEqual(parsed.declarations.get('MatButton')?.standalone, false);
+    assert.deepStrictEqual(parsed.declarations.get('MatButtonModule')?.exports, ['MatButton']);
+  });
+
+  test('maps mangled export aliases back to their declaration', () => {
+    const parsed = parseDtsModule(dts);
+    assert.strictEqual(parsed.aliasToLocal.get('M'), 'MatButtonModule');
+    assert.strictEqual(parsed.aliasToLocal.get('f'), 'MatButton');
+    assert.strictEqual(parsed.aliasToLocal.get('NgIf'), 'NgIf');
+  });
+
+  test('collects re-exports and ignores type-only ones', () => {
+    const parsed = parseDtsModule(dts);
+    const named = parsed.reExports.find((entry) => entry.from === '../icon.d-XYZ.js');
+    assert.deepStrictEqual(named?.names, [{ source: 'b', exported: 'MatIcon' }]);
+    assert.ok(parsed.reExports.some((entry) => entry.star && entry.from === './extra.js'));
+    assert.ok(!parsed.reExports.some((entry) => entry.from === './options.js'));
+  });
+
+  test('files without Angular metadata yield no declarations', () => {
+    assert.strictEqual(parseDtsModule('export declare class Plain {}').declarations.size, 0);
+  });
+});
+
+// ── auto-import: edit construction ────────────────────────────────────────────
+
+suite('buildEditsForSelection', () => {
+  function applyTo(source: string, selection: ImportOption[]): string {
+    const filePath = path.join('/repo', 'src', 'app', 'page.component.ts');
+    const sourceFile = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true);
+    const owners = parseDecoratedOwners(sourceFile);
+    const built = buildEditsForSelection(filePath, sourceFile, owners, selection);
+    let result = source;
+    for (const span of [...built.spans].sort((a, b) => b.start - a.start)) {
+      result = result.slice(0, span.start) + span.text + result.slice(span.end);
+    }
+    return result;
+  }
+
+  function option(
+    className: string,
+    moduleSpecifier: string | null,
+    ownerClassName?: string,
+  ): ImportOption {
+    return {
+      action: 'add',
+      className,
+      moduleSpecifier,
+      ownerClassName,
+      label: className,
+      description: moduleSpecifier ?? 'this file',
+      detail: 'test',
+      preselected: true,
+      rank: 0,
+    };
+  }
+
+  const withArray = [
+    "import { Component } from '@angular/core';",
+    '',
+    '@Component({',
+    "  selector: 'app-page',",
+    "  template: '<div></div>',",
+    '  imports: [NgIf],',
+    '})',
+    'export class PageComponent {}',
+    '',
+  ].join('\n');
+
+  test('adds an import statement and an imports array entry', () => {
+    const result = applyTo(withArray, [option('DatePipe', '@angular/common', 'PageComponent')]);
+    assert.ok(result.includes("import { DatePipe } from '@angular/common';"));
+    assert.ok(result.includes('imports: [NgIf, DatePipe],'));
+  });
+
+  test('merges into an existing import of the same module', () => {
+    const source = withArray.replace(
+      "import { Component } from '@angular/core';",
+      "import { Component } from '@angular/core';\nimport { NgIf } from '@angular/common';",
+    );
+    const result = applyTo(source, [option('DatePipe', '@angular/common', 'PageComponent')]);
+    assert.ok(result.includes("import { NgIf, DatePipe } from '@angular/common';"));
+    assert.strictEqual(result.match(/@angular\/common/g)?.length, 1);
+  });
+
+  test('creates the imports array when the decorator has none', () => {
+    const source = withArray.replace('  imports: [NgIf],\n', '');
+    const result = applyTo(source, [option('NgFor', '@angular/common', 'PageComponent')]);
+    assert.ok(result.includes('imports: [NgFor]'));
+  });
+
+  test('keeps a multi-line array multi-line', () => {
+    const source = withArray.replace('  imports: [NgIf],', '  imports: [\n    NgIf,\n  ],');
+    const result = applyTo(source, [option('NgFor', '@angular/common', 'PageComponent')]);
+    assert.ok(result.includes('    NgIf,\n    NgFor,\n  ],'), result);
+  });
+
+  test('adds no import statement for a symbol declared in the same file', () => {
+    const result = applyTo(withArray, [option('PageComponent', null, 'PageComponent')]);
+    assert.ok(!result.includes('import { PageComponent }'));
+    assert.ok(result.includes('imports: [NgIf, PageComponent],'));
+  });
+
+  test('reports a clash instead of shadowing an existing binding', () => {
+    const source = withArray.replace(
+      "import { Component } from '@angular/core';",
+      "import { Component } from '@angular/core';\nimport { DatePipe } from './my-date.pipe';",
+    );
+    const filePath = path.join('/repo', 'src', 'app', 'page.component.ts');
+    const sourceFile = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true);
+    const built = buildEditsForSelection(
+      filePath,
+      sourceFile,
+      parseDecoratedOwners(sourceFile),
+      [option('DatePipe', '@angular/common', 'PageComponent')],
+    );
+    assert.deepStrictEqual(built.conflicts, ['DatePipe']);
+    assert.strictEqual(built.addedImports, 0);
+  });
+
+  test('does not duplicate an entry that is already in the array', () => {
+    const result = applyTo(withArray, [option('NgIf', '@angular/common', 'PageComponent')]);
+    assert.ok(result.includes('imports: [NgIf],'), result);
+    assert.ok(result.includes("import { NgIf } from '@angular/common';"), result);
+  });
+});
+
+// ── auto-clean: reference counting ────────────────────────────────────────────
+
+suite('countReferences', () => {
+  function counts(source: string): Map<string, number> {
+    return countReferences(
+      ts.createSourceFile('/proj/a.ts', source, ts.ScriptTarget.Latest, true),
+    );
+  }
+
+  test('import bindings themselves are not references', () => {
+    const map = counts("import { A } from './a';\n");
+    assert.strictEqual(map.get('A') ?? 0, 0);
+  });
+
+  test('values, types and decorator metadata count as references', () => {
+    const map = counts(
+      [
+        "import { A, B, C } from './a';",
+        'const x = A;',
+        'let y: B;',
+        'class K { constructor(private c: C) {} }',
+      ].join('\n'),
+    );
+    assert.strictEqual(map.get('A'), 1);
+    assert.strictEqual(map.get('B'), 1);
+    assert.strictEqual(map.get('C'), 1);
+  });
+
+  test('property names and dotted access are not references', () => {
+    const map = counts("import { A } from './a';\nconst o = { A: 1 };\nconst v = o.A;\n");
+    assert.strictEqual(map.get('A') ?? 0, 0);
+  });
+
+  test('a local re-export counts, a re-export from a module does not', () => {
+    assert.strictEqual(counts("import { A } from './a';\nexport { A };\n").get('A'), 1);
+    assert.strictEqual(counts("export { A } from './a';\n").get('A') ?? 0, 0);
+  });
+
+  test('ignored spans are not counted', () => {
+    const source = "import { A } from './a';\nconst list = [A];\n";
+    const sourceFile = ts.createSourceFile('/proj/a.ts', source, ts.ScriptTarget.Latest, true);
+    const position = source.lastIndexOf('A');
+    const map = countReferences(sourceFile, [{ start: position, end: position + 1 }]);
+    assert.strictEqual(map.get('A') ?? 0, 0);
+  });
+});
+
+// ── auto-clean: import statement planning ─────────────────────────────────────
+
+suite('planImportStatements', () => {
+  function plan(
+    source: string,
+    add: Record<string, string[]> = {},
+    remove: string[] = [],
+  ): string {
+    const sourceFile = ts.createSourceFile('/proj/a.ts', source, ts.ScriptTarget.Latest, true);
+    return applySpans(
+      source,
+      planImportStatements(sourceFile, {
+        add: new Map(Object.entries(add)),
+        remove: new Set(remove),
+      }),
+    );
+  }
+
+  test('removes a single named binding and keeps the rest', () => {
+    const result = plan("import { A, B, C } from './a';\n", {}, ['B']);
+    assert.strictEqual(result, "import { A, C } from './a';\n");
+  });
+
+  test('deletes the whole statement when every binding goes', () => {
+    const source = "import { A } from './a';\nimport { B } from './b';\nconst x = B;\n";
+    assert.strictEqual(plan(source, {}, ['A']), "import { B } from './b';\nconst x = B;\n");
+  });
+
+  test('keeps a default import when the named ones are removed', () => {
+    const result = plan("import D, { A } from './a';\n", {}, ['A']);
+    assert.ok(result.includes("import D from './a';"), result);
+  });
+
+  test('never touches a side-effect import', () => {
+    const source = "import './polyfills';\n";
+    assert.strictEqual(plan(source, {}, ['polyfills']), source);
+  });
+
+  test('adds into an existing statement and creates one for a new module', () => {
+    const result = plan("import { A } from './a';\n", { './a': ['Z'], './b': ['Y'] });
+    assert.ok(result.includes("import { A, Z } from './a';"), result);
+    assert.ok(result.includes("import { Y } from './b';"), result);
+  });
+
+  test('adds and removes in the same statement without overlapping', () => {
+    const result = plan("import { A, B } from './a';\n", { './a': ['C'] }, ['A']);
+    assert.strictEqual(result, "import { B, C } from './a';\n");
+  });
+
+  test('preserves a multi-line import layout', () => {
+    const source = "import {\n  A,\n  B,\n} from './a';\n";
+    const result = plan(source, {}, ['A']);
+    assert.strictEqual(result, "import {\n  B,\n} from './a';\n");
+  });
+
+  test('a namespace import receives a separate statement', () => {
+    const result = plan("import * as ns from './a';\n", { './a': ['Z'] });
+    assert.ok(result.includes("import * as ns from './a';"), result);
+    assert.ok(result.includes("import { Z } from './a';"), result);
+  });
+});
+
+// ── auto-clean: imports array planning ────────────────────────────────────────
+
+suite('planImportsArray', () => {
+  const component = [
+    '@Component({',
+    "  selector: 'app-root',",
+    '  imports: [A, B, C],',
+    "  template: '',",
+    '})',
+    'export class AppComponent {}',
+    '',
+  ].join('\n');
+
+  function plan(source: string, add: string[], remove: string[]): string {
+    const sourceFile = ts.createSourceFile('/proj/a.ts', source, ts.ScriptTarget.Latest, true);
+    const [owner] = parseDecoratedOwners(sourceFile);
+    return applySpans(
+      source,
+      planImportsArray(sourceFile, owner, { add, remove: new Set(remove) }),
+    );
+  }
+
+  test('removes one entry', () => {
+    assert.ok(plan(component, [], ['B']).includes('imports: [A, C],'));
+  });
+
+  test('empties the array when everything goes', () => {
+    assert.ok(plan(component, [], ['A', 'B', 'C']).includes('imports: [],'));
+  });
+
+  test('adds and removes in one span', () => {
+    assert.ok(plan(component, ['D'], ['A']).includes('imports: [B, C, D],'));
+  });
+
+  test('leaves an unchanged array alone', () => {
+    assert.strictEqual(plan(component, [], ['Missing']), component);
+  });
+
+  test('keeps non-identifier entries', () => {
+    const source = component.replace('imports: [A, B, C],', 'imports: [A, ...EXTRA],');
+    assert.ok(plan(source, [], ['A']).includes('imports: [...EXTRA],'));
+  });
+});
+
+// ── auto-clean: analysis ──────────────────────────────────────────────────────
+
+suite('computeCleanupPlan', () => {
+  const workspace = path.join(os.tmpdir(), 'acp-clean-tests');
+  const ownerPath = path.join(workspace, 'app.component.ts');
+
+  function symbol(partial: Partial<AutoImportSymbol> & { className: string }): AutoImportSymbol {
+    return {
+      kind: 'Component',
+      tokens: [],
+      origin: 'workspace',
+      ...partial,
+    } as AutoImportSymbol;
+  }
+
+  function makeIndex(symbols: AutoImportSymbol[]): AutoImportIndex {
+    const byName = new Map<string, AutoImportSymbol[]>();
+    const byToken = new Map<string, AutoImportSymbol[]>();
+    for (const entry of symbols) {
+      byName.set(entry.className, [...(byName.get(entry.className) ?? []), entry]);
+      for (const token of entry.tokens) {
+        byToken.set(token, [...(byToken.get(token) ?? []), entry]);
+      }
+    }
+    return {
+      root: workspace,
+      byToken,
+      byName,
+      templateUrlOwners: new Map(),
+      pathMappings: [],
+      fileCount: symbols.length,
+      libraryScanned: true,
+    };
+  }
+
+  function analyse(source: string, symbols: AutoImportSymbol[]) {
+    const sourceFile = ts.createSourceFile(ownerPath, source, ts.ScriptTarget.Latest, true);
+    const owners = parseDecoratedOwners(sourceFile);
+    const plan = computeCleanupPlan({
+      filePath: ownerPath,
+      sourceFile,
+      owners,
+      index: makeIndex(symbols),
+      includeModules: true,
+      cleanArrays: true,
+      cleanBindings: true,
+    });
+    return { plan, cleaned: applySpans(source, buildCleanupSpans(sourceFile, owners, plan)) };
+  }
+
+  const childPath = path.join(workspace, 'child.component.ts');
+
+  suiteSetup(() => {
+    fs.mkdirSync(workspace, { recursive: true });
+    fs.writeFileSync(
+      childPath,
+      "import { Component } from '@angular/core';\n" +
+        "@Component({ selector: 'app-child', template: '' })\n" +
+        'export class ChildComponent {}\n',
+      'utf-8',
+    );
+  });
+
+  suiteTeardown(() => {
+    fs.rmSync(workspace, { recursive: true, force: true });
+  });
+
+  const childSymbol = symbol({
+    className: 'ChildComponent',
+    tokens: ['app-child'],
+    filePath: childPath,
+    standalone: true,
+  });
+
+  function componentSource(template: string, extra = ''): string {
+    return [
+      "import { Component } from '@angular/core';",
+      "import { ChildComponent } from './child.component';",
+      '',
+      '@Component({',
+      "  selector: 'app-root',",
+      '  imports: [ChildComponent],',
+      `  template: '${template}',`,
+      '})',
+      `export class AppComponent {${extra}}`,
+      '',
+    ].join('\n');
+  }
+
+  test('removes an entry the template does not use, and its import', () => {
+    const { plan, cleaned } = analyse(componentSource('<p>hi</p>'), [childSymbol]);
+    assert.strictEqual(plan.arrayEntries.length, 1);
+    assert.strictEqual(plan.arrayEntries[0].name, 'ChildComponent');
+    assert.strictEqual(plan.arrayEntries[0].bindingBecomesUnused, true);
+    assert.ok(cleaned.includes('imports: [],'), cleaned);
+    assert.ok(!cleaned.includes('child.component'), cleaned);
+  });
+
+  test('keeps an entry the template uses', () => {
+    const { plan } = analyse(componentSource('<app-child></app-child>'), [childSymbol]);
+    assert.strictEqual(plan.arrayEntries.length, 0);
+    assert.strictEqual(plan.bindings.length, 0);
+  });
+
+  test('keeps the import when the class is still referenced in code', () => {
+    const { plan, cleaned } = analyse(
+      componentSource('<p>hi</p>', '\n  readonly token = ChildComponent;\n'),
+      [childSymbol],
+    );
+    assert.strictEqual(plan.arrayEntries.length, 1);
+    assert.strictEqual(plan.arrayEntries[0].bindingBecomesUnused, false);
+    assert.ok(cleaned.includes("import { ChildComponent } from './child.component';"), cleaned);
+    assert.ok(cleaned.includes('imports: [],'), cleaned);
+  });
+
+  test('reports what the entries provide as coverage', () => {
+    const { plan } = analyse(componentSource('<app-child></app-child>'), [childSymbol]);
+    assert.deepStrictEqual([...(plan.coverage.get('AppComponent') ?? [])], ['app-child']);
+  });
+
+  test('keeps entries whose provider cannot be resolved', () => {
+    const source = componentSource('<p>hi</p>').replace(
+      "import { ChildComponent } from './child.component';",
+      "import { ChildComponent } from 'some-unknown-lib';",
+    );
+    const { plan } = analyse(source, []);
+    assert.strictEqual(plan.arrayEntries.length, 0);
+    assert.deepStrictEqual(plan.unresolved.get('AppComponent'), ['ChildComponent']);
+  });
+
+  test('keeps a module that provides no template tokens (it may carry providers)', () => {
+    const source = [
+      "import { Component } from '@angular/core';",
+      "import { HttpClientModule } from '@angular/common/http';",
+      '',
+      '@Component({',
+      "  selector: 'app-root',",
+      '  imports: [HttpClientModule],',
+      "  template: '<p>hi</p>',",
+      '})',
+      'export class AppComponent {}',
+      '',
+    ].join('\n');
+    const { plan } = analyse(source, [
+      symbol({
+        className: 'HttpClientModule',
+        kind: 'NgModule',
+        tokens: [],
+        origin: 'library',
+        moduleSpecifier: '@angular/common/http',
+      }),
+    ]);
+    assert.strictEqual(plan.arrayEntries.length, 0);
+  });
+
+  test('flags an unused module only when modules are included', () => {
+    const source = [
+      "import { Component } from '@angular/core';",
+      "import { CommonModule } from '@angular/common';",
+      '',
+      '@Component({',
+      "  selector: 'app-root',",
+      '  imports: [CommonModule],',
+      "  template: '<p>hi</p>',",
+      '})',
+      'export class AppComponent {}',
+      '',
+    ].join('\n');
+    const symbols = [
+      symbol({
+        className: 'CommonModule',
+        kind: 'NgModule',
+        tokens: ['ngif', 'ngfor'],
+        origin: 'library',
+        moduleSpecifier: '@angular/common',
+      }),
+    ];
+    const sourceFile = ts.createSourceFile(ownerPath, source, ts.ScriptTarget.Latest, true);
+    const owners = parseDecoratedOwners(sourceFile);
+    const base = {
+      filePath: ownerPath,
+      sourceFile,
+      owners,
+      index: makeIndex(symbols),
+      cleanArrays: true,
+      cleanBindings: true,
+    };
+    assert.strictEqual(
+      computeCleanupPlan({ ...base, includeModules: false }).arrayEntries.length,
+      0,
+    );
+    const included = computeCleanupPlan({ ...base, includeModules: true });
+    assert.strictEqual(included.arrayEntries.length, 1);
+    assert.strictEqual(included.arrayEntries[0].kind, 'NgModule');
+  });
+
+  test('removes unused import statements of any kind', () => {
+    const source = [
+      "import { Component } from '@angular/core';",
+      "import { Observable, Subject } from 'rxjs';",
+      "import './side-effect';",
+      '',
+      '@Component({',
+      "  selector: 'app-root',",
+      "  template: '',",
+      '})',
+      'export class AppComponent {',
+      '  value = new Subject<void>();',
+      '}',
+      '',
+    ].join('\n');
+    const { plan, cleaned } = analyse(source, []);
+    assert.deepStrictEqual(
+      plan.bindings.map((binding) => binding.name),
+      ['Observable'],
+    );
+    assert.ok(cleaned.includes("import { Subject } from 'rxjs';"), cleaned);
+    assert.ok(cleaned.includes("import './side-effect';"), cleaned);
+  });
+
+  test('does not analyse the array when a templateUrl cannot be read', () => {
+    const source = componentSource('x').replace(
+      "  template: 'x',",
+      "  templateUrl: './missing.html',",
+    );
+    const { plan } = analyse(source, [childSymbol]);
+    assert.strictEqual(plan.arrayEntries.length, 0);
+    assert.ok(plan.skipped.some((entry) => entry.includes('AppComponent')));
+  });
+
+  test('turns findings into quick pick entries, modules unticked', () => {
+    const { plan } = analyse(componentSource('<p>hi</p>'), [childSymbol]);
+    const suggestions = cleanupSuggestions(plan);
+    assert.strictEqual(suggestions.length, 1);
+    const [option] = suggestions[0].options;
+    assert.strictEqual(option.action, 'remove');
+    assert.strictEqual(option.preselected, true);
+    assert.strictEqual(option.dropBinding, true);
+    assert.strictEqual(option.ownerClassName, 'AppComponent');
+  });
+});
+
+// ── auto-import + auto-clean in one edit ──────────────────────────────────────
+
+suite('buildEditsForSelection (add and remove together)', () => {
+  test('adding and removing in the same array produces one consistent result', () => {
+    const source = [
+      "import { Component } from '@angular/core';",
+      "import { NgIf } from '@angular/common';",
+      '',
+      '@Component({',
+      "  selector: 'app-root',",
+      '  imports: [NgIf],',
+      "  template: '',",
+      '})',
+      'export class AppComponent {}',
+      '',
+    ].join('\n');
+    const filePath = '/proj/app.component.ts';
+    const sourceFile = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true);
+    const owners = parseDecoratedOwners(sourceFile);
+
+    const built = buildEditsForSelection(filePath, sourceFile, owners, [
+      {
+        action: 'add',
+        className: 'DatePipe',
+        moduleSpecifier: '@angular/common',
+        ownerClassName: 'AppComponent',
+        label: 'DatePipe',
+        description: '@angular/common',
+        detail: 'pipe',
+        preselected: true,
+        rank: 0,
+      },
+      {
+        action: 'remove',
+        className: 'NgIf',
+        moduleSpecifier: '@angular/common',
+        ownerClassName: 'AppComponent',
+        dropBinding: true,
+        label: 'Remove NgIf',
+        description: '@angular/common',
+        detail: 'directive',
+        preselected: true,
+        rank: 0,
+      },
+    ]);
+
+    const result = applySpans(source, built.spans);
+    assert.ok(result.includes("import { DatePipe } from '@angular/common';"), result);
+    assert.ok(!result.includes('NgIf'), result);
+    assert.ok(result.includes('imports: [DatePipe],'), result);
+    assert.strictEqual(built.addedEntries, 1);
+    assert.strictEqual(built.removedEntries, 1);
+    assert.strictEqual(built.removedImports, 1);
+  });
+});
+
+// ── auto-clean: the edits handed to VS Code on save ───────────────────────────
+
+suite('computeCleanupEdits', () => {
+  const directory = path.join(os.tmpdir(), 'acp-save-tests');
+
+  suiteSetup(() => fs.mkdirSync(directory, { recursive: true }));
+  suiteTeardown(() => fs.rmSync(directory, { recursive: true, force: true }));
+
+  async function editsFor(source: string): Promise<{ edits: vscode.TextEdit[]; result: string }> {
+    const file = path.join(directory, `thing-${Math.random().toString(36).slice(2)}.ts`);
+    fs.writeFileSync(file, source, 'utf-8');
+    const document = await vscode.workspace.openTextDocument(file);
+    const edits = computeCleanupEdits(
+      document,
+      { enabled: true, cleanBindings: true, cleanArrays: false, includeModules: false },
+      null,
+    );
+    let result = source;
+    const spans = edits
+      .map((edit) => ({
+        start: document.offsetAt(edit.range.start),
+        end: document.offsetAt(edit.range.end),
+        text: edit.newText,
+      }))
+      .sort((a, b) => b.start - a.start);
+    for (const span of spans) {
+      result = result.slice(0, span.start) + span.text + result.slice(span.end);
+    }
+    return { edits, result };
+  }
+
+  const BODY = "\nexport const subject = new Subject<void>();\n";
+
+  test('returns text edits that drop an unused import', async () => {
+    const { edits, result } = await editsFor(
+      "import { Observable, Subject } from 'rxjs';\n" + BODY,
+    );
+    assert.ok(edits.length > 0);
+    assert.strictEqual(result, "import { Subject } from 'rxjs';\n" + BODY);
+  });
+
+  test('returns nothing when every import is used', async () => {
+    const { edits } = await editsFor("import { Subject } from 'rxjs';\n" + BODY);
+    assert.strictEqual(edits.length, 0);
+  });
 });

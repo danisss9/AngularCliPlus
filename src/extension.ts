@@ -53,6 +53,10 @@ import { manageJsonConfig } from './json-config';
 import { runAngularMigrations } from './migrations';
 import { setupAutoCleanImports } from './clean-imports';
 import { autoImportMissingImports } from './auto-imports';
+import { disposeAutoImportIndexes, warmAutoImportIndex } from './auto-imports-index';
+
+/** Pending auto-import index warm-ups, cleared on deactivation. */
+const warmAutoImportIndexes: Array<ReturnType<typeof setTimeout>> = [];
 
 export function activate(context: vscode.ExtensionContext) {
   setExtensionContext(context);
@@ -169,8 +173,19 @@ export function activate(context: vscode.ExtensionContext) {
     setupDependencyCheck(context, folder.uri.fsPath);
     if (fs.existsSync(path.join(folder.uri.fsPath, 'angular.json'))) {
       void checkToolVersions(folder.uri.fsPath);
+      // Build the auto-import symbol index while the editor is still settling
+      // so the first Ctrl+Shift+A I is instant.
+      warmAutoImportIndexes.push(setTimeout(() => warmAutoImportIndex(folder.uri.fsPath), 5000));
     }
   }
+  context.subscriptions.push({
+    dispose: () => {
+      for (const timeout of warmAutoImportIndexes) {
+        clearTimeout(timeout);
+      }
+      disposeAutoImportIndexes();
+    },
+  });
 
   context.subscriptions.push(
     vscode.workspace.onDidChangeWorkspaceFolders((e) => {

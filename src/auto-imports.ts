@@ -2,97 +2,84 @@ import * as ts from 'typescript';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { extractTokensFromSelector, resolveImportedSymbolTokens } from './clean-imports';
-import type { FileContentsReader } from './clean-imports';
+import { collectTemplateCandidates } from './auto-imports-scan';
+import type { TemplateCandidate } from './auto-imports-scan';
+import { getAutoImportIndex, normalizeFs } from './auto-imports-index';
+import type { AutoImportIndex, AutoImportSymbol } from './auto-imports-index';
+import { computeCleanupPlan, readCurrentText, templateOf } from './clean-imports';
+import type { CleanupPlan } from './clean-imports';
+import {
+  collectImportBindings,
+  importsArrayNames,
+  isLocalBindingTaken,
+  parseDecoratedOwners,
+  planImportStatements,
+  planImportsArray,
+} from './import-edits';
+import type { DecoratedOwner, TextSpan } from './import-edits';
 import { logDiagnostic } from './state';
 
 /**
  * "Angular: Auto Import Missing Imports" (`Ctrl+Shift+A I`).
  *
- * Scans the template corpus of the active file's component(s) — inline
- * `template:` strings plus external `templateUrl` HTML — for element tags,
- * attribute/structural directives and pipes that are not covered by any entry
- * of the decorators' `imports: [...]` array, then adds the missing pieces in
- * one WorkspaceEdit:
- *   - a new `import { Symbol } from '...';` statement
- *   - appended entries inside the existing `imports` array, or a freshly
- *     created array when the decorator does not have one yet
+ * Reconciles a component with its template in one pass and lets the user pick
+ * what to apply from a single quick pick:
  *
- * Resolution sources:
- *   1. A workspace index of exported @Component/@Directive/@Pipe classes built
- *      with the TypeScript Compiler API (relative imports).
- *   2. A built-in map for common Angular exports (NgIf, RouterLink, AsyncPipe,
- *      FormsModule, ...) whose module specifiers are known ahead of time.
+ *   - **Add** — element tags, attribute / structural directives, bindings and
+ *     pipes the template uses that no entry of the decorator's `imports: [...]`
+ *     provides, with every matching component, directive, pipe or NgModule from
+ *     the workspace and from `node_modules` offered as an option; plus the
+ *     identifiers the TypeScript server reports as unresolved in a `.ts` file.
+ *   - **Remove** — entries of `imports: [...]` the template no longer uses, and
+ *     `import` statements nothing references any more (see `clean-imports.ts`,
+ *     which powers the same analysis on save).
  *
- * Safety policy mirrors the Auto-clean feature: anything that cannot be
- * confidently resolved is skipped rather than guessed.
+ * Everything the user confirms is applied as one `WorkspaceEdit`. Additions and
+ * removals that touch the same array or the same import statement are merged
+ * into a single span, so they can never conflict.
+ *
+ * The symbol index lives in `auto-imports-index.ts`; it is cached across runs
+ * and refreshed per changed file, so only the first invocation pays for a scan.
  */
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-type DecoratorKind = 'Component' | 'Directive' | 'Pipe';
-
-interface SymbolEntry {
+/** One way to satisfy — or clean up — a reference. */
+export interface ImportOption {
+  action: 'add' | 'remove';
   className: string;
-  filePath: string;
-  kind: DecoratorKind;
-  /** selector / pipe-name tokens (original case; compared lowercased) */
-  tokens: string[];
+  /** null when the symbol is declared in the owner file itself */
+  moduleSpecifier: string | null;
+  /** decorator class whose `imports: [...]` this option changes */
+  ownerClassName?: string;
+  /** remove: also drop the `import` binding of `className` */
+  dropBinding?: boolean;
+  label: string;
+  description: string;
+  detail: string;
+  /** ticked when the quick pick opens */
+  preselected: boolean;
+  /** relative ranking; lower is offered first */
+  rank: number;
 }
 
-interface SymbolIndex {
-  /** lowercased token → matching entries */
-  byToken: Map<string, SymbolEntry[]>;
-  /** normalized templateUrl targets → owner .ts files */
-  templateUrlOwners: Map<string, string[]>;
+/** One missing (or unused) reference plus every way of resolving it. */
+export interface Suggestion {
+  title: string;
+  options: ImportOption[];
 }
 
-interface DecoratedOwner {
-  className: string;
-  kind: DecoratorKind;
-  standaloneExplicitFalse: boolean;
-  importsArray: ts.ArrayLiteralExpression | undefined;
-  decoratorObject: ts.ObjectLiteralExpression;
-  inlineTemplate: string | null;
-  templateUrl: string | null;
-}
+// ── Built-in fallback knowledge ──────────────────────────────────────────────
 
-interface PlannedImport {
-  className: string;
-  moduleSpecifier: string;
-}
-
-interface ClassPlan {
-  /** array to append into, or object literal to create the array on */
-  array?: ts.ArrayLiteralExpression;
-  createForObject?: ts.ObjectLiteralExpression;
-  classNames: string[];
-}
-
-interface PlanOutcome {
-  addedCount: number;
-  skippedClasses: Array<{ className: string; reason: string }>;
-}
-
-interface TextSpan {
-  start: number;
-  end: number;
-  text: string;
-}
-
-// ── Built-in Angular knowledge ────────────────────────────────────────────────
-
-interface BuiltInExport {
-  module: string;
-  /** selector / pipe-name tokens this symbol provides (lowercase) */
-  tokens?: string[];
-}
-
+/**
+ * Minimal map used when `node_modules` cannot be scanned (fresh clone without
+ * an install). The real metadata always wins when it is available.
+ */
 const COMMON_MODULE = '@angular/common';
 
-const BUILTIN_EXPORTS: Record<string, BuiltInExport> = {
+const BUILTIN_EXPORTS: Record<string, { module: string; tokens: string[] }> = {
   NgIf: { module: COMMON_MODULE, tokens: ['ngif'] },
-  NgFor: { module: COMMON_MODULE, tokens: ['ngfor'] },
+  NgFor: { module: COMMON_MODULE, tokens: ['ngfor', 'ngforof'] },
   NgClass: { module: COMMON_MODULE, tokens: ['ngclass'] },
   NgStyle: { module: COMMON_MODULE, tokens: ['ngstyle'] },
   NgSwitch: { module: COMMON_MODULE, tokens: ['ngswitch'] },
@@ -100,6 +87,7 @@ const BUILTIN_EXPORTS: Record<string, BuiltInExport> = {
   NgSwitchDefault: { module: COMMON_MODULE, tokens: ['ngswitchdefault'] },
   NgTemplateOutlet: { module: COMMON_MODULE, tokens: ['ngtemplateoutlet'] },
   NgComponentOutlet: { module: COMMON_MODULE, tokens: ['ngcomponentoutlet'] },
+  NgOptimizedImage: { module: COMMON_MODULE, tokens: ['ngsrc'] },
   AsyncPipe: { module: COMMON_MODULE, tokens: ['async'] },
   DatePipe: { module: COMMON_MODULE, tokens: ['date'] },
   JsonPipe: { module: COMMON_MODULE, tokens: ['json'] },
@@ -111,159 +99,43 @@ const BUILTIN_EXPORTS: Record<string, BuiltInExport> = {
   CurrencyPipe: { module: COMMON_MODULE, tokens: ['currency'] },
   DecimalPipe: { module: COMMON_MODULE, tokens: ['number'] },
   PercentPipe: { module: COMMON_MODULE, tokens: ['percent'] },
-  I18nPluralPipe: { module: COMMON_MODULE, tokens: ['i18nplural'] },
-  I18nSelectPipe: { module: COMMON_MODULE, tokens: ['i18nselect'] },
-  CommonModule: { module: COMMON_MODULE },
   FormsModule: {
     module: '@angular/forms',
-    tokens: ['ngmodel', 'formgroup', 'formcontrolname', 'formcontrol'],
+    tokens: ['ngmodel', 'ngmodelgroup', 'ngform', 'ngsubmit'],
+  },
+  ReactiveFormsModule: {
+    module: '@angular/forms',
+    tokens: ['formgroup', 'formgroupname', 'formcontrol', 'formcontrolname', 'formarrayname'],
   },
   RouterOutlet: { module: '@angular/router', tokens: ['router-outlet'] },
   RouterLink: { module: '@angular/router', tokens: ['routerlink'] },
   RouterLinkActive: { module: '@angular/router', tokens: ['routerlinkactive'] },
 };
 
-// CommonModule provides every directive and pipe exported from @angular/common
-{
-  const commonTokens = new Set<string>();
-  for (const def of Object.values(BUILTIN_EXPORTS)) {
-    if (def.module === COMMON_MODULE && def.tokens) {
-      for (const token of def.tokens) {
-        commonTokens.add(token);
-      }
-    }
-  }
-  BUILTIN_EXPORTS.CommonModule.tokens = [...commonTokens];
-}
-
-/** token → built-in symbol names that provide it */
-const BUILTIN_TOKEN_TO_SYMBOLS: Map<string, string[]> = (() => {
+const BUILTIN_BY_TOKEN: Map<string, string[]> = (() => {
   const map = new Map<string, string[]>();
   for (const [name, def] of Object.entries(BUILTIN_EXPORTS)) {
-    if (!def.tokens) {
-      continue;
-    }
     for (const token of def.tokens) {
-      const existing = map.get(token);
-      if (!existing) {
+      const list = map.get(token);
+      if (list) {
+        list.push(name);
+      } else {
         map.set(token, [name]);
-      } else if (!existing.includes(name)) {
-        existing.push(name);
       }
     }
   }
   return map;
 })();
 
-// ── Standard HTML/SVG tags & attributes (never imported) ─────────────────────
-
-const STANDARD_TAGS = new Set<string>([
-  // HTML
-  'a', 'abbr', 'address', 'area', 'article', 'aside', 'audio', 'b', 'base',
-  'bdi', 'bdo', 'blockquote', 'body', 'br', 'button', 'canvas', 'caption',
-  'cite', 'code', 'col', 'colgroup', 'data', 'datalist', 'dd', 'del',
-  'details', 'dfn', 'dialog', 'div', 'dl', 'dt', 'em', 'embed', 'fieldset',
-  'figcaption', 'figure', 'footer', 'form', 'h1', 'h2', 'h3', 'h4', 'h5',
-  'h6', 'head', 'header', 'hgroup', 'hr', 'html', 'i', 'iframe', 'img',
-  'input', 'ins', 'kbd', 'label', 'legend', 'li', 'link', 'main', 'map',
-  'mark', 'menu', 'meta', 'meter', 'nav', 'noscript', 'object', 'ol',
-  'optgroup', 'option', 'output', 'p', 'param', 'picture', 'pre', 'progress',
-  'q', 'rp', 'rt', 'ruby', 's', 'samp', 'script', 'search', 'section',
-  'select', 'slot', 'small', 'source', 'span', 'strong', 'style', 'sub',
-  'summary', 'sup', 'table', 'tbody', 'td', 'template', 'textarea', 'tfoot',
-  'th', 'thead', 'time', 'title', 'tr', 'track', 'u', 'ul', 'var', 'video',
-  'wbr', 'center', 'font', 'strike',
-  // SVG
-  'svg', 'g', 'defs', 'circle', 'ellipse', 'rect', 'line', 'polyline',
-  'polygon', 'path', 'text', 'tspan', 'textpath', 'marker', 'clippath',
-  'mask', 'pattern', 'lineargradient', 'radialgradient', 'stop', 'image',
-  'use', 'symbol', 'foreignobject', 'filter', 'fedropshadow', 'fegaussianblur',
-  'animate', 'animatetransform', 'view', 'desc', 'metadata',
-]);
-
-const NATIVE_EVENTS = new Set<string>([
-  'click', 'dblclick', 'auxclick', 'contextmenu', 'blur', 'focus', 'focusin',
-  'focusout', 'input', 'change', 'submit', 'reset', 'invalid', 'keydown',
-  'keyup', 'keypress', 'mousedown', 'mouseup', 'mousemove', 'mouseenter',
-  'mouseleave', 'mouseout', 'mouseover', 'wheel', 'scroll', 'drag',
-  'dragstart', 'dragend', 'dragenter', 'dragleave', 'dragover', 'drop',
-  'copy', 'cut', 'paste', 'load', 'error', 'abort', 'play', 'pause', 'ended',
-  'volumechange', 'timeupdate', 'progress', 'canplay', 'canplaythrough',
-  'waiting', 'loadedmetadata', 'emptied', 'stalled', 'suspend', 'select',
-  'selectionchange', 'selectstart', 'toggle', 'pointerdown', 'pointerup',
-  'pointermove', 'pointerenter', 'pointerleave', 'pointercancel',
-  'pointerover', 'pointerout', 'gotpointercapture', 'lostpointercapture',
-  'animationstart', 'animationend', 'animationiteration', 'transitionstart',
-  'transitionend', 'transitionrun', 'transitioncancel', 'touchstart',
-  'touchmove', 'touchend', 'touchcancel', 'compositionstart',
-  'compositionupdate', 'compositionend', 'storage', 'online', 'offline',
-  'message', 'open', 'close', 'show', 'popstate', 'hashchange', 'resize',
-  'search', 'beforeprint', 'afterprint', 'beforeunload', 'unload',
-]);
-
-/** Control-flow block keywords that must never be treated as directives */
-const CONTROL_FLOW_KEYWORDS = new Set<string>([
-  'if', 'else', 'for', 'empty', 'switch', 'case', 'default', 'defer',
-  'placeholder', 'loading', 'error', 'let',
-]);
-
-/** Plain HTML attributes that never require a directive import */
-const STANDARD_ATTRS = new Set<string>([
-  'src', 'href', 'alt', 'id', 'name', 'type', 'value', 'disabled', 'readonly',
-  'required', 'checked', 'hidden', 'target', 'rel', 'placeholder', 'title',
-  'role', 'tabindex', 'min', 'max', 'step', 'pattern', 'maxlength',
-  'minlength', 'size', 'rows', 'cols', 'colspan', 'rowspan', 'headers',
-  'scope', 'span', 'start', 'reversed', 'multiple', 'list', 'label',
-  'selected', 'autoplay', 'controls', 'loop', 'muted', 'preload', 'poster',
-  'action', 'method', 'enctype', 'novalidate', 'autocomplete', 'autofocus',
-  'dir', 'draggable', 'lang', 'spellcheck', 'translate', 'contenteditable',
-  'download', 'hreflang', 'media', 'kind', 'srclang', 'wrap', 'accept',
-  'capture', 'inputmode', 'enterkeyhint', 'align', 'bgcolor', 'border',
-  'cellpadding', 'cellspacing', 'frameborder', 'height', 'width',
-]);
-
-const SKIP_DIRS = new Set(['node_modules', 'dist', 'out', '.git', '.vscode', '.angular']);
-
-/** True when any path segment lives inside a build/tooling directory. */
-function isInsideSkippedDir(filePath: string): boolean {
-  return filePath.split(/[\\/]/).some((segment) => SKIP_DIRS.has(segment));
-}
-
-const DECORATOR_KINDS: ReadonlySet<string> = new Set(['Component', 'Directive', 'Pipe']);
-
-// ── Small helpers ────────────────────────────────────────────────────────────
-
-function normalizeFs(p: string): string {
-  return process.platform === 'win32' ? p.toLowerCase() : p;
-}
-
-function readFileOrNull(absPath: string): string | null {
-  try {
-    return fs.readFileSync(absPath, 'utf-8');
-  } catch {
-    return null;
-  }
-}
-
-/** Attempts common location variants for a relative module specifier. */
-function resolveModuleToTsFile(
-  baseDir: string,
-  specifier: string,
-  readFile: FileContentsReader,
-): string | null {
-  const joined = path.resolve(baseDir, specifier);
-  const candidates = [joined];
-  if (!joined.endsWith('.ts')) {
-    candidates.push(`${joined}.ts`);
-    candidates.push(path.join(joined, 'index.ts'));
-  }
-  for (const candidate of candidates) {
-    if (candidate.endsWith('.ts') && readFile(candidate) !== null) {
-      return candidate;
-    }
-  }
-  return null;
-}
+const CANDIDATE_KIND_LABEL: Record<TemplateCandidate['kind'], string> = {
+  element: 'element',
+  attribute: 'attribute directive',
+  input: 'input binding',
+  output: 'output binding',
+  'two-way': 'two-way binding',
+  structural: 'structural directive',
+  pipe: 'pipe',
+};
 
 function relativeImportSpecifier(ownerFilePath: string, targetFilePath: string): string {
   const rel = path.relative(path.dirname(ownerFilePath), targetFilePath).replace(/\\/g, '/');
@@ -277,791 +149,535 @@ function relativeImportSpecifier(ownerFilePath: string, targetFilePath: string):
   return spec;
 }
 
-/**
- * Checks whether `localName` is already bound locally (imported elsewhere /
- * declared in this file), in which case adding a second binding would
- * conflict.
- */
-function isLocalBindingTaken(sourceFile: ts.SourceFile, localName: string): boolean {
-  let taken = false;
-  function visit(node: ts.Node): void {
-    if (taken) {
-      return;
-    }
-    if (
-      (ts.isFunctionDeclaration(node) ||
-        ts.isClassDeclaration(node) ||
-        ts.isInterfaceDeclaration(node) ||
-        ts.isEnumDeclaration(node) ||
-        ts.isTypeAliasDeclaration(node) ||
-        ts.isVariableDeclaration(node)) &&
-      node.name &&
-      ts.isIdentifier(node.name) &&
-      node.name.text === localName
-    ) {
-      taken = true;
-      return;
-    }
-    if (
-      (ts.isImportSpecifier(node) || ts.isImportEqualsDeclaration(node)) &&
-      node.name.text === localName
-    ) {
-      taken = true;
-      return;
-    }
-    ts.forEachChild(node, visit);
+// ── Options for one template token ───────────────────────────────────────────
+
+function kindLabel(symbol: AutoImportSymbol): string {
+  switch (symbol.kind) {
+    case 'Component':
+      return 'component';
+    case 'Directive':
+      return 'directive';
+    case 'Pipe':
+      return 'pipe';
+    default:
+      return 'module';
   }
-  visit(sourceFile);
-  return taken;
-}
-
-// ── Decorator parsing ────────────────────────────────────────────────────────
-
-/** Extracts decorated @Component/@Directive/@Pipe owners from a source file. */
-export function parseDecoratedOwners(sourceFile: ts.SourceFile): DecoratedOwner[] {
-  const owners: DecoratedOwner[] = [];
-
-  function visit(node: ts.Node): void {
-    if (ts.isClassDeclaration(node) && node.name && node.modifiers) {
-      for (const modifier of node.modifiers) {
-        if (
-          !ts.isDecorator(modifier) ||
-          !ts.isCallExpression(modifier.expression) ||
-          modifier.expression.arguments.length === 0 ||
-          !ts.isObjectLiteralExpression(modifier.expression.arguments[0])
-        ) {
-          continue;
-        }
-        const callee = modifier.expression.expression;
-        if (!ts.isIdentifier(callee) || !DECORATOR_KINDS.has(callee.text)) {
-          continue;
-        }
-
-        let importsArray: ts.ArrayLiteralExpression | undefined;
-        let standaloneExplicitFalse = false;
-        let inlineTemplate: string | null = null;
-        let templateUrl: string | null = null;
-
-        for (const prop of modifier.expression.arguments[0].properties) {
-          if (!ts.isPropertyAssignment(prop) || !ts.isIdentifier(prop.name)) {
-            continue;
-          }
-          switch (prop.name.text) {
-            case 'imports':
-              if (ts.isArrayLiteralExpression(prop.initializer)) {
-                importsArray = prop.initializer;
-              }
-              break;
-            case 'standalone':
-              standaloneExplicitFalse = prop.initializer.kind === ts.SyntaxKind.FalseKeyword;
-              break;
-            case 'template':
-              if (
-                ts.isStringLiteral(prop.initializer) ||
-                ts.isNoSubstitutionTemplateLiteral(prop.initializer)
-              ) {
-                inlineTemplate = prop.initializer.text;
-              }
-              break;
-            case 'templateUrl':
-              if (ts.isStringLiteral(prop.initializer)) {
-                templateUrl = prop.initializer.text;
-              }
-              break;
-            default:
-              break;
-          }
-        }
-
-        owners.push({
-          className: node.name.text,
-          kind: callee.text as DecoratorKind,
-          standaloneExplicitFalse,
-          importsArray,
-          decoratorObject: modifier.expression.arguments[0],
-          inlineTemplate,
-          templateUrl,
-        });
-      }
-    }
-    ts.forEachChild(node, visit);
-  }
-
-  visit(sourceFile);
-  return owners;
-}
-
-function isExported(node: ts.ClassDeclaration): boolean {
-  return Boolean(node.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword));
 }
 
 /**
- * Builds local-name → module-specifier bindings for every named value import
- * in the given (already parsed) owner source.
+ * Ranks the ways of providing a token. Selector specificity dominates — a
+ * symbol whose whole selector is the token (`[ngModel]`) beats one that merely
+ * mentions it among others (`mat-checkbox[required][ngModel]`) — and within
+ * the same specificity, workspace symbols come before library ones and plain
+ * declarations before the NgModules that export them.
  */
-function collectImportBindings(sourceFile: ts.SourceFile): Map<string, string> {
-  const bindings = new Map<string, string>();
-  for (const statement of sourceFile.statements) {
-    if (
-      !ts.isImportDeclaration(statement) ||
-      !statement.importClause ||
-      !ts.isStringLiteral(statement.moduleSpecifier)
-    ) {
-      continue;
-    }
-    const named = statement.importClause.namedBindings;
-    if (!named || !ts.isNamedImports(named)) {
-      continue;
-    }
-    for (const element of named.elements) {
-      bindings.set(element.name.text, statement.moduleSpecifier.text);
-    }
-  }
-  return bindings;
+function rankOf(symbol: AutoImportSymbol, token: string): number {
+  const isModule = symbol.kind === 'NgModule';
+  const origin = symbol.origin === 'workspace' ? (isModule ? 20 : 0) : isModule ? 30 : 10;
+  const weight = symbol.weights?.[token] ?? 1;
+  return origin + (1 - weight) * 100;
 }
 
-// ── Workspace symbol index ────────────────────────────────────────────────────
-
-/**
- * Indexes every exported @Component/@Directive/@Pipe class in workspace `.ts`
- * files by their selector / pipe-name tokens, and records `templateUrl`
- * targets so an open HTML file can find its owning component file.
- */
-async function buildSymbolIndex(workspaceRoot: string): Promise<SymbolIndex> {
-  const index: SymbolIndex = {
-    byToken: new Map(),
-    templateUrlOwners: new Map(),
-  };
-
-  const rootUri = vscode.Uri.file(workspaceRoot);
-  const uris = await vscode.workspace.findFiles(
-    new vscode.RelativePattern(rootUri, '**/*.ts'),
-    new vscode.RelativePattern(rootUri, '{node_modules,dist,out,.git,.vscode,.angular}/**'),
-  );
-
-  for (const uri of uris) {
-    const filePath = uri.fsPath;
-    if (filePath.endsWith('.d.ts')) {
-      continue;
-    }
-    if (isInsideSkippedDir(filePath)) {
-      continue;
-    }
-    const content = readFileOrNull(filePath);
-    if (content === null) {
-      continue;
-    }
-
-    const sourceFile = ts.createSourceFile(filePath, content, ts.ScriptTarget.Latest, true);
-
-    // templateUrl → owner map
-    for (const owner of parseDecoratedOwners(sourceFile)) {
-      if (owner.templateUrl) {
-        const abs = normalizeFs(path.resolve(path.dirname(filePath), owner.templateUrl));
-        const list = index.templateUrlOwners.get(abs) ?? [];
-        list.push(filePath);
-        index.templateUrlOwners.set(abs, list);
-      }
-    }
-
-    // Selector / pipe-name tokens of exported classes
-    for (const entry of collectExportedDecoratedEntries(sourceFile)) {
-      for (const token of entry.tokens) {
-        const key = token.toLowerCase();
-        const list = index.byToken.get(key) ?? [];
-        if (
-          !list.some(
-            (e) =>
-              e.className === entry.className &&
-              normalizeFs(e.filePath) === normalizeFs(entry.filePath),
-          )
-        ) {
-          list.push(entry);
-          index.byToken.set(key, list);
-        }
-      }
-    }
-  }
-
-  return index;
-}
-
-/** Collects exported decorated classes with resolvable selector/pipe metadata. */
-function collectExportedDecoratedEntries(sourceFile: ts.SourceFile): SymbolEntry[] {
-  const results: SymbolEntry[] = [];
-
-  function visit(node: ts.Node): void {
-    if (ts.isClassDeclaration(node) && isExported(node) && node.name && node.modifiers) {
-      for (const modifier of node.modifiers) {
-        if (
-          !ts.isDecorator(modifier) ||
-          !ts.isCallExpression(modifier.expression) ||
-          modifier.expression.arguments.length === 0 ||
-          !ts.isObjectLiteralExpression(modifier.expression.arguments[0])
-        ) {
-          continue;
-        }
-        const callee = modifier.expression.expression;
-        if (!ts.isIdentifier(callee) || !DECORATOR_KINDS.has(callee.text)) {
-          continue;
-        }
-        const metaPropertyName = callee.text === 'Pipe' ? 'name' : 'selector';
-
-        for (const prop of modifier.expression.arguments[0].properties) {
-          if (!ts.isPropertyAssignment(prop) || !ts.isIdentifier(prop.name)) {
-            continue;
-          }
-          if (prop.name.text !== metaPropertyName || !ts.isStringLiteral(prop.initializer)) {
-            continue;
-          }
-          const tokens = extractTokensFromSelector(prop.initializer.text);
-          if (tokens !== null && tokens.length > 0) {
-            results.push({
-              className: node.name!.text,
-              filePath: sourceFile.fileName,
-              kind: callee.text as DecoratorKind,
-              tokens,
-            });
-          }
-          break;
-        }
-      }
-    }
-    ts.forEachChild(node, visit);
-  }
-
-  visit(sourceFile);
-  return results;
-}
-
-/**
- * Resolves a candidate token to exactly one workspace symbol, or null when it
- * matches nothing or several distinct classes (ambiguous).
- */
-function pickUniqueEntry(entries: SymbolEntry[]): SymbolEntry | null {
-  if (entries.length === 0) {
-    return null;
-  }
-  const first = entries[0];
-  const same = entries.every(
-    (e) =>
-      e.className === first.className && normalizeFs(e.filePath) === normalizeFs(first.filePath),
-  );
-  return same ? first : null;
-}
-
-// ── Template candidate extraction ─────────────────────────────────────────────
-
-/**
- * Extracts import-relevant tokens from one template corpus: custom element
- * tags, attribute bindings ([x], [(x)]), event bindings that are not native
- * DOM events, structural directives (*x) and pipes (| x).
- */
-export function collectTemplateCandidates(html: string): Set<string> {
-  const out = new Set<string>();
-
-  // Element tags
-  for (const match of html.matchAll(/<\s*([a-zA-Z][\w-]*)/g)) {
-    if (!STANDARD_TAGS.has(match[1].toLowerCase())) {
-      out.add(match[1].toLowerCase());
-    }
-  }
-
-  // Two-way bindings [(x)]
-  for (const match of html.matchAll(/\[\(([\w.$-]+)\)\]/g)) {
-    const base = match[1].split('.')[0].toLowerCase();
-    if (!STANDARD_ATTRS.has(base) && !CONTROL_FLOW_KEYWORDS.has(base)) {
-      out.add(base);
-    }
-  }
-
-  // Property/bound attributes [x] or [x.suffix]
-  for (const match of html.matchAll(/\[([\w.$-]+)(?:\.[\w$]+)?\]/g)) {
-    const base = match[1].split('.')[0].toLowerCase();
-    if (
-      !STANDARD_ATTRS.has(base) &&
-      !CONTROL_FLOW_KEYWORDS.has(base) &&
-      base !== 'attr' &&
-      base !== 'class' &&
-      base !== 'style'
-    ) {
-      out.add(base);
-    }
-  }
-
-  // Event bindings (x) — skip native DOM events and host-prefixed targets
-  for (const match of html.matchAll(/(?:^|[\s"{(])\(([\w.$-]+)(?:\.[\w$]+)?\)/g)) {
-    const base = match[1];
-    if (base.includes(':')) {
-      continue;
-    }
-    const eventName = base.split('.')[0].toLowerCase();
-    if (!NATIVE_EVENTS.has(eventName)) {
-      out.add(eventName);
-    }
-  }
-
-  // Structural directives *x
-  for (const match of html.matchAll(/\*\s*([a-zA-Z][\w-]*)/g)) {
-    const name = match[1];
-    if (!CONTROL_FLOW_KEYWORDS.has(name.toLowerCase())) {
-      out.add(name.toLowerCase());
-    }
-  }
-
-  // Pipes | x (excluding logical OR "||")
-  for (const match of html.matchAll(/(?<!\|)\|\s*([a-zA-Z][\w]*)/g)) {
-    out.add(match[1].toLowerCase());
-  }
-
-  return out;
-}
-
-// ── Coverage analysis ─────────────────────────────────────────────────────────
-
-interface CoverageResult {
-  coveredTokens: Set<string>;
-  unresolvedEntryNames: string[];
-}
-
-/**
- * Determines which template tokens are already provided by the given imports
- * array, resolving relative entries to their declaring files. Entries whose
- * provider set cannot be confidently determined surface as unresolved.
- */
-function computeCoverage(
+/** Builds the pick list for one missing template token. */
+function optionsForToken(
+  candidate: TemplateCandidate,
   ownerFilePath: string,
-  array: ts.ArrayLiteralExpression,
-  importBindings: Map<string, string>,
-  readFile: FileContentsReader,
-): CoverageResult {
-  const coveredTokens = new Set<string>();
-  const unresolvedEntryNames: string[] = [];
+  ownerClassName: string,
+  index: AutoImportIndex,
+): ImportOption[] {
+  const options: ImportOption[] = [];
+  const seen = new Set<string>();
 
-  for (const element of array.elements) {
-    if (!ts.isIdentifier(element)) {
-      unresolvedEntryNames.push('<spread>');
+  for (const symbol of index.byToken.get(candidate.token) ?? []) {
+    // A non-standalone declaration can only be reached through its NgModule
+    if (symbol.kind !== 'NgModule' && symbol.standalone === false) {
       continue;
     }
-    const localName = element.text;
 
-    const builtIn = BUILTIN_EXPORTS[localName];
-    if (builtIn) {
-      for (const token of builtIn.tokens ?? []) {
-        coveredTokens.add(token);
+    let moduleSpecifier: string | null;
+    if (symbol.origin === 'library') {
+      moduleSpecifier = symbol.moduleSpecifier ?? null;
+      if (moduleSpecifier === null) {
+        continue;
       }
+    } else if (symbol.filePath && normalizeFs(symbol.filePath) === normalizeFs(ownerFilePath)) {
+      moduleSpecifier = null; // declared right here (self-reference)
+    } else if (symbol.filePath) {
+      moduleSpecifier = relativeImportSpecifier(ownerFilePath, symbol.filePath);
+    } else {
       continue;
     }
 
-    const moduleSpecifier = importBindings.get(localName);
-    if (
-      !moduleSpecifier ||
-      !(moduleSpecifier.startsWith('./') || moduleSpecifier.startsWith('../'))
-    ) {
-      unresolvedEntryNames.push(localName);
+    const key = `${symbol.className}|${moduleSpecifier ?? ''}`;
+    if (seen.has(key)) {
       continue;
     }
+    seen.add(key);
 
-    const targetFile = resolveModuleToTsFile(
-      path.dirname(ownerFilePath),
+    options.push({
+      action: 'add',
+      className: symbol.className,
       moduleSpecifier,
-      readFile,
-    );
-    if (targetFile === null) {
-      unresolvedEntryNames.push(localName);
-      continue;
-    }
+      ownerClassName,
+      label: symbol.className,
+      description: moduleSpecifier ?? 'this file',
+      detail: `${kindLabel(symbol)}${symbol.standalone === true ? ' · standalone' : ''}`,
+      preselected: false,
+      rank: rankOf(symbol, candidate.token),
+    });
+  }
 
-    const tokens = resolveImportedSymbolTokens(targetFile, localName, readFile);
-    if (tokens === null) {
-      unresolvedEntryNames.push(localName);
-      continue;
-    }
-    for (const token of tokens) {
-      coveredTokens.add(token.toLowerCase());
+  if (options.length === 0) {
+    for (const name of BUILTIN_BY_TOKEN.get(candidate.token) ?? []) {
+      options.push({
+        action: 'add',
+        className: name,
+        moduleSpecifier: BUILTIN_EXPORTS[name].module,
+        ownerClassName,
+        label: name,
+        description: BUILTIN_EXPORTS[name].module,
+        detail: 'Angular built-in',
+        preselected: false,
+        rank: 40,
+      });
     }
   }
 
-  return { coveredTokens, unresolvedEntryNames };
+  options.sort((a, b) => a.rank - b.rank || a.label.localeCompare(b.label));
+  if (options.length > 0) {
+    options[0].preselected = true;
+  }
+  return options;
 }
 
-// ── Planning ──────────────────────────────────────────────────────────────────
+// ── Template analysis ────────────────────────────────────────────────────────
 
-interface PlannedEdits {
-  spans: TextSpan[];
-  outcome: PlanOutcome;
+interface TemplateAnalysis {
+  suggestions: Suggestion[];
+  skipped: string[];
 }
 
 /**
- * Plans all edits for the given owner file: computes missing candidates per
- * component class, resolves them, and returns replacement spans (offsets into
- * the exact `ownerSource` snapshot passed in) plus import statements.
+ * Produces one suggestion per template token that is referenced but not yet
+ * provided by the component's `imports: [...]`.
+ *
+ * `coverage` — what each component's existing entries already provide — comes
+ * from the cleanup pass, so every entry is resolved once per run.
  */
-export function planAutoImportEdits(input: {
+export function analyzeTemplates(input: {
   ownerFilePath: string;
-  ownerSource: string;
   owners: DecoratedOwner[];
-  candidateTokens: Set<string>;
-  index: SymbolIndex;
-  readFile: FileContentsReader;
-}): PlannedEdits {
-  const { ownerFilePath, ownerSource, owners, candidateTokens, index, readFile } = input;
-  const sourceFile = ts.createSourceFile(ownerFilePath, ownerSource, ts.ScriptTarget.Latest, true);
-  const importBindings = collectImportBindings(sourceFile);
-
-  const plannedImports = new Map<string, PlannedImport>();
-  const classPlans = new Map<string, ClassPlan>();
-  const skippedClasses: Array<{ className: string; reason: string }> = [];
+  index: AutoImportIndex;
+  coverage: Map<string, Set<string>>;
+  /** overrides the template text of the owner the open HTML file belongs to */
+  htmlOverride?: { ownerClassName: string; text: string };
+}): TemplateAnalysis {
+  const { ownerFilePath, owners, index, coverage, htmlOverride } = input;
+  const suggestions: Suggestion[] = [];
+  const skipped: string[] = [];
 
   for (const owner of owners) {
     if (owner.kind !== 'Component') {
       continue;
     }
     if (owner.standaloneExplicitFalse) {
-      skippedClasses.push({ className: owner.className, reason: 'non-standalone component' });
+      skipped.push(`${owner.className} (not standalone)`);
       continue;
     }
 
-    const ownerCorpus: string[] = [];
-    if (owner.inlineTemplate !== null) {
-      ownerCorpus.push(owner.inlineTemplate.toLowerCase());
-    } else if (owner.templateUrl !== null) {
-      const html = readFile(path.resolve(path.dirname(ownerFilePath), owner.templateUrl));
-      if (html !== null) {
-        ownerCorpus.push(html.toLowerCase());
-      }
-    }
-    if (ownerCorpus.length === 0) {
+    const template =
+      htmlOverride && htmlOverride.ownerClassName === owner.className
+        ? htmlOverride.text
+        : templateOf(owner, ownerFilePath);
+    if (template === null || template.trim() === '') {
       continue;
     }
 
-    let coveredTokens = new Set<string>();
-    let skipReason: string | undefined;
+    const provided = coverage.get(owner.className) ?? new Set<string>();
+    const present = new Set(importsArrayNames(owner.importsArray));
 
-    if (owner.importsArray) {
-      const coverage = computeCoverage(ownerFilePath, owner.importsArray, importBindings, readFile);
-      coveredTokens = coverage.coveredTokens;
-      if (coverage.unresolvedEntryNames.length > 0) {
-        skipReason = `unresolvable entries in imports array: ${coverage.unresolvedEntryNames.join(', ')}`;
-      }
-    }
-
-    if (skipReason) {
-      skippedClasses.push({ className: owner.className, reason: skipReason });
-      continue;
-    }
-
-    for (const normalized of candidateTokens) {
-      if (coveredTokens.has(normalized)) {
+    for (const candidate of collectTemplateCandidates(template).values()) {
+      if (provided.has(candidate.token)) {
         continue;
       }
-      // This class must actually reference the token somewhere
-      if (!ownerCorpus.some((corpus) => corpus.includes(normalized))) {
+      const options = optionsForToken(candidate, ownerFilePath, owner.className, index).filter(
+        (option) => !present.has(option.className),
+      );
+      if (options.length === 0) {
         continue;
       }
+      suggestions.push({
+        title: `${candidate.display}  ·  ${CANDIDATE_KIND_LABEL[candidate.kind]}${
+          owners.length > 1 ? ` in ${owner.className}` : ''
+        }`,
+        options,
+      });
+    }
+  }
 
-      let chosenClassName: string | null = null;
-      let moduleSpecifier: string | null = null;
+  return { suggestions, skipped };
+}
 
-      const entries = index.byToken.get(normalized);
-      const matched = entries ? pickUniqueEntry(entries) : null;
-      if (matched) {
-        chosenClassName = matched.className;
-        moduleSpecifier = relativeImportSpecifier(ownerFilePath, matched.filePath);
-      } else {
-        const builtins = BUILTIN_TOKEN_TO_SYMBOLS.get(normalized);
-        if (builtins && builtins.length === 1) {
-          chosenClassName = builtins[0];
-          moduleSpecifier = BUILTIN_EXPORTS[chosenClassName]?.module ?? null;
-        }
-      }
+// ── Cleanup suggestions ──────────────────────────────────────────────────────
 
-      if (!chosenClassName || !moduleSpecifier) {
-        continue;
-      }
+const ENTRY_KIND_LABEL: Record<string, string> = {
+  Component: 'component',
+  Directive: 'directive',
+  Pipe: 'pipe',
+  NgModule: 'module',
+};
 
-      if (!plannedImports.has(chosenClassName)) {
-        plannedImports.set(chosenClassName, { className: chosenClassName, moduleSpecifier });
-      }
+/**
+ * Turns the cleanup analysis into quick pick entries. Declarations and plain
+ * unused imports are ticked by default; NgModules are offered but left
+ * unticked, since a module may be there for the providers it carries.
+ */
+export function cleanupSuggestions(plan: CleanupPlan): Suggestion[] {
+  const suggestions: Suggestion[] = [];
+  const merged = new Set<string>();
 
-      let plan = classPlans.get(owner.className);
-      if (!plan) {
-        plan = { classNames: [] };
-        if (owner.importsArray) {
-          plan.array = owner.importsArray;
-        } else {
-          plan.createForObject = owner.decoratorObject;
-        }
-        classPlans.set(owner.className, plan);
-      }
-      if (!plan.classNames.includes(chosenClassName)) {
-        plan.classNames.push(chosenClassName);
+  for (const entry of plan.arrayEntries) {
+    merged.add(entry.name);
+    const alsoImport = entry.bindingBecomesUnused;
+    suggestions.push({
+      title: `${entry.name}  ·  unused in ${entry.ownerClassName}'s template`,
+      options: [
+        {
+          action: 'remove',
+          className: entry.name,
+          moduleSpecifier: entry.moduleSpecifier ?? null,
+          ownerClassName: entry.ownerClassName,
+          dropBinding: alsoImport,
+          label: `Remove ${entry.name}`,
+          description: entry.moduleSpecifier ?? '',
+          detail: `${ENTRY_KIND_LABEL[entry.kind] ?? 'entry'} · drops the imports array entry${
+            alsoImport ? ' and its import statement' : ''
+          }${entry.kind === 'NgModule' ? ' — check it provides no services you need' : ''}`,
+          preselected: entry.kind !== 'NgModule',
+          rank: 0,
+        },
+      ],
+    });
+  }
+
+  for (const binding of plan.bindings) {
+    if (merged.has(binding.name)) {
+      continue; // already covered by the array entry above
+    }
+    suggestions.push({
+      title: `${binding.name}  ·  unused import`,
+      options: [
+        {
+          action: 'remove',
+          className: binding.name,
+          moduleSpecifier: binding.moduleSpecifier,
+          dropBinding: true,
+          label: `Remove ${binding.name}`,
+          description: binding.moduleSpecifier,
+          detail: 'nothing in this file references it',
+          preselected: true,
+          rank: 0,
+        },
+      ],
+    });
+  }
+
+  return suggestions;
+}
+
+// ── TypeScript analysis (unresolved identifiers) ─────────────────────────────
+
+/** TypeScript error codes that mean "this name has no import". */
+const UNRESOLVED_NAME_CODES = new Set([2304, 2552, 2503, 2686]);
+
+function diagnosticCode(diagnostic: vscode.Diagnostic): number | null {
+  const { code } = diagnostic;
+  if (typeof code === 'number') {
+    return code;
+  }
+  if (typeof code === 'object' && code !== null && typeof code.value === 'number') {
+    return code.value;
+  }
+  return null;
+}
+
+/**
+ * Reads the module specifier an "add import" code action would insert.
+ *
+ * Returns null for anything that is not a single import for `name` — notably
+ * TypeScript's "Add all missing imports", which would otherwise be recorded
+ * under whichever module happened to come first in its edit.
+ */
+function moduleSpecifierOfAction(action: vscode.CodeAction, name: string): string | null {
+  const inserted: string[] = [];
+  const specifiers = new Set<string>();
+  for (const [, edits] of action.edit?.entries() ?? []) {
+    for (const edit of edits) {
+      inserted.push(edit.newText);
+      for (const match of edit.newText.matchAll(/\bfrom\s*['"]([^'"]+)['"]/g)) {
+        specifiers.add(match[1]);
       }
     }
   }
 
-  // Drop planned identifiers that are already present in their target array
-  for (const [, plan] of classPlans) {
-    if (plan.array) {
-      const existing = plan.array.elements.filter(ts.isIdentifier).map((e) => e.text);
-      plan.classNames = plan.classNames.filter((cn) => !existing.includes(cn));
+  if (inserted.length > 0) {
+    const wordBoundary = new RegExp(`\\b${name}\\b`);
+    if (!inserted.some((text) => wordBoundary.test(text))) {
+      return null;
     }
-  }
-  for (const [className, plan] of [...classPlans]) {
-    if (plan.classNames.length === 0) {
-      classPlans.delete(className);
+    if (specifiers.size > 1) {
+      return null; // a fix-all action
     }
-  }
-
-  // Symbols that survive after filtering determine what gets imported
-  const classNamesInUse = new Set<string>();
-  for (const [, plan] of classPlans) {
-    for (const cn of plan.classNames) {
-      classNamesInUse.add(cn);
+    if (specifiers.size === 1) {
+      return [...specifiers][0];
     }
   }
 
-  // Emit import-statement spans, but only for symbols that end up referenced
-  const newImportLines: string[] = [];
-  for (const [className, plan] of plannedImports) {
-    if (!classNamesInUse.has(className)) {
+  // "Update import from './x'" merges into an existing statement, so the
+  // module only appears in the title.
+  const fromTitle = /['"]([^'"]+)['"]\s*$/.exec(action.title);
+  return fromTitle ? fromTitle[1] : null;
+}
+
+/**
+ * Asks the TypeScript server which identifiers of the open file are unresolved
+ * and which modules could provide them.
+ */
+async function analyzeTypeScript(document: vscode.TextDocument): Promise<Suggestion[]> {
+  if (document.isDirty) {
+    // Give the TypeScript server a moment to publish diagnostics for edits
+    // that were made right before the command ran.
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+
+  const diagnostics = vscode.languages.getDiagnostics(document.uri).filter((diagnostic) => {
+    const code = diagnosticCode(diagnostic);
+    return code !== null && UNRESOLVED_NAME_CODES.has(code);
+  });
+
+  const suggestions: Suggestion[] = [];
+  const handled = new Set<string>();
+
+  for (const diagnostic of diagnostics) {
+    const name = document.getText(diagnostic.range).trim();
+    if (name === '' || handled.has(name) || !/^[A-Za-z_$][\w$]*$/.test(name)) {
       continue;
     }
-    if (isLocalBindingTaken(sourceFile, className)) {
+    handled.add(name);
+
+    let actions: vscode.CodeAction[] = [];
+    try {
+      actions =
+        (await vscode.commands.executeCommand<vscode.CodeAction[]>(
+          'vscode.executeCodeActionProvider',
+          document.uri,
+          diagnostic.range,
+          vscode.CodeActionKind.QuickFix.value,
+          16,
+        )) ?? [];
+    } catch (error) {
       logDiagnostic(
-        `Auto-import: skipped "${className}" — a binding with that name already exists in ${ownerFilePath}`,
+        `Auto-import: code actions for "${name}" failed (${error instanceof Error ? error.message : String(error)})`,
       );
       continue;
     }
-    newImportLines.push(`import { ${className} } from '${plan.moduleSpecifier}';`);
+
+    const options: ImportOption[] = [];
+    const seen = new Set<string>();
+    for (const action of actions) {
+      if (!/import/i.test(action.title) || /\ball\b/i.test(action.title)) {
+        continue;
+      }
+      const moduleSpecifier = moduleSpecifierOfAction(action, name);
+      if (moduleSpecifier === null || seen.has(moduleSpecifier)) {
+        continue;
+      }
+      seen.add(moduleSpecifier);
+      options.push({
+        action: 'add',
+        className: name,
+        moduleSpecifier,
+        label: name,
+        description: moduleSpecifier,
+        detail: 'TypeScript import',
+        preselected: options.length === 0,
+        rank: options.length,
+      });
+    }
+
+    if (options.length > 0) {
+      suggestions.push({ title: `${name}  ·  unresolved identifier`, options });
+    }
   }
 
-  const spans: TextSpan[] = [];
+  return suggestions;
+}
 
-  if (newImportLines.length > 0) {
-    const insertion = computeImportInsertionOffset(sourceFile);
-    if (insertion.atLineStart) {
-      spans.push({
-        start: insertion.offset,
-        end: insertion.offset,
-        text: `${newImportLines.join('\n')}\n`,
-      });
-    } else {
-      spans.push({
-        start: insertion.offset,
-        end: insertion.offset,
-        text: `\n${newImportLines.join('\n')}`,
+// ── Quick pick ───────────────────────────────────────────────────────────────
+
+interface OptionItem extends vscode.QuickPickItem {
+  option: ImportOption;
+}
+
+/**
+ * Shows every suggestion grouped under a separator, additions first, with the
+ * recommended option of each group ticked.
+ */
+async function pickImports(suggestions: Suggestion[]): Promise<ImportOption[] | null> {
+  const items: Array<OptionItem | vscode.QuickPickItem> = [];
+
+  for (const suggestion of suggestions) {
+    items.push({ label: suggestion.title, kind: vscode.QuickPickItemKind.Separator });
+    for (const option of suggestion.options) {
+      items.push({
+        label: option.label,
+        description: option.description,
+        detail: option.detail,
+        picked: option.preselected,
+        option,
       });
     }
   }
 
-  for (const [, plan] of classPlans) {
-    if (plan.array) {
-      spans.push(...computeArrayAppendSpans(sourceFile, plan.array, plan.classNames));
-    } else if (plan.createForObject) {
-      spans.push(...computeCreateImportsArraySpans(sourceFile, plan.createForObject, plan.classNames));
+  const additions = suggestions.filter((entry) => entry.options[0]?.action === 'add').length;
+  const removals = suggestions.length - additions;
+  const summary =
+    [additions > 0 ? `${additions} to add` : '', removals > 0 ? `${removals} to remove` : '']
+      .filter(Boolean)
+      .join(', ') || 'nothing to do';
+
+  const picked = await vscode.window.showQuickPick(items, {
+    canPickMany: true,
+    matchOnDescription: true,
+    matchOnDetail: true,
+    ignoreFocusOut: true,
+    title: `Angular CLI Plus — ${summary}`,
+    placeHolder: 'Select what to apply (space toggles, enter confirms)',
+  });
+
+  if (!picked) {
+    return null;
+  }
+  return picked.filter((item): item is OptionItem => 'option' in item).map((item) => item.option);
+}
+
+// ── Edit construction ────────────────────────────────────────────────────────
+
+export interface BuiltEdits {
+  spans: TextSpan[];
+  addedImports: number;
+  addedEntries: number;
+  removedEntries: number;
+  removedImports: number;
+  conflicts: string[];
+}
+
+/**
+ * Turns the user's selection into text spans over `sourceFile`.
+ *
+ * Additions and removals are merged per import statement and per `imports`
+ * array before any span is produced, so the two can never overlap.
+ */
+export function buildEditsForSelection(
+  ownerFilePath: string,
+  sourceFile: ts.SourceFile,
+  owners: DecoratedOwner[],
+  selection: readonly ImportOption[],
+): BuiltEdits {
+  const addByModule = new Map<string, string[]>();
+  const addByOwner = new Map<string, string[]>();
+  const removeByOwner = new Map<string, Set<string>>();
+  const removeBindings = new Set<string>();
+  const conflicts: string[] = [];
+  const importedNames = new Set<string>();
+  const bindings = collectImportBindings(sourceFile);
+
+  for (const option of selection) {
+    if (option.action === 'remove') {
+      if (option.ownerClassName) {
+        const set = removeByOwner.get(option.ownerClassName) ?? new Set<string>();
+        set.add(option.className);
+        removeByOwner.set(option.ownerClassName, set);
+      }
+      if (option.dropBinding) {
+        removeBindings.add(option.className);
+      }
+      continue;
+    }
+
+    if (option.moduleSpecifier !== null && !importedNames.has(option.className)) {
+      if (isLocalBindingTaken(sourceFile, option.className)) {
+        if (bindings.get(option.className) !== option.moduleSpecifier) {
+          conflicts.push(option.className);
+          continue;
+        }
+        // Already imported from that module: only the array entry is missing
+      } else {
+        const names = addByModule.get(option.moduleSpecifier) ?? [];
+        names.push(option.className);
+        addByModule.set(option.moduleSpecifier, names);
+        importedNames.add(option.className);
+      }
+    }
+
+    if (option.ownerClassName) {
+      const entries = addByOwner.get(option.ownerClassName) ?? [];
+      if (!entries.includes(option.className)) {
+        entries.push(option.className);
+      }
+      addByOwner.set(option.ownerClassName, entries);
+    }
+  }
+
+  const spans = planImportStatements(sourceFile, { add: addByModule, remove: removeBindings });
+
+  let addedEntries = 0;
+  let removedEntries = 0;
+
+  for (const ownerClassName of new Set([...addByOwner.keys(), ...removeByOwner.keys()])) {
+    const owner = owners.find((candidate) => candidate.className === ownerClassName);
+    if (!owner) {
+      continue;
+    }
+    const existing = importsArrayNames(owner.importsArray);
+    const remove = removeByOwner.get(ownerClassName) ?? new Set<string>();
+    const add = (addByOwner.get(ownerClassName) ?? []).filter((name) => !existing.includes(name));
+
+    const arraySpans = planImportsArray(sourceFile, owner, { add, remove }, (reason) =>
+      logDiagnostic(`Auto-import: ${reason}`),
+    );
+    if (arraySpans.length > 0) {
+      spans.push(...arraySpans);
+      addedEntries += add.length;
+      removedEntries += remove.size;
     }
   }
 
   return {
     spans,
-    outcome: { addedCount: classNamesInUse.size, skippedClasses },
+    addedImports: [...addByModule.values()].reduce((total, names) => total + names.length, 0),
+    addedEntries,
+    removedEntries,
+    removedImports: removeBindings.size,
+    conflicts,
   };
 }
 
-/**
- * Computes the offset right after the last import declaration (or after any
- * leading trivia when there are no imports) and whether the insertion point
- * already sits at the beginning of a line.
- */
-function computeImportInsertionOffset(
-  sourceFile: ts.SourceFile,
-): { offset: number; atLineStart: boolean } {
-  const fullText = sourceFile.getFullText();
-  let lastImportEnd = -1;
-  for (const statement of sourceFile.statements) {
-    if (ts.isImportDeclaration(statement)) {
-      lastImportEnd = Math.max(lastImportEnd, statement.getEnd());
-    }
-  }
-
-  let offset: number;
-  if (lastImportEnd >= 0) {
-    offset = lastImportEnd;
-  } else if (sourceFile.statements.length > 0) {
-    const first = sourceFile.statements[0];
-    offset = first.getFullStart() + first.getLeadingTriviaWidth(sourceFile);
-  } else {
-    offset = 0;
-  }
-
-  const atLineStart = offset === 0 || fullText[offset - 1] === '\n';
-  return { offset, atLineStart };
-}
-
-function indentAt(sourceFile: ts.SourceFile, position: number): string {
-  const fullText = sourceFile.getFullText();
-  let indent = '';
-  for (let i = position - 1; i >= 0; i -= 1) {
-    const ch = fullText[i];
-    if (ch === '\n') {
-      break;
-    }
-    if (ch === ' ' || ch === '\t') {
-      indent = ch + indent;
-    } else {
-      indent = '';
-    }
-  }
-  return indent;
-}
-
-/** Computes where and how to append identifiers into an existing imports array. */
-function computeArrayAppendSpans(
-  sourceFile: ts.SourceFile,
-  array: ts.ArrayLiteralExpression,
-  classNames: string[],
-): TextSpan[] {
-  const fullText = sourceFile.getFullText();
-  const opening = array.getStart(sourceFile);
-  const closing = array.getEnd() - 1; // index of ']'
-
-  const names = [...array.elements.filter(ts.isIdentifier).map((e) => e.text), ...classNames];
-
-  if (array.elements.length > 0) {
-    const body = fullText.slice(opening + 1, closing);
-    const compressed = body.replace(/\s+/g, '');
-    const hadTrailingComma = compressed !== '' && compressed.endsWith(',');
-    const multiline = /[\r\n]/.test(body);
-
-    if (multiline) {
-      const elemIndent = indentAt(sourceFile, array.elements[0].getStart(sourceFile)) || '  ';
-      let closeIndent = '';
-      {
-        let i = closing - 1;
-        while (i >= 0 && (fullText[i] === ' ' || fullText[i] === '\t')) {
-          closeIndent = fullText[i] + closeIndent;
-          i -= 1;
-        }
-      }
-      const lines = names.map(
-        (name, i) => `${elemIndent}${name}${i < names.length - 1 || hadTrailingComma ? ',' : ''}`,
-      );
-      const inner = `\n${lines.join('\n')}\n${closeIndent}`;
-      return [{ start: opening + 1, end: closing, text: inner }];
-    }
-
-    // Single-line array
-    const inner = `${names.join(', ')}${hadTrailingComma ? ',' : ''}`;
-    return [{ start: opening + 1, end: closing, text: inner }];
-  }
-
-  // Empty array — fill inline
-  return [{ start: opening + 1, end: closing, text: classNames.join(', ') }];
-}
-
-/**
- * Computes replacements that create a whole `imports: [...]` property in a
- * decorator object literal, formatted consistently with its surroundings.
- * Returns an empty array when the object's formatting is not supported.
- */
-function computeCreateImportsArraySpans(
-  sourceFile: ts.SourceFile,
-  objectLiteral: ts.ObjectLiteralExpression,
-  classNames: string[],
-): TextSpan[] {
-  const fullText = sourceFile.getFullText();
-
-  if (objectLiteral.properties.length === 0) {
-    const opening = objectLiteral.getStart(sourceFile); // '{'
-    return [{ start: opening + 1, end: opening + 1, text: `imports: [${classNames.join(', ')}]` }];
-  }
-
-  const literalText = fullText.slice(objectLiteral.getStart(sourceFile), objectLiteral.getEnd());
-
-  if (!/[\r\n]/.test(literalText)) {
-    // Single-line object: "@Component({ selector: 'x' })"
-    const lastProp = objectLiteral.properties[objectLiteral.properties.length - 1];
-    const between = fullText.slice(lastProp.getEnd(), objectLiteral.getEnd()).replace(/\s/g, '');
-    const needsComma = !between.startsWith(',');
-    return [
-      {
-        start: lastProp.getEnd(),
-        end: lastProp.getEnd(),
-        text: `${needsComma ? ', ' : ''}imports: [${classNames.join(', ')}]`,
-      },
-    ];
-  }
-
-  const lastProp = objectLiteral.properties[objectLiteral.properties.length - 1];
-  const closingBrace = objectLiteral.getEnd() - 1;
-  const tailAfterLastProp = fullText.slice(lastProp.getEnd(), closingBrace);
-  const trimmedTail = tailAfterLastProp.trim();
-
-  if (trimmedTail !== '' && trimmedTail !== ',') {
-    // Comments or exotic content between the last property and '}'
-    logDiagnostic('Auto-import: skipped creating imports array (unsupported decorator formatting)');
-    return [];
-  }
-
-  const indent = indentAt(sourceFile, objectLiteral.properties[0].getStart(sourceFile));
-  const importsProperty = `${indent}imports: [${classNames.join(', ')}]`;
-
-  // Missing trailing comma after the last property?
-  const spans: TextSpan[] = [];
-  if (trimmedTail === '') {
-    spans.push({ start: lastProp.getEnd(), end: lastProp.getEnd(), text: ',' });
-  }
-
-  let propInsertStart: number;
-  let propText: string;
-  if (/[\r\n]/.test(tailAfterLastProp)) {
-    // Closing brace sits on its own line: insert above it and preserve the
-    // indentation of the '}' itself
-    const nlAbs = fullText.lastIndexOf('\n', closingBrace - 1);
-    const wsStart = Math.max(nlAbs + 1, objectLiteral.getStart(sourceFile));
-    const originalBraceIndent = fullText.slice(wsStart, closingBrace);
-    propInsertStart = wsStart;
-    propText = `${importsProperty},\n${originalBraceIndent}`;
-  } else {
-    // Exotic same-line ending: introduce proper lines anyway
-    propInsertStart = closingBrace;
-    propText = `\n${importsProperty},\n`;
-  }
-  spans.push({ start: propInsertStart, end: propInsertStart, text: propText });
-  return spans;
-}
-
-// ── Command implementation ────────────────────────────────────────────────────
-
-/** Returns the latest text of a file, preferring the open editor buffer. */
-async function getCurrentFileText(filePath: string): Promise<string | null> {
-  const wanted = normalizeFs(filePath);
-  const openDoc = vscode.workspace.textDocuments.find(
-    (d) => d.uri.scheme === 'file' && normalizeFs(d.uri.fsPath) === wanted,
-  );
-  if (openDoc) {
-    return openDoc.getText();
-  }
-  return readFileOrNull(filePath);
-}
+// ── Command implementation ───────────────────────────────────────────────────
 
 /** Locates the owning `.ts` file for an open HTML template. */
-function findOwnerTsFileForHtml(htmlUri: vscode.Uri, index: SymbolIndex): string | null {
+function findOwnerTsFileForHtml(htmlUri: vscode.Uri, index: AutoImportIndex): string | null {
   const owners = index.templateUrlOwners.get(normalizeFs(htmlUri.fsPath)) ?? [];
   if (owners.length > 0) {
     return owners[0];
   }
 
-  // Fallback: sibling .component.ts next to the template
+  // Fallback: sibling .ts next to the template
   const htmlPath = htmlUri.fsPath;
-  if (htmlPath.endsWith('.component.html')) {
-    return htmlPath.replace(/\.component\.html$/, '.component.ts');
-  }
-  if (htmlPath.endsWith('.html')) {
-    return htmlPath.slice(0, -'.html'.length) + '.ts';
-  }
-  return null;
+  const sibling = htmlPath.endsWith('.component.html')
+    ? htmlPath.replace(/\.component\.html$/, '.component.ts')
+    : `${htmlPath.slice(0, -'.html'.length)}.ts`;
+  return fs.existsSync(sibling) ? sibling : null;
 }
 
 /** Validates the command context. Throws with a user-friendly message. */
@@ -1085,136 +701,181 @@ function validateContext(): { document: vscode.TextDocument; workspaceRoot: stri
   return { document, workspaceRoot };
 }
 
-/** Runs the command body and returns a human-readable summary. */
-async function runAutoImport(): Promise<string> {
+/** Picks the component owner an open HTML template belongs to. */
+function ownerForHtml(
+  owners: DecoratedOwner[],
+  ownerFilePath: string,
+  htmlPath: string,
+): DecoratedOwner | undefined {
+  const wanted = normalizeFs(htmlPath);
+  const matching = owners.find(
+    (owner) =>
+      owner.templateUrl !== null &&
+      normalizeFs(path.resolve(path.dirname(ownerFilePath), owner.templateUrl)) === wanted,
+  );
+  return matching ?? owners.find((owner) => owner.kind === 'Component');
+}
+
+function describe(built: BuiltEdits, fileName: string): string {
+  const parts: string[] = [];
+  if (built.addedImports > 0 || built.addedEntries > 0) {
+    parts.push(`added ${built.addedImports} import(s), ${built.addedEntries} array entry/entries`);
+  }
+  if (built.removedImports > 0 || built.removedEntries > 0) {
+    parts.push(
+      `removed ${built.removedImports} import(s), ${built.removedEntries} array entry/entries`,
+    );
+  }
+  const conflictSuffix =
+    built.conflicts.length > 0 ? ` — ${built.conflicts.length} skipped (name clash)` : '';
+  return `${parts.join('; ')} in ${fileName}${conflictSuffix}`;
+}
+
+/** Runs the command body and returns a summary, or null when cancelled. */
+async function runAutoImport(): Promise<string | null> {
   const { document, workspaceRoot } = validateContext();
   const isHtml = document.languageId === 'html';
 
-  return vscode.window.withProgress(
+  const index = await vscode.window.withProgress(
     {
-      location: vscode.ProgressLocation.Notification,
-      title: 'Angular CLI Plus: finding missing imports…',
-      cancellable: false,
+      location: vscode.ProgressLocation.Window,
+      title: 'Angular CLI Plus: scanning imports…',
+      cancellable: true,
     },
-    async () => {
-      const index = await buildSymbolIndex(workspaceRoot);
-
-      let ownerFilePath: string;
-      if (isHtml) {
-        const found = findOwnerTsFileForHtml(document.uri, index);
-        if (!found) {
-          throw new Error('Could not locate the owning component TypeScript file for this template');
-        }
-        ownerFilePath = found;
-      } else {
-        ownerFilePath = document.uri.fsPath;
-      }
-
-      const ownerSource = await getCurrentFileText(ownerFilePath);
-      if (ownerSource === null) {
-        throw new Error(`Could not read ${path.basename(ownerFilePath)}`);
-      }
-      const ownerSourceFile = ts.createSourceFile(
-        ownerFilePath,
-        ownerSource,
-        ts.ScriptTarget.Latest,
-        true,
-      );
-      const owners = parseDecoratedOwners(ownerSourceFile);
-
-      // Build the union of template corpora for candidate extraction
-      let corpusText = '';
-      if (isHtml) {
-        corpusText = document.getText();
-      } else {
-        for (const owner of owners) {
-          if (owner.inlineTemplate !== null) {
-            corpusText += `\n${owner.inlineTemplate}`;
-          } else if (owner.templateUrl !== null) {
-            const html = readFileOrNull(path.resolve(path.dirname(ownerFilePath), owner.templateUrl));
-            if (html !== null) {
-              corpusText += `\n${html}`;
-            }
-          }
-        }
-      }
-
-      if (!corpusText.trim()) {
-        return 'No templates found to analyze';
-      }
-
-      const candidateTokens = collectTemplateCandidates(corpusText);
-      const planned = planAutoImportEdits({
-        ownerFilePath,
-        ownerSource,
-        owners,
-        candidateTokens,
-        index,
-        readFile: readFileOrNull,
-      });
-
-      for (const skip of planned.outcome.skippedClasses) {
-        logDiagnostic(`Auto-import: skipped ${skip.className} (${skip.reason})`);
-      }
-
-      if (planned.spans.length === 0 || planned.outcome.addedCount === 0) {
-        if (planned.outcome.skippedClasses.length > 0) {
-          return `No missing imports could be verified (${planned.outcome.skippedClasses.length} component(s) skipped — see diagnostics)`;
-        }
-        return 'No missing imports found';
-      }
-
-      // Apply the edits against the exact snapshot they were computed on
-      const edit = new vscode.WorkspaceEdit();
-      const targetUri = vscode.Uri.file(ownerFilePath);
-      for (const span of planned.spans) {
-        const startPos = ownerSourceFile.getLineAndCharacterOfPosition(span.start);
-        const endPos = ownerSourceFile.getLineAndCharacterOfPosition(span.end);
-        edit.replace(
-          targetUri,
-          new vscode.Range(
-            new vscode.Position(startPos.line, startPos.character),
-            new vscode.Position(endPos.line, endPos.character),
-          ),
-          span.text,
-        );
-      }
-      const applied = await vscode.workspace.applyEdit(edit);
-      if (!applied) {
-        throw new Error('Failed to apply the edits');
-      }
-
-      if (isHtml) {
-        const ownerDoc = await vscode.workspace.openTextDocument(targetUri);
-        await vscode.window.showTextDocument(ownerDoc, { preview: true });
-      }
-
-      const suffix =
-        planned.outcome.skippedClasses.length > 0
-          ? ` (${planned.outcome.skippedClasses.length} component(s) skipped)`
-          : '';
-      const noun = planned.outcome.addedCount === 1 ? 'import' : 'imports';
-      return `Added ${planned.outcome.addedCount} missing ${noun}${suffix}`;
-    },
+    (progress, token) => getAutoImportIndex(workspaceRoot, progress, token),
   );
+
+  let ownerFilePath: string;
+  if (isHtml) {
+    const found = findOwnerTsFileForHtml(document.uri, index);
+    if (!found) {
+      throw new Error('Could not locate the component TypeScript file for this template');
+    }
+    ownerFilePath = found;
+  } else {
+    ownerFilePath = document.uri.fsPath;
+  }
+
+  const ownerSource = readCurrentText(ownerFilePath);
+  if (ownerSource === null) {
+    throw new Error(`Could not read ${path.basename(ownerFilePath)}`);
+  }
+  const ownerSourceFile = ts.createSourceFile(
+    ownerFilePath,
+    ownerSource,
+    ts.ScriptTarget.Latest,
+    true,
+  );
+  const owners = parseDecoratedOwners(ownerSourceFile);
+
+  let htmlOverride: { ownerClassName: string; text: string } | undefined;
+  if (isHtml) {
+    const owner = ownerForHtml(owners, ownerFilePath, document.uri.fsPath);
+    if (!owner) {
+      throw new Error(`No @Component found in ${path.basename(ownerFilePath)}`);
+    }
+    htmlOverride = { ownerClassName: owner.className, text: document.getText() };
+  }
+
+  // One pass resolves every existing entry: it yields both what the templates
+  // already have (coverage) and what they no longer need (cleanup).
+  const cleanup = computeCleanupPlan({
+    filePath: ownerFilePath,
+    sourceFile: ownerSourceFile,
+    owners,
+    index,
+    htmlOverride,
+    includeModules: true,
+    cleanArrays: true,
+    cleanBindings: true,
+  });
+
+  for (const [ownerClassName, names] of cleanup.unresolved) {
+    logDiagnostic(
+      `Auto-import: could not resolve what these entries of ${ownerClassName} provide: ${names.join(', ')}`,
+    );
+  }
+
+  const templates = analyzeTemplates({
+    ownerFilePath,
+    owners,
+    index,
+    coverage: cleanup.coverage,
+    htmlOverride,
+  });
+  const typescriptSuggestions = isHtml ? [] : await analyzeTypeScript(document);
+  const suggestions = [
+    ...templates.suggestions,
+    ...typescriptSuggestions,
+    ...cleanupSuggestions(cleanup),
+  ];
+
+  if (suggestions.length === 0) {
+    const skipped = [...templates.skipped, ...cleanup.skipped];
+    const suffix = skipped.length > 0 ? ` (skipped ${skipped.join(', ')})` : '';
+    return `Imports are up to date${suffix}`;
+  }
+
+  const selection = await pickImports(suggestions);
+  if (selection === null) {
+    return null;
+  }
+  if (selection.length === 0) {
+    return 'Nothing selected';
+  }
+
+  const built = buildEditsForSelection(ownerFilePath, ownerSourceFile, owners, selection);
+  for (const conflict of built.conflicts) {
+    logDiagnostic(
+      `Auto-import: skipped "${conflict}" — a different binding with that name already exists in ${ownerFilePath}`,
+    );
+  }
+  if (built.spans.length === 0) {
+    return 'Nothing to change — the selection is already applied';
+  }
+
+  const edit = new vscode.WorkspaceEdit();
+  const targetUri = vscode.Uri.file(ownerFilePath);
+  for (const span of built.spans) {
+    const startPos = ownerSourceFile.getLineAndCharacterOfPosition(span.start);
+    const endPos = ownerSourceFile.getLineAndCharacterOfPosition(span.end);
+    edit.replace(
+      targetUri,
+      new vscode.Range(
+        new vscode.Position(startPos.line, startPos.character),
+        new vscode.Position(endPos.line, endPos.character),
+      ),
+      span.text,
+    );
+  }
+  if (!(await vscode.workspace.applyEdit(edit))) {
+    throw new Error('Failed to apply the edits');
+  }
+
+  if (isHtml) {
+    const ownerDoc = await vscode.workspace.openTextDocument(targetUri);
+    await vscode.window.showTextDocument(ownerDoc, { preview: true });
+  }
+
+  return describe(built, path.basename(ownerFilePath));
 }
 
-/** Registers "Angular: Auto Import Missing Imports" (`Ctrl+Shift+A I`). */
+/** Entry point of "Angular: Auto Import Missing Imports" (`Ctrl+Shift+A I`). */
 export async function autoImportMissingImports(): Promise<void> {
-  let failure = false;
-  let summary: string;
+  let summary: string | null;
   try {
     summary = await runAutoImport();
   } catch (error) {
-    failure = true;
-    summary = error instanceof Error ? error.message : String(error);
-    logDiagnostic(`Auto-import failed: ${summary}`);
+    if (error instanceof vscode.CancellationError) {
+      return;
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    logDiagnostic(`Auto-import failed: ${message}`);
+    void vscode.window.showErrorMessage(`Angular CLI Plus: ${message}`);
+    return;
   }
 
-  const prefixed = `Angular CLI Plus: ${summary}`;
-  if (failure) {
-    void vscode.window.showErrorMessage(prefixed);
-  } else {
-    void vscode.window.showInformationMessage(prefixed);
+  if (summary !== null) {
+    void vscode.window.showInformationMessage(`Angular CLI Plus: ${summary}`);
   }
 }
