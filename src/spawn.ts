@@ -28,6 +28,7 @@ export interface SpawnManagedOptions {
 export interface SpawnManagedResult {
   stdout: string;
   exitCode: number;
+  timedOut?: boolean;
 }
 
 /** Spawns a process, capturing combined stdout+stderr text. */
@@ -44,12 +45,17 @@ export function spawnManaged(
 
     let out = '';
     let settled = false;
+    let timedOut = false;
     let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
 
     if (options.timeoutMs) {
       timeoutHandle = setTimeout(() => {
         if (!settled) {
+          timedOut = true;
           proc.kill();
+          // Normally close arrives immediately. Still settle if an inherited pipe
+          // keeps it open, so timeout callers cannot wait indefinitely.
+          timeoutHandle = setTimeout(() => finish({ stdout: out, exitCode: 124, timedOut: true }), 1000);
         }
       }, options.timeoutMs);
     }
@@ -80,7 +86,7 @@ export function spawnManaged(
       finish({ stdout: out || `Failed to start process: ${err.message}`, exitCode: 1 });
     });
     proc.on('close', (code) => {
-      finish({ stdout: out, exitCode: code ?? 1 });
+      finish({ stdout: out, exitCode: timedOut ? 124 : code ?? 1, ...(timedOut ? { timedOut: true } : {}) });
     });
   });
 }

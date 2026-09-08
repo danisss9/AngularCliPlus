@@ -53,6 +53,17 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
   - Works from the template too — when invoked on an `.html` file, the owning component is located via `templateUrl` across the workspace (or the sibling `.component.ts`) and edits are applied there, opening it afterwards
   - Conservative by design: non-standalone components, classes whose existing `imports` entries cannot be confidently resolved (e.g. unresolvable NgModule barrels), ambiguous selector matches, native HTML/SVG tags, DOM events, and control-flow keywords are skipped; every skip is logged to the **Angular CLI Plus: diagnostics** output channel
 
+## [1.9.4]
+
+### Added
+
+- **npm dependency graph.** Added **npm: Show Dependency Graph**, available with `Ctrl+Shift+A F` (`Cmd+Shift+A F` on macOS). The interactive 2D network starts with direct dependencies and supports expanding and collapsing packages, dragging nodes, pan and zoom, package search, and package details with requested ranges and dependency problems. **Fit**, **Reset**, and **Refresh** controls help navigate the graph, and each workspace folder reuses its own panel.
+- **Offline dependency inspection.** The graph includes production, development, optional, and peer dependencies, plus npm workspace packages. It reads installed packages first, falls back to the npm lockfile when `node_modules` is absent, and shows unresolved package.json declarations when a full tree is unavailable. The data source is labeled, usable results are retained when npm reports errors, and the renderer is bundled locally.
+
+### Fixed
+
+- **Dependency inspection timeouts.** Managed processes now report timeouts explicitly and settle even if a delayed process-close event would otherwise leave inspection waiting indefinitely.
+
 ## [1.9.3]
 
 ### Added

@@ -7,15 +7,7 @@ import * as vscode from 'vscode';
 import type { OptionType } from './json-config-catalogs';
 import { getExtensionContext, logDiagnostic } from './state';
 
-/** Escapes a string for safe interpolation into HTML text/attributes. */
-export function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
+export { escapeHtml } from './html-utils';
 
 /**
  * Base CSS shared by all config editors. Uses VS Code theme variables so the

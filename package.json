@@ -163,6 +163,11 @@
         "category": "Angular CLI Plus"
       },
       {
+        "command": "angular-cli-plus.showNpmDependencyGraph",
+        "title": "npm: Show Dependency Graph",
+        "category": "Angular CLI Plus"
+      },
+      {
         "command": "angular-cli-plus.setupNpmrc",
         "title": "Angular: Setup .npmrc Auth Tokens",
         "category": "Angular CLI Plus"
@@ -253,6 +258,11 @@
       {
         "command": "angular-cli-plus.showSignalGraph",
         "key": "ctrl+shift+a g"
+      },
+      {
+        "command": "angular-cli-plus.showNpmDependencyGraph",
+        "key": "ctrl+shift+a f",
+        "mac": "cmd+shift+a f"
       },
       {
         "command": "angular-cli-plus.setupNpmrc",
@@ -662,9 +672,11 @@
     "pretest": "npm run compile-tests && npm run compile && npm run lint",
     "check-types": "tsc --noEmit",
     "lint": "eslint src",
-    "test": "vscode-test"
+    "test": "vscode-test",
+    "test:graph-webview": "npm run compile-tests && npm run package && playwright test --config playwright.graph.config.cjs"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "22.x",
     "@types/semver": "^7.7.1",
@@ -677,6 +689,7 @@
     "typescript-eslint": "^8.48.1"
   },
   "dependencies": {
+    "cytoscape": "^3.34.3",
     "jsonc-parser": "^3.3.1",
     "mermaid": "^11.14.0",
     "node-html-parser": "^7.1.0",

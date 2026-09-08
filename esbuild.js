@@ -39,6 +39,25 @@ const esbuildProblemMatcherPlugin = {
 };
 
 async function main() {
+  const graphCtx = await esbuild.context({
+    entryPoints: ['src/npm-graph-webview.ts', 'src/npm-graph-webview.css'],
+    bundle: true,
+    format: 'iife',
+    platform: 'browser',
+    target: 'es2022',
+    minify: production,
+    sourcemap: !production,
+    outdir: 'dist',
+    plugins: [{
+      name: 'npm-graph-assets',
+      setup(build) {
+        build.onEnd(() => {
+          fs.mkdirSync(path.join(__dirname, 'dist'), { recursive: true });
+          fs.copyFileSync(path.join(__dirname, 'node_modules', 'cytoscape', 'LICENSE'), path.join(__dirname, 'dist', 'cytoscape-LICENSE.txt'));
+        });
+      },
+    }],
+  });
   const ctx = await esbuild.context({
     entryPoints: ['src/extension.ts'],
     bundle: true,
@@ -62,8 +81,11 @@ async function main() {
     ],
   });
   if (watch) {
+    await graphCtx.watch();
     await ctx.watch();
   } else {
+    await graphCtx.rebuild();
+    await graphCtx.dispose();
     await ctx.rebuild();
     await ctx.dispose();
   }

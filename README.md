@@ -195,6 +195,9 @@ Edits are handed to VS Code as save participants, so they land as part of the sa
 
 ## Package Management
 
+- **npm: Show Dependency Graph** (`Ctrl+Shift+A F`, or `Cmd+Shift+A F` on macOS) opens an interactive 2D network for the selected workspace. Start with direct dependencies, select a package, and use **Expand / Collapse** to explore its dependencies, or **Expand all packages** to show every nested level at once. Nodes appear in their settled positions without an animated startup. Drag nodes, pan, zoom, search by package name or version, and inspect requested ranges and dependency problems. **Fit** frames the visible network; **Reset** returns to direct dependencies; **Refresh** reads the project again.
+  The source is labeled **Installed**, **Lockfile** (when `node_modules` is absent), or **Declared only** (when neither is available or npm cannot return a tree). Declared-only graphs show unresolved versions. Production, development, optional, and peer dependencies are included, along with npm workspace packages. The renderer is bundled for offline use; inspection does not install packages or query the registry.
+
 - **Dependency check** — on startup and on every git branch change, the extension verifies that `node_modules` is present and that installed versions satisfy the `package.json` ranges, prompting to run `npm install` when problems are found. Disable with `angularCliPlus.checkDependencies.enabled`.
 - **Tool version check** — on startup, the `engines` field in `package.json` is verified against the installed Node.js, npm, yarn, and pnpm versions, with update offers and download links when a mismatch is found. Disable with `angularCliPlus.checkToolVersions.enabled`.
 - **Angular: Update Packages** — see [CLI Commands](#cli-commands).
@@ -314,6 +317,7 @@ All shortcuts use the `Ctrl+Shift+A` chord (use `Cmd+Shift+A` on macOS):
 | `Ctrl+Shift+A N`   | Angular: Run npm Script           |
 | `Ctrl+Shift+A K`   | Angular: Check Memory Leaks       |
 | `Ctrl+Shift+A G`   | Angular: Show Signal Graph        |
+| `Ctrl+Shift+A F`   | npm: Show Dependency Graph        |
 | `Ctrl+Shift+A A`   | Angular: Setup .npmrc Auth Tokens |
 | `Ctrl+Shift+A O`   | Angular: Check Optimizations      |
 | `Ctrl+Shift+A E`   | Angular: Check Build Errors       |
@@ -418,6 +422,8 @@ npm run watch      # compile + typecheck + lint in watch mode
 npm run test       # run the extension test suite
 npm run package    # production build
 ```
+
+The npm graph has browser interaction tests: run `npx playwright install chromium` once, then `npm run test:graph-webview`. The suite exercises offline rendering, expansion and collapse, search, dragging, refresh, themes, and a 5,000-package fixture.
 
 ## License
 

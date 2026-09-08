@@ -12,3 +12,6 @@ vsc-extension-quickstart.md
 **/*.map
 **/*.ts
 **/.vscode-test.*
+tests/**
+playwright.graph.config.cjs
+.graph-test-results/**
