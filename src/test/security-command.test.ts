@@ -53,7 +53,9 @@ suite('Security review extension integration', () => {
     }
   });
   test('file navigation requires a report-owned ID/index and rejects paths or links outside the workspace', async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'acp-security-navigation-'));
+    // Match validRoot(): containment checks use canonical paths, but TEMP may be a short path or junction.
+    const temporaryRoot = await fs.realpath(os.tmpdir());
+    const root = await fs.mkdtemp(path.join(temporaryRoot, 'acp-security-navigation-'));
     try {
       await fs.writeFile(path.join(root, 'install.js'), 'inert');
       await fs.symlink(os.tmpdir(), path.join(root, 'external'), 'junction');
@@ -64,7 +66,7 @@ suite('Security review extension integration', () => {
       assert.equal(await resolveEvidenceFile(root, report, 'approved', 1), undefined);
       await assert.rejects(resolveEvidenceFile(root, report, 'approved', 2), /outside workspace/);
     } finally {
-      assert.ok(contained(os.tmpdir(), root) && path.basename(root).startsWith('acp-security-navigation-')); await fs.rm(root, { recursive: true, force: true });
+      assert.ok(contained(temporaryRoot, root) && path.basename(root).startsWith('acp-security-navigation-')); await fs.rm(root, { recursive: true, force: true });
     }
   });
 });
