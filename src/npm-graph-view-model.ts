@@ -55,4 +55,10 @@ export class DependencyGraphIndex {
     }
     return result.reverse();
   }
+
+  missingPeerIds(): Set<string> {
+    if (this.graph.source === 'Declared only') { return new Set(); }
+    return new Set(this.graph.edges.filter(edge => edge.kinds.includes('peer') && !edge.optionalPeer
+      && this.nodes.get(edge.target)?.status.includes('missing')).map(edge => edge.target));
+  }
 }

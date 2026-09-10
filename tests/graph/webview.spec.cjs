@@ -250,3 +250,69 @@ test('loads 5000 packages, reveals a deep result, and follows theme changes', as
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   expect(errors).toEqual([]);
 });
+
+test('finds nested missing peers, reveals their dependents, and clears resolved results on refresh', async ({ page }) => {
+  const graph = normalizeDependencyGraph({ dependencies: {
+    alpha: pkg('alpha', { plugin: { ...pkg('plugin', {
+      required: { missing: true }, optional: {}, ordinary: { missing: true },
+      incompatible: { ...pkg('incompatible'), invalid: '^2' },
+    }), peerDependencies: { required: '^3', optional: '^1', incompatible: '^2' },
+    peerDependenciesMeta: { optional: { optional: true } } } }),
+  } }, { name: 'app', dependencies: { alpha: '^1' } }, root, 'Installed');
+  const errors = await mount(page, graph);
+  await page.locator('#search').fill('unrelated');
+  await page.getByRole('button', { name: 'Find missing peer dependencies' }).click();
+  await expect(page.locator('#missing-peers')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#search')).toHaveValue('');
+  await expect(page.locator('#search-count')).toHaveText('1 missing peer dependency');
+  await expect(page.locator('#results button')).toHaveCount(1);
+  await expect(page.locator('#results button')).toHaveText('required (unresolved)');
+  await page.locator('#search').press('ArrowDown');
+  await page.keyboard.press('Enter');
+  expect(await visibleNames(page)).toContain('required');
+  await expect(page.locator('#details')).toContainText('plugin: required ^3 (peer)');
+  await expect(page.locator('#details')).toContainText('Status: missing');
+  await page.locator('#search').fill('absent');
+  await expect(page.locator('#search-count')).toHaveText('0 matching missing peer dependencies');
+  await page.locator('#reset').click();
+  await expect(page.locator('#missing-peers')).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('#peer-notice')).toBeHidden();
+  await page.locator('#missing-peers').click();
+  await page.locator('#refresh').click();
+  await expect(page.locator('#missing-peers')).toBeDisabled();
+  await page.evaluate(graph => window.dispatchEvent(new MessageEvent('message', { data: { type: 'graph', graph } })), fixture());
+  await expect(page.locator('#missing-peers')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#search-count')).toHaveText('0 missing peer dependencies');
+  await page.locator('#missing-peers').click();
+  await expect(page.locator('#results button')).toHaveCount(3);
+  expect(errors).toEqual([]);
+});
+
+test('describes peer-check coverage for lockfile and declaration-only graphs', async ({ page }) => {
+  const graph = normalizeDependencyGraph({}, { name: 'app', peerDependencies: { required: '^3', optional: '^1' },
+    peerDependenciesMeta: { optional: { optional: true } } }, root, 'Lockfile');
+  await mount(page, graph);
+  await page.locator('#missing-peers').click();
+  await expect(page.locator('#peer-notice')).toContainText('installed packages have not been checked');
+  await expect(page.locator('#results button')).toHaveCount(1);
+  graph.source = 'Declared only';
+  await page.evaluate(graph => window.dispatchEvent(new MessageEvent('message', { data: { type: 'graph', graph } })), graph);
+  await expect(page.locator('#peer-notice')).toContainText('cannot be checked');
+  await expect(page.locator('#search-count')).toHaveText('Peer check unavailable');
+});
+
+test('opens security review with duplicate-click protection and re-enables the action after completion', async ({ page }) => {
+  const errors = await mount(page);
+  await page.getByRole('button', { name: 'Security scan', exact: true }).click();
+  await expect(page.locator('#security-scan')).toBeDisabled();
+  await expect(page.locator('#security-scan')).toHaveText('Opening security review…');
+  expect(await page.evaluate(() => window.__commands.filter(message => message.command === 'securityScan'))).toEqual([{ command: 'securityScan' }]);
+  await page.evaluate(() => window.dispatchEvent(new MessageEvent('message', { data: { type: 'securityScanFinished' } })));
+  await expect(page.locator('#security-scan')).toBeEnabled();
+  await expect(page.locator('#security-scan')).toHaveText('Security scan');
+  await page.setViewportSize({ width: 600, height: 400 });
+  await expect(page.locator('#security-scan')).toBeVisible();
+  await expect(page.locator('#missing-peers')).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  expect(errors).toEqual([]);
+});

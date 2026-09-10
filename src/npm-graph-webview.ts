@@ -16,6 +16,8 @@ let expanded = new Set<string>();
 let cy: cytoscape.Core | undefined;
 let searchTimer: ReturnType<typeof setTimeout> | undefined;
 let busy = false;
+let missingPeersOnly = false;
+let openingSecurity = false;
 
 function color(variable: string, fallback: string): string {
   return getComputedStyle(document.body).getPropertyValue(variable).trim() || fallback;
@@ -183,12 +185,25 @@ function showDetails() {
 function searchPackages() {
   if (!index) { return; }
   const query = search.value.trim().toLowerCase();
-  const matches = index.graph.nodes.filter(node => node.id !== index!.graph.root && (
-    query ? `${node.name} ${node.version ?? ''} ${(index!.incoming.get(node.id) ?? []).map(edge => edge.name).join(' ')}`.toLowerCase().includes(query)
-      : (index!.outgoing.get(index!.graph.root) ?? []).some(edge => edge.target === node.id)
-  ));
+  const missingPeers = missingPeersOnly ? index.missingPeerIds() : undefined;
+  const matches = index.graph.nodes.filter(node => {
+    if (node.id === index!.graph.root || missingPeers && !missingPeers.has(node.id)) { return false; }
+    if (query) {
+      return `${node.name} ${node.version ?? ''} ${(index!.incoming.get(node.id) ?? []).map(edge => edge.name).join(' ')}`.toLowerCase().includes(query);
+    }
+    return missingPeersOnly || (index!.outgoing.get(index!.graph.root) ?? []).some(edge => edge.target === node.id);
+  });
+  element('missing-peers').setAttribute('aria-pressed', String(missingPeersOnly));
+  const notice = element('peer-notice');
+  notice.hidden = !missingPeersOnly;
+  notice.textContent = index.graph.source === 'Declared only'
+    ? 'Missing peers cannot be checked from declarations alone. Install dependencies, then Refresh.'
+    : index.graph.source === 'Lockfile'
+      ? 'Showing missing required peers reported in the lockfile; installed packages have not been checked. Optional peers are excluded.'
+      : 'Showing missing required peers in the current graph, including nested packages. Optional peers are excluded. Use Refresh to check again.';
   results.replaceChildren();
-  element('search-count').textContent = `${matches.length} ${query ? 'matching' : 'direct'} packages${matches.length > 100 ? ' · showing first 100; refine your search' : ''}`;
+  element('search-count').textContent = missingPeersOnly && index.graph.source === 'Declared only' ? 'Peer check unavailable'
+    : `${matches.length} ${missingPeersOnly ? `${query ? 'matching ' : ''}missing peer ${matches.length === 1 ? 'dependency' : 'dependencies'}` : `${query ? 'matching' : 'direct'} packages`}${matches.length > 100 ? ' · showing first 100; refine your search' : ''}`;
   for (const node of matches.slice(0, 100)) {
     const button = document.createElement('button');
     button.className = 'result';
@@ -209,6 +224,7 @@ function setBusy(value: boolean) {
   element<HTMLButtonElement>('refresh').disabled = value;
   element<HTMLButtonElement>('fit').disabled = value || !cy;
   element<HTMLButtonElement>('reset').disabled = value || !cy;
+  element<HTMLButtonElement>('missing-peers').disabled = value || !index;
   updateExpandAll();
   search.disabled = value || !index;
   if (value) { summary.textContent = 'Loading dependencies…'; }
@@ -216,6 +232,11 @@ function setBusy(value: boolean) {
 
 window.addEventListener('message', (event: MessageEvent) => {
   const message = event.data;
+  if (message?.type === 'securityScanFinished') {
+    openingSecurity = false;
+    element<HTMLButtonElement>('security-scan').disabled = false;
+    element('security-scan').textContent = 'Security scan';
+  }
   if (message?.type === 'loading') { setBusy(true); }
   if (message?.type === 'error') {
     setBusy(false);
@@ -255,6 +276,20 @@ search.addEventListener('keydown', event => {
   if (event.key === 'Enter') { results.querySelector('button')?.click(); }
 });
 element('fit').addEventListener('click', () => cy?.fit(undefined, 55));
+element('missing-peers').addEventListener('click', () => {
+  if (!index || busy) { return; }
+  missingPeersOnly = !missingPeersOnly;
+  search.value = '';
+  searchPackages();
+  search.focus();
+});
+element('security-scan').addEventListener('click', () => {
+  if (openingSecurity) { return; }
+  openingSecurity = true;
+  element<HTMLButtonElement>('security-scan').disabled = true;
+  element('security-scan').textContent = 'Opening security review…';
+  vscode.postMessage({ command: 'securityScan' });
+});
 element('expand-all').addEventListener('click', () => {
   if (!index || busy) { return; }
   expanded = new Set([index.graph.root, ...index.outgoing.keys()]);
@@ -264,6 +299,7 @@ element('reset').addEventListener('click', () => {
   if (!index) { return; }
   expanded = new Set([index.graph.root]);
   selected = index.graph.root;
+  missingPeersOnly = false;
   search.value = '';
   renderGraph(true, true);
   searchPackages();

@@ -11,6 +11,7 @@ button, input { font: inherit; border-radius: 3px; padding: 7px 10px; }
 button { cursor: pointer; color: var(--vscode-button-secondaryForeground, #fff); background: var(--vscode-button-secondaryBackground, #3a3d41); border: 1px solid var(--vscode-button-border, transparent); }
 button:hover { background: var(--vscode-button-secondaryHoverBackground, #45494e); }
 button:disabled { opacity: .5; cursor: default; }
+button[aria-pressed="true"] { color: var(--vscode-button-foreground, #fff); background: var(--vscode-button-background, #0e639c); }
 :focus-visible { outline: 2px solid var(--vscode-focusBorder, #007fd4); outline-offset: 2px; }
 main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 300px; }
 .network { position: relative; min-height: 220px; overflow: hidden; }
@@ -27,6 +28,7 @@ aside { padding: 16px; overflow: auto; border-left: 1px solid var(--vscode-panel
 label { display: block; font-weight: 600; margin-bottom: 8px; }
 input { width: 100%; color: var(--vscode-input-foreground, #ccc); background: var(--vscode-input-background, #3c3c3c); border: 1px solid var(--vscode-input-border, #555); }
 #search-count { color: var(--vscode-descriptionForeground, #999); font-size: 11px; }
+#peer-notice { font-size: 12px; }
 #results { display: flex; flex-direction: column; gap: 4px; max-height: 190px; overflow: auto; padding: 3px; }
 .result { text-align: left; overflow-wrap: anywhere; flex-shrink: 0; }
 #details { margin-top: 18px; padding-top: 4px; border-top: 1px solid var(--vscode-panel-border, #444); }

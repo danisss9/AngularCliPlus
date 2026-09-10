@@ -4,6 +4,25 @@ All notable changes to the "angular-cli-plus" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.12.0]
+
+### Added
+
+- **Security scan shortcut.** Added `Ctrl+Shift+A V` (`Cmd+Shift+A V` on macOS) to run **npm: Review Package Security** in trusted workspaces.
+- **Dependency graph checks.** Added **Find missing peer dependencies** with nested-package navigation, optional-peer exclusion, and source coverage notes, plus a **Security scan** button that opens the existing package security review for the graph's workspace.
+- **Package security review.** Added **npm: Review Package Security** and automatic reviews after extension-managed installations. Reviews combine a source-verified malicious-package catalog, optional live npm audit advisories, and local YARA-X installation-script analysis. The webview separates known threats, vulnerabilities, and heuristic indicators, with evidence, reference chains, coverage status, filters, cancellation, file navigation, and standalone HTML export.
+- **Managed YARA-X.** Downloads and verifies pinned YARA-X 1.20.0 binaries, scans bounded snapshots without executing package code, and retains partial results when checks are unavailable. Added rule/engine, browser, install-retry, and process-management tests, with desktop engine smoke jobs in release CI.
+- **npm dependency graph.** Added **npm: Show Dependency Graph**, available with `Ctrl+Shift+A F` (`Cmd+Shift+A F` on macOS). The interactive 2D network starts with direct dependencies and supports expanding and collapsing packages, dragging nodes, pan and zoom, package search, and package details with requested ranges and dependency problems. **Expand all packages** reveals every nested dependency level, while **Fit**, **Reset**, and **Refresh** help navigate the graph, and each workspace folder reuses its own panel.
+- **Offline dependency inspection.** The graph includes production, development, optional, and peer dependencies, plus npm workspace packages. It reads installed packages first, falls back to the npm lockfile when `node_modules` is absent, and shows unresolved package.json declarations when a full tree is unavailable. The data source is labeled, usable results are retained when npm reports errors, and the renderer is bundled locally.
+
+### Changed
+
+- **Stable, responsive graph navigation.** Graphs appear in their settled positions without animated layout movement, and expanding a branch preserves existing package positions. Large networks use a grid layout, recursive expansion handles dependency cycles, and mouse-wheel zoom responds faster.
+
+### Fixed
+
+- **Dependency inspection timeouts.** Managed processes now report timeouts explicitly and settle even if a delayed process-close event would otherwise leave inspection waiting indefinitely.
+
 ## [1.11.0]
 
 ### Changed
@@ -52,20 +71,6 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
   - Symbols are resolved against a workspace index of exported `@Component`/`@Directive`/`@Pipe` classes (following relative imports and barrel re-export chains) and a built-in map of common Angular exports (`NgIf`, `NgFor`, `CommonModule`, `FormsModule`, `RouterLink`, `RouterOutlet`, `AsyncPipe`, `DatePipe`, …)
   - Works from the template too — when invoked on an `.html` file, the owning component is located via `templateUrl` across the workspace (or the sibling `.component.ts`) and edits are applied there, opening it afterwards
   - Conservative by design: non-standalone components, classes whose existing `imports` entries cannot be confidently resolved (e.g. unresolvable NgModule barrels), ambiguous selector matches, native HTML/SVG tags, DOM events, and control-flow keywords are skipped; every skip is logged to the **Angular CLI Plus: diagnostics** output channel
-
-## [1.9.4]
-
-### Added
-
-- **Package security review.** Added **npm: Review Package Security** and automatic reviews after extension-managed installations. Reviews combine a source-verified malicious-package catalog, optional live npm audit advisories, and local YARA-X installation-script analysis. The webview separates known threats, vulnerabilities, and heuristic indicators, with evidence, reference chains, coverage status, filters, cancellation, file navigation, and standalone HTML export.
-- **Managed YARA-X.** Downloads and verifies pinned YARA-X 1.20.0 binaries, scans bounded snapshots without executing package code, and retains partial results when checks are unavailable. Added rule/engine, browser, install-retry, and process-management tests, with desktop engine smoke jobs in release CI.
-
-- **npm dependency graph.** Added **npm: Show Dependency Graph**, available with `Ctrl+Shift+A F` (`Cmd+Shift+A F` on macOS). The interactive 2D network starts with direct dependencies and supports expanding and collapsing packages, dragging nodes, pan and zoom, package search, and package details with requested ranges and dependency problems. **Fit**, **Reset**, and **Refresh** controls help navigate the graph, and each workspace folder reuses its own panel.
-- **Offline dependency inspection.** The graph includes production, development, optional, and peer dependencies, plus npm workspace packages. It reads installed packages first, falls back to the npm lockfile when `node_modules` is absent, and shows unresolved package.json declarations when a full tree is unavailable. The data source is labeled, usable results are retained when npm reports errors, and the renderer is bundled locally.
-
-### Fixed
-
-- **Dependency inspection timeouts.** Managed processes now report timeouts explicitly and settle even if a delayed process-close event would otherwise leave inspection waiting indefinitely.
 
 ## [1.9.3]
 

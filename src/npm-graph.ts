@@ -17,6 +17,7 @@ export interface DependencyEdge {
   name: string;
   requested?: string;
   kinds: DependencyKind[];
+  optionalPeer?: boolean;
 }
 export interface DependencyGraph {
   source: GraphSource;
@@ -86,7 +87,9 @@ export function normalizeDependencyGraph(
         if (typeof problem === 'string') { messages.add(problem); }
       }
     }
-    const declared = declarations(isRoot ? manifest : raw);
+    const packageInfo = isRoot ? manifest : raw;
+    const declared = declarations(packageInfo);
+    const peerMeta = asObject(packageInfo.peerDependenciesMeta);
     if (!isRoot) {
       for (const [name, requested] of Object.entries(asObject(raw._dependencies))) {
         if (typeof requested === 'string' && !declared.has(name)) {
@@ -99,7 +102,7 @@ export function normalizeDependencyGraph(
     if (isRoot) {
       for (const name of declared.keys()) {
         if (!children.has(name)) {
-          children.set(name, source === 'Declared only' ? {} : { missing: true });
+          children.set(name, source === 'Declared only' || asObject(peerMeta[name]).optional === true ? {} : { missing: true });
         }
       }
     }
@@ -128,6 +131,7 @@ export function normalizeDependencyGraph(
         id: edgeId, source: id, target: childId, name,
         requested: declaration?.requested ?? previous?.requested,
         kinds: [...new Set([...(previous?.kinds ?? []), ...kinds])],
+        optionalPeer: asObject(peerMeta[name]).optional === true,
       });
       queue.push({ raw: child, id: childId });
     }

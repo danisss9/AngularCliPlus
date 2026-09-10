@@ -14,7 +14,10 @@ Angular CLI Plus brings the full power of the Angular CLI into your editor: gene
 - [AI-Powered Auto-Fix](#ai-powered-auto-fix)
 - [JSON Config Manager](#json-config-manager)
 - [Angular Migrations](#angular-migrations)
+- [Auto Import Missing Imports](#auto-import-missing-imports)
+- [Auto-Clean Unused Imports](#auto-clean-unused-imports)
 - [Package Management](#package-management)
+- [Package Security Review](#package-security-review)
 - [Productivity Tools](#productivity-tools)
 - [Code Snippets](#code-snippets)
 - [Keyboard Shortcuts](#keyboard-shortcuts)
@@ -169,7 +172,7 @@ Configure via `angularCliPlus.ai.provider` and `angularCliPlus.ai.autoFixEnabled
 **Where candidates come from**
 
 - A **workspace index** of every exported `@Component`/`@Directive`/`@Pipe`/`@NgModule`, resolved through relative imports, barrels and tsconfig `paths` aliases.
-- The **Angular packages in `node_modules`** — selectors, pipe names, standalone flags and NgModule export lists are read from the metadata the Angular compiler embeds in `.d.ts` files, so `<mat-icon>` offers `MatIcon` *and* `MatIconModule` from `@angular/material/icon`, and a directive that is not standalone is only ever offered through the module that exports it.
+- The **Angular packages in `node_modules`** — selectors, pipe names, standalone flags and NgModule export lists are read from the metadata the Angular compiler embeds in `.d.ts` files, so `<mat-icon>` offers `MatIcon` _and_ `MatIconModule` from `@angular/material/icon`, and a directive that is not standalone is only ever offered through the module that exports it.
 - A built-in fallback map of common Angular exports (`NgIf`, `CommonModule`, `FormsModule`, `RouterLink`, `AsyncPipe`, …) for when `node_modules` cannot be read.
 
 Options are ordered by how well they fit: a symbol whose whole selector is the token beats one that merely mentions it (so `[(ngModel)]` suggests `FormsModule`, not an unrelated component that also reacts to `ngModel`), workspace symbols come before library ones, and plain declarations before the NgModules that export them.
@@ -195,13 +198,43 @@ Edits are handed to VS Code as save participants, so they land as part of the sa
 
 ## Package Management
 
-- **npm: Show Dependency Graph** (`Ctrl+Shift+A F`, or `Cmd+Shift+A F` on macOS) opens an interactive 2D network for the selected workspace. Start with direct dependencies, select a package, and use **Expand / Collapse** to explore its dependencies, or **Expand all packages** to show every nested level at once. Nodes appear in their settled positions without an animated startup. Drag nodes, pan, zoom, search by package name or version, and inspect requested ranges and dependency problems. **Fit** frames the visible network; **Reset** returns to direct dependencies; **Refresh** reads the project again.
+- **npm: Show Dependency Graph** (`Ctrl+Shift+A F`, or `Cmd+Shift+A F` on macOS) opens an interactive 2D network for the selected workspace. Start with direct dependencies, select a package, and use **Expand / Collapse** to explore its dependencies, or **Expand all packages** to show every nested level at once. Nodes appear in their settled positions without an animated startup. Existing package positions stay fixed when expanding a branch, large networks use a grid layout, and mouse-wheel zoom responds quickly. Drag nodes, pan, zoom, search by package name or version, and inspect requested ranges and dependency problems. **Fit** frames the visible network; **Reset** returns to direct dependencies; **Refresh** reads the project again.
   The source is labeled **Installed**, **Lockfile** (when `node_modules` is absent), or **Declared only** (when neither is available or npm cannot return a tree). Declared-only graphs show unresolved versions. Production, development, optional, and peer dependencies are included, along with npm workspace packages. The renderer is bundled for offline use; inspection does not install packages or query the registry.
+
+- **npm: Review Package Security** ? review installed packages on demand or automatically after extension-managed installs. See [Package Security Review](#package-security-review) for setup, report controls, and coverage.
 
 - **Dependency check** — on startup and on every git branch change, the extension verifies that `node_modules` is present and that installed versions satisfy the `package.json` ranges, prompting to run `npm install` when problems are found. Disable with `angularCliPlus.checkDependencies.enabled`.
 - **Tool version check** — on startup, the `engines` field in `package.json` is verified against the installed Node.js, npm, yarn, and pnpm versions, with update offers and download links when a mismatch is found. Disable with `angularCliPlus.checkToolVersions.enabled`.
 - **Angular: Update Packages** — see [CLI Commands](#cli-commands).
 - **Angular: Setup .npmrc Auth Tokens** (`Ctrl+Shift+A A`) — extracts registry URLs from your workspace `.npmrc`, prompts for Personal Access Tokens for missing registries, and securely configures your global `~/.npmrc`.
+
+- In the dependency graph, **Find missing peer dependencies** filters the package explorer to required missing peers, including nested packages. Select a result to reveal it and inspect which packages require it. Optional peers are excluded; lockfile and declaration-only views explain their coverage. **Reset** clears the filter and **Refresh** updates the results.
+- **Security scan** in the graph toolbar opens a package security review for that graph's workspace without another workspace picker.
+
+## Package Security Review
+
+Run **Angular CLI Plus: npm: Review Package Security** with `Ctrl+Shift+A V` (`Cmd+Shift+A V` on macOS), from the Command Palette, or using the **Angular CLI +** status-bar action. Select a workspace when multiple folders are open. The review also runs after installations started through the extension, including custom npm/Yarn/pnpm commands and failed installations that leave packages behind. Automatic reviews open the report when findings exist or coverage is incomplete; a completed review without findings offers **View Report** in a notification.
+
+The report combines three separate checks:
+
+- **Known malicious packages:** actual installed names and versions checked against a curated, dated catalog derived from easy-dep-graph and verified against linked advisories. It includes nested, scoped, aliased, development, optional, and extraneous installations. The initial catalog contains 11 package entries; it is not a comprehensive malware feed.
+- **Vulnerabilities:** `npm audit --json --ignore-scripts`, including development, optional, and peer dependencies. This sends dependency metadata to the configured npm registry and requires an npm lockfile. Yarn/pnpm projects without an npm lockfile still receive local checks; the unavailable audit is reported explicitly.
+- **Suspicious script patterns:** local YARA-X scanning of installation hooks, their resolvable local scripts/imports/executable mappings, and bounded encoded payloads. Rules cover entropy, decoding or decryption with dynamic evaluation, suspicious shell execution, download-and-execute commands, credential collection with network activity, and persistence indicators. Common installer capabilities alone receive low-confidence findings.
+
+Use package search and category/severity filters to explore findings, expand evidence to see the lifecycle/reference chain, and use **Open File** to inspect the source. **Rescan**, **Cancel**, and **Save HTML** are available in the report. Exported HTML includes its styles and filtering code and works offline without VS Code.
+
+**Setup:** on first use with script inputs, the extension downloads the official YARA-X **1.20.0** engine, verifies its pinned SHA-256 digest, and caches it in extension storage. Supported managed binaries are Windows x64 and macOS/Linux x64 and arm64 (Linux requires a compatible glibc environment). Remote workspaces use the extension host's platform. A failed download, unsupported platform, or scanner failure leaves an incomplete report with the other checks retained. Cached engines work offline; live npm audit needs network access. Rules and catalog updates ship with extension updates. Third-party notices are included in `resources/security/THIRD_PARTY_NOTICES.txt`.
+
+| Setting                                              | Default | Purpose                                                                                      |
+| ---------------------------------------------------- | ------- | -------------------------------------------------------------------------------------------- |
+| `angularCliPlus.securityReview.afterInstall.enabled` | `true`  | Review after extension-managed installations. Manual terminal installations are not watched. |
+| `angularCliPlus.securityReview.npmAudit.enabled`     | `true`  | Enable registry advisory requests; disable for local checks only.                            |
+
+**Coverage:** reviews require a trusted filesystem workspace and inspect files present after installation. Lifecycle scripts may already have run, removed themselves, or downloaded other payloads. The scanner never executes package code, and it does not monitor processes or prevent installation. It focuses on installation references rather than all package files. Dynamic references, unsupported languages/native builds, external workspace links, missing files, and Yarn PnP layouts are reported as coverage gaps. Preparation hooks are inspected conservatively even when a particular package manager would not invoke them for that package.
+
+Limits are two scanner threads, 120 seconds for YARA-X, 60 seconds for audit, 5 MiB per file, 250 MiB total input, 20,000 inputs/packages, and 32 reference levels. Literal Base64/hex decoding is limited to two layers and 1 MiB per decoded payload. Reaching limits produces an incomplete report. Findings describe indicators and advisory matches; **“No findings detected within the scanned scope”** does not certify a package or machine as safe. There are no automatic removals or fixes.
+
+Security validation commands: `npm run test:security-unit`, `npm run test:security-engine`, and `npm run test:security-webview`. The engine suite downloads the pinned binary and uses inert fixtures plus the installed esbuild installer, without executing scanned scripts. Browser tests require Playwright Chromium (`npx playwright install chromium`).
 
 ## Productivity Tools
 
@@ -300,29 +333,30 @@ The extension bundles 65 snippets for Angular development — 33 for TypeScript 
 
 All shortcuts use the `Ctrl+Shift+A` chord (use `Cmd+Shift+A` on macOS):
 
-| Shortcut           | Command                           |
-| ------------------ | --------------------------------- |
-| `Ctrl+Shift+A D`   | Angular: Debug Application        |
-| `Ctrl+Shift+A P`   | Angular: Debug Storybook          |
-| `Ctrl+Shift+A H`   | Angular: Debug Build (Watch)      |
-| `Ctrl+Shift+A S`   | Angular: Serve Application        |
-| `Ctrl+Shift+A B`   | Angular: Build Project            |
-| `Ctrl+Shift+A R`   | Angular: Restart Serve            |
-| `Ctrl+Shift+A W`   | Angular: Build Project (Watch)    |
-| `Ctrl+Shift+A T`   | Angular: Test Project             |
-| `Ctrl+Shift+A L`   | Angular: Lint Project             |
-| `Ctrl+Shift+A U`   | Angular: Update Packages          |
-| `Ctrl+Shift+A C`   | Close Terminals                   |
-| `Ctrl+Shift+A Tab` | Angular: Switch Component File    |
-| `Ctrl+Shift+A N`   | Angular: Run npm Script           |
-| `Ctrl+Shift+A K`   | Angular: Check Memory Leaks       |
-| `Ctrl+Shift+A G`   | Angular: Show Signal Graph        |
-| `Ctrl+Shift+A F`   | npm: Show Dependency Graph        |
-| `Ctrl+Shift+A A`   | Angular: Setup .npmrc Auth Tokens |
-| `Ctrl+Shift+A O`   | Angular: Check Optimizations      |
-| `Ctrl+Shift+A E`   | Angular: Check Build Errors       |
-| `Ctrl+Shift+A J`   | Angular: Manage JSON Configs      |
-| `Ctrl+Shift+A M`   | Angular: Run Migrations           |
+| Shortcut           | Command                              |
+| ------------------ | ------------------------------------ |
+| `Ctrl+Shift+A D`   | Angular: Debug Application           |
+| `Ctrl+Shift+A P`   | Angular: Debug Storybook             |
+| `Ctrl+Shift+A H`   | Angular: Debug Build (Watch)         |
+| `Ctrl+Shift+A S`   | Angular: Serve Application           |
+| `Ctrl+Shift+A B`   | Angular: Build Project               |
+| `Ctrl+Shift+A R`   | Angular: Restart Serve               |
+| `Ctrl+Shift+A W`   | Angular: Build Project (Watch)       |
+| `Ctrl+Shift+A T`   | Angular: Test Project                |
+| `Ctrl+Shift+A L`   | Angular: Lint Project                |
+| `Ctrl+Shift+A U`   | Angular: Update Packages             |
+| `Ctrl+Shift+A C`   | Close Terminals                      |
+| `Ctrl+Shift+A Tab` | Angular: Switch Component File       |
+| `Ctrl+Shift+A N`   | Angular: Run npm Script              |
+| `Ctrl+Shift+A K`   | Angular: Check Memory Leaks          |
+| `Ctrl+Shift+A G`   | Angular: Show Signal Graph           |
+| `Ctrl+Shift+A F`   | npm: Show Dependency Graph           |
+| `Ctrl+Shift+A V`   | npm: Review Package Security         |
+| `Ctrl+Shift+A A`   | Angular: Setup .npmrc Auth Tokens    |
+| `Ctrl+Shift+A O`   | Angular: Check Optimizations         |
+| `Ctrl+Shift+A E`   | Angular: Check Build Errors          |
+| `Ctrl+Shift+A J`   | Angular: Manage JSON Configs         |
+| `Ctrl+Shift+A M`   | Angular: Run Migrations              |
 | `Ctrl+Shift+A I`   | Angular: Auto Import Missing Imports |
 
 ## Extension Settings
@@ -397,12 +431,12 @@ All shortcuts use the `Ctrl+Shift+A` chord (use `Cmd+Shift+A` on macOS):
 
 ### On-save
 
-| Setting                                  | Default | Description                                                                                                              |
-| ---------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `angularCliPlus.autoCleanImports.enabled` | `false` | Remove unused imports when saving a `.ts` file; the three settings below choose what gets removed |
-| `angularCliPlus.autoCleanImports.unusedTypeScriptImports` | `true` | On save, remove `import` statements and named bindings nothing in the file references |
-| `angularCliPlus.autoCleanImports.unusedStandaloneImports` | `true` | On save, remove `imports: [...]` entries whose selector or pipe name the template does not use |
-| `angularCliPlus.autoCleanImports.removeUnusedModules` | `false` | On save, also remove unused NgModule entries — off by default, since a module may be there for the services it provides |
+| Setting                                                   | Default | Description                                                                                                             |
+| --------------------------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `angularCliPlus.autoCleanImports.enabled`                 | `false` | Remove unused imports when saving a `.ts` file; the three settings below choose what gets removed                       |
+| `angularCliPlus.autoCleanImports.unusedTypeScriptImports` | `true`  | On save, remove `import` statements and named bindings nothing in the file references                                   |
+| `angularCliPlus.autoCleanImports.unusedStandaloneImports` | `true`  | On save, remove `imports: [...]` entries whose selector or pipe name the template does not use                          |
+| `angularCliPlus.autoCleanImports.removeUnusedModules`     | `false` | On save, also remove unused NgModule entries — off by default, since a module may be there for the services it provides |
 
 Entries are only removed when the identifier is unused elsewhere in the file and its resolved `selector`/pipe name does not appear in any of the file's templates (inline or `templateUrl`). Anything that cannot be confidently resolved — non-relative specifiers like `@angular/common`, NgModule barrels, exotic selectors, spread elements — is always kept.
 
@@ -411,31 +445,6 @@ Entries are only removed when the identifier is unused elsewhere in the file and
 - [GitHub Copilot](https://marketplace.visualstudio.com/items?itemName=GitHub.copilot) — for AI-powered auto-fix
 - [Claude Code](https://marketplace.visualstudio.com/items?itemName=anthropic.claude-code) — alternative AI provider for auto-fix
 - [Angular Language Service](https://marketplace.visualstudio.com/items?itemName=angular.ng-template) — enhanced Angular template editing
-
-## Package security review
-
-Run **Angular CLI Plus: npm: Review Package Security** from the Command Palette (or search for it using the **Angular CLI +** status-bar action). Select a workspace when multiple folders are open. The review also runs after installations started through the extension, including custom npm/Yarn/pnpm commands and failed installations that leave packages behind. Automatic reviews open the report when findings exist or coverage is incomplete; a completed review without findings offers **View Report** in a notification.
-
-The report combines three separate checks:
-
-- **Known malicious packages:** actual installed names and versions checked against a curated, dated catalog derived from easy-dep-graph and verified against linked advisories. It includes nested, scoped, aliased, development, optional, and extraneous installations. The initial catalog contains 11 package entries; it is not a comprehensive malware feed.
-- **Vulnerabilities:** `npm audit --json --ignore-scripts`, including development, optional, and peer dependencies. This sends dependency metadata to the configured npm registry and requires an npm lockfile. Yarn/pnpm projects without an npm lockfile still receive local checks; the unavailable audit is reported explicitly.
-- **Suspicious script patterns:** local YARA-X scanning of installation hooks, their resolvable local scripts/imports/executable mappings, and bounded encoded payloads. Rules cover entropy, decoding or decryption with dynamic evaluation, suspicious shell execution, download-and-execute commands, credential collection with network activity, and persistence indicators. Common installer capabilities alone receive low-confidence findings.
-
-Use package search and category/severity filters to explore findings, expand evidence to see the lifecycle/reference chain, and use **Open File** to inspect the source. **Rescan**, **Cancel**, and **Save HTML** are available in the report. Exported HTML includes its styles and filtering code and works offline without VS Code.
-
-**Setup:** on first use with script inputs, the extension downloads the official YARA-X **1.20.0** engine, verifies its pinned SHA-256 digest, and caches it in extension storage. Supported managed binaries are Windows x64 and macOS/Linux x64 and arm64 (Linux requires a compatible glibc environment). Remote workspaces use the extension host's platform. A failed download, unsupported platform, or scanner failure leaves an incomplete report with the other checks retained. Cached engines work offline; live npm audit needs network access. Rules and catalog updates ship with extension updates. Third-party notices are included in `resources/security/THIRD_PARTY_NOTICES.txt`.
-
-| Setting | Default | Purpose |
-| --- | --- | --- |
-| `angularCliPlus.securityReview.afterInstall.enabled` | `true` | Review after extension-managed installations. Manual terminal installations are not watched. |
-| `angularCliPlus.securityReview.npmAudit.enabled` | `true` | Enable registry advisory requests; disable for local checks only. |
-
-**Coverage:** reviews require a trusted filesystem workspace and inspect files present after installation. Lifecycle scripts may already have run, removed themselves, or downloaded other payloads. The scanner never executes package code, and it does not monitor processes or prevent installation. It focuses on installation references rather than all package files. Dynamic references, unsupported languages/native builds, external workspace links, missing files, and Yarn PnP layouts are reported as coverage gaps. Preparation hooks are inspected conservatively even when a particular package manager would not invoke them for that package.
-
-Limits are two scanner threads, 120 seconds for YARA-X, 60 seconds for audit, 5 MiB per file, 250 MiB total input, 20,000 inputs/packages, and 32 reference levels. Literal Base64/hex decoding is limited to two layers and 1 MiB per decoded payload. Reaching limits produces an incomplete report. Findings describe indicators and advisory matches; **“No findings detected within the scanned scope”** does not certify a package or machine as safe. There are no automatic removals or fixes.
-
-Security validation commands: `npm run test:security-unit`, `npm run test:security-engine`, and `npm run test:security-webview`. The engine suite downloads the pinned binary and uses inert fixtures plus the installed esbuild installer, without executing scanned scripts. Browser tests require Playwright Chromium (`npx playwright install chromium`).
 
 ## Contributing
 

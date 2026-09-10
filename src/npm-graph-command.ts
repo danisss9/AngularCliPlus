@@ -6,6 +6,7 @@ import { spawnManaged } from './spawn';
 import { createAnalysisPanel } from './webview-utils';
 import { normalizedPackagePath } from './npm-graph';
 import { loadNpmDependencyGraph } from './npm-graph-loader';
+import { reviewPackageSecurityForRoot } from './security-command';
 
 import { buildNpmGraphHtml } from './npm-graph-html';
 
@@ -51,8 +52,17 @@ export async function showNpmDependencyGraph(): Promise<void> {
       }
     } finally { busy = false; }
   }
-  view.onMessage<{ command?: string }>(message => {
+  let openingSecurity = false;
+  view.onMessage<{ command?: string }>(async message => {
     if (message && (message.command === 'ready' || message.command === 'refresh')) { return refresh(); }
+    if (message?.command === 'securityScan' && !openingSecurity && !view.isDisposed()) {
+      openingSecurity = true;
+      try { await reviewPackageSecurityForRoot(root); }
+      finally {
+        openingSecurity = false;
+        if (!view.isDisposed()) { await view.panel.webview.postMessage({ type: 'securityScanFinished' }); }
+      }
+    }
   });
   const nonce = randomBytes(24).toString('base64');
   const script = view.panel.webview.asWebviewUri(vscode.Uri.joinPath(assets, 'npm-graph-webview.js'));

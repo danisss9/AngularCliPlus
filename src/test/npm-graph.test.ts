@@ -86,6 +86,20 @@ suite('npm dependency graph normalization and navigation', () => {
     assert.notStrictEqual(normalizedPackagePath('/app/A', '/app'), normalizedPackagePath('/app/a', '/app'));
   });
 
+  test('finds required missing peers without flagging optional, ordinary missing, or invalid dependencies', () => {
+    const graph = normalizeDependencyGraph({ dependencies: { plugin: {
+      ...pkg('plugin', '1', { required: { missing: true }, optional: { missing: true },
+        ordinary: { missing: true }, invalid: { ...pkg('invalid'), invalid: '^2' } }),
+      peerDependencies: { required: '^1', optional: '^1', invalid: '^2' },
+      peerDependenciesMeta: { optional: { optional: true } },
+    } } }, { peerDependencies: { direct: '^1', optionalRoot: '^1' },
+      peerDependenciesMeta: { optionalRoot: { optional: true } } }, root, 'Installed');
+    const index = new DependencyGraphIndex(graph);
+    assert.deepStrictEqual([...index.missingPeerIds()].map(id => index.nodes.get(id)!.name).sort(), ['direct', 'required']);
+    const declarations = new DependencyGraphIndex(normalizeDependencyGraph({}, { peerDependencies: { direct: '^1' } }, root, 'Declared only'));
+    assert.strictEqual(declarations.missingPeerIds().size, 0);
+  });
+
   test('normalizes and searches a 5000-package graph without recursive traversal', () => {
     const tree: Record<string, unknown> = { name: 'app' };
     let parent = tree;
@@ -200,6 +214,45 @@ suite('npm dependency graph collection', () => {
 });
 
 suite('npm dependency graph extension integration', () => {
+  test('security scan uses the graph workspace, ignores duplicate requests, and acknowledges failures', async () => {
+    const utils = require('../utils') as typeof import('../utils');
+    const views = require('../webview-utils') as typeof import('../webview-utils');
+    const security = require('../security-command') as typeof import('../security-command');
+    const previous = { picker: utils.pickWorkspaceFolder, create: views.createAnalysisPanel, review: security.reviewPackageSecurityForRoot };
+    const contextBefore = getExtensionContext();
+    const messages: unknown[] = [], roots: string[] = [];
+    let handler!: (message: { command?: string; root?: string }) => void | Promise<void>;
+    let dispose!: () => void;
+    let finish!: () => void;
+    const selectedRoot = path.join(os.tmpdir(), 'angular-cli-plus-graph-security');
+    try {
+      setExtensionContext({ extensionUri: vscode.extensions.getExtension('danisss9.angular-cli-plus')!.extensionUri, subscriptions: [] } as unknown as vscode.ExtensionContext);
+      utils.pickWorkspaceFolder = async () => selectedRoot;
+      views.createAnalysisPanel = (() => ({
+        panel: { onDidDispose: (callback: () => void) => { dispose = callback; }, webview: {
+          postMessage: async (message: unknown) => { messages.push(message); return true; },
+          asWebviewUri: (uri: vscode.Uri) => uri, cspSource: 'test',
+        } },
+        isDisposed: () => false, setHtml: () => {}, setTitle: () => {},
+        onMessage: (callback: typeof handler) => { handler = callback; },
+      })) as unknown as typeof views.createAnalysisPanel;
+      security.reviewPackageSecurityForRoot = async selected => { roots.push(selected); await new Promise<void>(resolve => { finish = resolve; }); };
+      await showNpmDependencyGraph();
+      const pending = handler({ command: 'securityScan', root: '/untrusted-message-path' });
+      await handler({ command: 'securityScan' });
+      assert.deepStrictEqual(roots, [selectedRoot]);
+      finish(); await pending;
+      assert.deepStrictEqual(messages, [{ type: 'securityScanFinished' }]);
+      security.reviewPackageSecurityForRoot = async () => { throw new Error('scan failed'); };
+      await assert.rejects(async () => handler({ command: 'securityScan' }), /scan failed/);
+      assert.strictEqual(messages.length, 2);
+    } finally {
+      dispose?.(); utils.pickWorkspaceFolder = previous.picker;
+      views.createAnalysisPanel = previous.create; security.reviewPackageSecurityForRoot = previous.review;
+      setExtensionContext(contextBefore);
+    }
+  });
+
   test('loads real webviews, reuses panels per folder, and recreates closed panels', async function () {
     this.timeout(15000);
     const extension = vscode.extensions.getExtension('danisss9.angular-cli-plus')!;

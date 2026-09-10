@@ -56,7 +56,12 @@ export async function reviewPackageSecurityCommand(): Promise<void> {
   if (!folders.length) { vscode.window.showErrorMessage('Open a filesystem workspace to review installed packages.'); return; }
   const folder = folders.length === 1 ? folders[0] : await vscode.window.showWorkspaceFolderPick({ placeHolder: 'Select the workspace to review' });
   if (!folder || folder.uri.scheme !== 'file') { return; }
-  const root = await validRoot(folder.uri.fsPath); if (!root) { return; }
+  await reviewPackageSecurityForRoot(folder.uri.fsPath);
+}
+/** Opens a manual review for a workspace already selected by another view. */
+export async function reviewPackageSecurityForRoot(workspaceRoot: string): Promise<void> {
+  if (!vscode.workspace.isTrusted) { vscode.window.showErrorMessage('Package security review requires a trusted workspace.'); return; }
+  const root = await validRoot(workspaceRoot); if (!root) { return; }
   openReport(root); service().request(root, 'manual');
 }
 export async function beginSecurityInstall(root: string): Promise<string | undefined> {
