@@ -164,13 +164,17 @@ async function runNpmInstallAttempt(clean: boolean, force: boolean, workspaceRoo
 /** Per-root disposables registered by {@link setupDependencyCheck}, so a removed workspace folder can tear them down instead of leaking until deactivation. */
 const rootDisposables = new Map<string, vscode.Disposable[]>();
 
+function isAngularDependencyWorkspace(workspaceRoot: string): boolean {
+  return fs.existsSync(path.join(workspaceRoot, 'angular.json'))
+    && fs.existsSync(path.join(workspaceRoot, 'package.json'));
+}
+
 export function setupDependencyCheck(context: vscode.ExtensionContext, workspaceRoot: string) {
   if (rootDisposables.has(workspaceRoot)) {
     return; // already registered — avoids duplicate watchers if a folder is re-added
   }
 
-  const pkgPath = path.join(workspaceRoot, 'package.json');
-  if (!fs.existsSync(pkgPath)) {
+  if (!isAngularDependencyWorkspace(workspaceRoot)) {
     return;
   }
 
@@ -248,11 +252,19 @@ export function scheduleDependencyCheck(workspaceRoot: string, delayMs: number) 
   const existing = depCheckTimeouts.get(workspaceRoot);
   if (existing) {
     clearTimeout(existing);
+    depCheckTimeouts.delete(workspaceRoot);
+  }
+  if (!isAngularDependencyWorkspace(workspaceRoot)) {
+    return;
   }
   depCheckTimeouts.set(
     workspaceRoot,
     setTimeout(() => {
       depCheckTimeouts.delete(workspaceRoot);
+      // The Angular configuration may have been removed while the check was queued.
+      if (!isAngularDependencyWorkspace(workspaceRoot)) {
+        return;
+      }
       checkDependencies(workspaceRoot).catch((err) =>
         logDiagnostic(`Dependency check failed: ${err}`),
       );
