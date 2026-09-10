@@ -4,6 +4,12 @@ All notable changes to the "angular-cli-plus" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.12.1]
+
+### Fixed
+
+- **Automatic dependency checks only run in Angular projects.** Workspace folders must contain both `angular.json` and `package.json` before automatic checks are registered, scheduled, or executed. This also applies when re-enabling dependency checks in settings and prevents queued checks from running after the Angular configuration is removed.
+
 ## [1.12.0]
 
 ### Added
