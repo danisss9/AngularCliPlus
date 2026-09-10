@@ -15,3 +15,5 @@ vsc-extension-quickstart.md
 tests/**
 playwright.graph.config.cjs
 .graph-test-results/**
+.security-test-results/**
+playwright.security.config.cjs

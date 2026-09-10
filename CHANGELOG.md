@@ -57,6 +57,9 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ### Added
 
+- **Package security review.** Added **npm: Review Package Security** and automatic reviews after extension-managed installations. Reviews combine a source-verified malicious-package catalog, optional live npm audit advisories, and local YARA-X installation-script analysis. The webview separates known threats, vulnerabilities, and heuristic indicators, with evidence, reference chains, coverage status, filters, cancellation, file navigation, and standalone HTML export.
+- **Managed YARA-X.** Downloads and verifies pinned YARA-X 1.20.0 binaries, scans bounded snapshots without executing package code, and retains partial results when checks are unavailable. Added rule/engine, browser, install-retry, and process-management tests, with desktop engine smoke jobs in release CI.
+
 - **npm dependency graph.** Added **npm: Show Dependency Graph**, available with `Ctrl+Shift+A F` (`Cmd+Shift+A F` on macOS). The interactive 2D network starts with direct dependencies and supports expanding and collapsing packages, dragging nodes, pan and zoom, package search, and package details with requested ranges and dependency problems. **Fit**, **Reset**, and **Refresh** controls help navigate the graph, and each workspace folder reuses its own panel.
 - **Offline dependency inspection.** The graph includes production, development, optional, and peer dependencies, plus npm workspace packages. It reads installed packages first, falls back to the npm lockfile when `node_modules` is absent, and shows unresolved package.json declarations when a full tree is unavailable. The data source is labeled, usable results are retained when npm reports errors, and the renderer is bundled locally.
 

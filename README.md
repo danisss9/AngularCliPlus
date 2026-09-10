@@ -412,6 +412,31 @@ Entries are only removed when the identifier is unused elsewhere in the file and
 - [Claude Code](https://marketplace.visualstudio.com/items?itemName=anthropic.claude-code) — alternative AI provider for auto-fix
 - [Angular Language Service](https://marketplace.visualstudio.com/items?itemName=angular.ng-template) — enhanced Angular template editing
 
+## Package security review
+
+Run **Angular CLI Plus: npm: Review Package Security** from the Command Palette (or search for it using the **Angular CLI +** status-bar action). Select a workspace when multiple folders are open. The review also runs after installations started through the extension, including custom npm/Yarn/pnpm commands and failed installations that leave packages behind. Automatic reviews open the report when findings exist or coverage is incomplete; a completed review without findings offers **View Report** in a notification.
+
+The report combines three separate checks:
+
+- **Known malicious packages:** actual installed names and versions checked against a curated, dated catalog derived from easy-dep-graph and verified against linked advisories. It includes nested, scoped, aliased, development, optional, and extraneous installations. The initial catalog contains 11 package entries; it is not a comprehensive malware feed.
+- **Vulnerabilities:** `npm audit --json --ignore-scripts`, including development, optional, and peer dependencies. This sends dependency metadata to the configured npm registry and requires an npm lockfile. Yarn/pnpm projects without an npm lockfile still receive local checks; the unavailable audit is reported explicitly.
+- **Suspicious script patterns:** local YARA-X scanning of installation hooks, their resolvable local scripts/imports/executable mappings, and bounded encoded payloads. Rules cover entropy, decoding or decryption with dynamic evaluation, suspicious shell execution, download-and-execute commands, credential collection with network activity, and persistence indicators. Common installer capabilities alone receive low-confidence findings.
+
+Use package search and category/severity filters to explore findings, expand evidence to see the lifecycle/reference chain, and use **Open File** to inspect the source. **Rescan**, **Cancel**, and **Save HTML** are available in the report. Exported HTML includes its styles and filtering code and works offline without VS Code.
+
+**Setup:** on first use with script inputs, the extension downloads the official YARA-X **1.20.0** engine, verifies its pinned SHA-256 digest, and caches it in extension storage. Supported managed binaries are Windows x64 and macOS/Linux x64 and arm64 (Linux requires a compatible glibc environment). Remote workspaces use the extension host's platform. A failed download, unsupported platform, or scanner failure leaves an incomplete report with the other checks retained. Cached engines work offline; live npm audit needs network access. Rules and catalog updates ship with extension updates. Third-party notices are included in `resources/security/THIRD_PARTY_NOTICES.txt`.
+
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| `angularCliPlus.securityReview.afterInstall.enabled` | `true` | Review after extension-managed installations. Manual terminal installations are not watched. |
+| `angularCliPlus.securityReview.npmAudit.enabled` | `true` | Enable registry advisory requests; disable for local checks only. |
+
+**Coverage:** reviews require a trusted filesystem workspace and inspect files present after installation. Lifecycle scripts may already have run, removed themselves, or downloaded other payloads. The scanner never executes package code, and it does not monitor processes or prevent installation. It focuses on installation references rather than all package files. Dynamic references, unsupported languages/native builds, external workspace links, missing files, and Yarn PnP layouts are reported as coverage gaps. Preparation hooks are inspected conservatively even when a particular package manager would not invoke them for that package.
+
+Limits are two scanner threads, 120 seconds for YARA-X, 60 seconds for audit, 5 MiB per file, 250 MiB total input, 20,000 inputs/packages, and 32 reference levels. Literal Base64/hex decoding is limited to two layers and 1 MiB per decoded payload. Reaching limits produces an incomplete report. Findings describe indicators and advisory matches; **“No findings detected within the scanned scope”** does not certify a package or machine as safe. There are no automatic removals or fixes.
+
+Security validation commands: `npm run test:security-unit`, `npm run test:security-engine`, and `npm run test:security-webview`. The engine suite downloads the pinned binary and uses inert fixtures plus the installed esbuild installer, without executing scanned scripts. Browser tests require Playwright Chromium (`npx playwright install chromium`).
+
 ## Contributing
 
 Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.

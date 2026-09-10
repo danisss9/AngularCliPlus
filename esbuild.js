@@ -40,7 +40,7 @@ const esbuildProblemMatcherPlugin = {
 
 async function main() {
   const graphCtx = await esbuild.context({
-    entryPoints: ['src/npm-graph-webview.ts', 'src/npm-graph-webview.css'],
+    entryPoints: ['src/npm-graph-webview.ts', 'src/npm-graph-webview.css', 'src/security-webview.ts', 'src/security-webview.css'],
     bundle: true,
     format: 'iife',
     platform: 'browser',

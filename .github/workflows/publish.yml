@@ -31,7 +31,7 @@ jobs:
         run: xvfb-run -a npm test
 
   release:
-    needs: test
+    needs: [test, security-engine, security-webview]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -74,3 +74,32 @@ jobs:
 
       - name: Publish VS Code extension
         run: npx @vscode/vsce publish --packagePath angular-cli-plus-${{ steps.version.outputs.VERSION }}.vsix --pat ${{ secrets.MARKETPLACE_PAT }}
+
+  security-engine:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run test:security-unit
+      - run: npm run test:security-engine
+
+  security-webview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:security-webview
+      - run: npm run test:graph-webview

@@ -52,6 +52,7 @@ import { showPackageUpdates } from './package-updates';
 import { manageJsonConfig } from './json-config';
 import { runAngularMigrations } from './migrations';
 import { showNpmDependencyGraph } from './npm-graph-command';
+import { reviewPackageSecurityCommand } from './security-command';
 import { setupAutoCleanImports } from './clean-imports';
 import { autoImportMissingImports } from './auto-imports';
 import { disposeAutoImportIndexes, warmAutoImportIndex } from './auto-imports-index';
@@ -135,6 +136,7 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('angular-cli-plus.checkMemoryLeaks', () => checkMemoryLeaks()),
     vscode.commands.registerCommand('angular-cli-plus.showSignalGraph', () => showSignalGraph()),
     vscode.commands.registerCommand('angular-cli-plus.showNpmDependencyGraph', () => showNpmDependencyGraph()),
+    vscode.commands.registerCommand('angular-cli-plus.reviewPackageSecurity', () => reviewPackageSecurityCommand()),
     vscode.commands.registerCommand('angular-cli-plus.setupNpmrc', () => setupNpmrcCommand()),
     vscode.commands.registerCommand('angular-cli-plus.checkOptimizations', () =>
       checkOptimizations(),

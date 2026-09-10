@@ -163,6 +163,12 @@
         "category": "Angular CLI Plus"
       },
       {
+        "command": "angular-cli-plus.reviewPackageSecurity",
+        "title": "npm: Review Package Security",
+        "category": "Angular CLI Plus",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
         "command": "angular-cli-plus.showNpmDependencyGraph",
         "title": "npm: Show Dependency Graph",
         "category": "Angular CLI Plus"
@@ -353,6 +359,18 @@
     "configuration": {
       "title": "Angular CLI Plus",
       "properties": {
+        "angularCliPlus.securityReview.afterInstall.enabled": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "description": "Review package security after Angular CLI Plus installations finish, including failed attempts. Open the report when findings exist or coverage is incomplete."
+        },
+        "angularCliPlus.securityReview.npmAudit.enabled": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "description": "Include live npm audit advisories. Sends dependency metadata to the configured npm registry. YARA-X installation-script analysis remains local."
+        },
         "angularCliPlus.component.standalone": {
           "type": "boolean",
           "default": true,
@@ -673,7 +691,10 @@
     "check-types": "tsc --noEmit",
     "lint": "eslint src",
     "test": "vscode-test",
-    "test:graph-webview": "npm run compile-tests && npm run package && playwright test --config playwright.graph.config.cjs"
+    "test:graph-webview": "npm run compile-tests && npm run package && playwright test --config playwright.graph.config.cjs",
+    "test:security-engine": "npm run compile-tests && node tests/security/engine-smoke.cjs",
+    "test:security-unit": "npm run compile-tests && node --test tests/security/unit.cjs",
+    "test:security-webview": "npm run compile-tests && npm run package && playwright test --config playwright.security.config.cjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",

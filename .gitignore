@@ -4,3 +4,4 @@ node_modules
 .vscode-test/
 *.vsix
 .graph-test-results/
+.security-test-results/
