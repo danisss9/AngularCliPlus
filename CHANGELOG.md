@@ -4,6 +4,12 @@ All notable changes to the "angular-cli-plus" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.12.2]
+
+### Changed
+
+- **Automatic package security reviews after installations are disabled by default.** Reviews still run on demand via **npm: Review Package Security**; set `angularCliPlus.securityReview.afterInstall.enabled` to `true` to review again after extension-managed installs.
+
 ## [1.12.1]
 
 ### Fixed

@@ -4,7 +4,7 @@
   "description": "Angular CLI commands, schematics generator, and project tools for VS Code with AI-powered auto-fix support (GitHub Copilot & Claude Code)",
   "repository": "https://github.com/danisss9/AngularCliPlus",
   "publisher": "danisss9",
-  "version": "1.12.1",
+  "version": "1.12.2",
   "icon": "icon.png",
   "engines": {
     "vscode": "^1.107.0"
@@ -367,9 +367,9 @@
       "properties": {
         "angularCliPlus.securityReview.afterInstall.enabled": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "scope": "resource",
-          "description": "Review package security after Angular CLI Plus installations finish, including failed attempts. Open the report when findings exist or coverage is incomplete."
+          "description": "Review package security after Angular CLI Plus installations finish, including failed attempts. Disabled by default; open the report when findings exist or coverage is incomplete."
         },
         "angularCliPlus.securityReview.npmAudit.enabled": {
           "type": "boolean",

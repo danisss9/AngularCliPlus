@@ -201,7 +201,7 @@ Edits are handed to VS Code as save participants, so they land as part of the sa
 - **npm: Show Dependency Graph** (`Ctrl+Shift+A F`, or `Cmd+Shift+A F` on macOS) opens an interactive 2D network for the selected workspace. Start with direct dependencies, select a package, and use **Expand / Collapse** to explore its dependencies, or **Expand all packages** to show every nested level at once. Nodes appear in their settled positions without an animated startup. Existing package positions stay fixed when expanding a branch, large networks use a grid layout, and mouse-wheel zoom responds quickly. Drag nodes, pan, zoom, search by package name or version, and inspect requested ranges and dependency problems. **Fit** frames the visible network; **Reset** returns to direct dependencies; **Refresh** reads the project again.
   The source is labeled **Installed**, **Lockfile** (when `node_modules` is absent), or **Declared only** (when neither is available or npm cannot return a tree). Declared-only graphs show unresolved versions. Production, development, optional, and peer dependencies are included, along with npm workspace packages. The renderer is bundled for offline use; inspection does not install packages or query the registry.
 
-- **npm: Review Package Security** ? review installed packages on demand or automatically after extension-managed installs. See [Package Security Review](#package-security-review) for setup, report controls, and coverage.
+- **npm: Review Package Security** ? review installed packages on demand, or automatically after extension-managed installs when enabled. See [Package Security Review](#package-security-review) for setup, report controls, and coverage.
 
 - **Dependency check** — on startup and on every git branch change, the extension verifies that `node_modules` is present and that installed versions satisfy the `package.json` ranges, prompting to run `npm install` when problems are found. Disable with `angularCliPlus.checkDependencies.enabled`.
 - **Tool version check** — on startup, the `engines` field in `package.json` is verified against the installed Node.js, npm, yarn, and pnpm versions, with update offers and download links when a mismatch is found. Disable with `angularCliPlus.checkToolVersions.enabled`.
@@ -213,7 +213,7 @@ Edits are handed to VS Code as save participants, so they land as part of the sa
 
 ## Package Security Review
 
-Run **Angular CLI Plus: npm: Review Package Security** with `Ctrl+Shift+A V` (`Cmd+Shift+A V` on macOS), from the Command Palette, or using the **Angular CLI +** status-bar action. Select a workspace when multiple folders are open. The review also runs after installations started through the extension, including custom npm/Yarn/pnpm commands and failed installations that leave packages behind. Automatic reviews open the report when findings exist or coverage is incomplete; a completed review without findings offers **View Report** in a notification.
+Run **Angular CLI Plus: npm: Review Package Security** with `Ctrl+Shift+A V` (`Cmd+Shift+A V` on macOS), from the Command Palette, or using the **Angular CLI +** status-bar action. Select a workspace when multiple folders are open. When `angularCliPlus.securityReview.afterInstall.enabled` is on, the review also runs after installations started through the extension, including custom npm/Yarn/pnpm commands and failed installations that leave packages behind. Automatic reviews open the report when findings exist or coverage is incomplete; a completed review without findings offers **View Report** in a notification.
 
 The report combines three separate checks:
 
@@ -227,7 +227,7 @@ Use package search and category/severity filters to explore findings, expand evi
 
 | Setting                                              | Default | Purpose                                                                                      |
 | ---------------------------------------------------- | ------- | -------------------------------------------------------------------------------------------- |
-| `angularCliPlus.securityReview.afterInstall.enabled` | `true`  | Review after extension-managed installations. Manual terminal installations are not watched. |
+| `angularCliPlus.securityReview.afterInstall.enabled` | `false` | Review after extension-managed installations. Manual terminal installations are not watched. |
 | `angularCliPlus.securityReview.npmAudit.enabled`     | `true`  | Enable registry advisory requests; disable for local checks only.                            |
 
 **Coverage:** reviews require a trusted filesystem workspace and inspect files present after installation. Lifecycle scripts may already have run, removed themselves, or downloaded other payloads. The scanner never executes package code, and it does not monitor processes or prevent installation. It focuses on installation references rather than all package files. Dynamic references, unsupported languages/native builds, external workspace links, missing files, and Yarn PnP layouts are reported as coverage gaps. Preparation hooks are inspected conservatively even when a particular package manager would not invoke them for that package.
